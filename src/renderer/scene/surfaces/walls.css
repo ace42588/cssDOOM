@@ -1,0 +1,82 @@
+/* Walls — geometry computed from raw DOOM vertex + sector data */
+
+.wall {
+    /* Compute wall vector from raw DOOM vertices */
+    --x: calc((var(--start-x) + var(--end-x)) / 2);
+    --y: calc((var(--start-y) + var(--end-y)) / 2);
+    --delta-x: calc(var(--end-x) - var(--start-x));
+    --delta-y: calc(var(--end-y) - var(--start-y));
+
+    /* Wall dimensions derived from vertices and sector heights */
+    width: calc(hypot(var(--delta-x), var(--delta-y)) * 1px);
+    height: calc((var(--ceiling-z) - var(--floor-z)) * 1px);
+
+    background-repeat: repeat;
+    background-position: calc(var(--texture-offset-x, 0) * -1px) calc(var(--texture-offset-y, 0) * -1px);
+    transform-origin: 0 0;
+
+    /* Position at start vertex, convert DOOM→CSS coords (X=X, Y=−Z, height=−Y) */
+    transform:
+        translate3d(
+            calc(var(--start-x) * 1px),
+            calc(var(--ceiling-z) * -1px),
+            calc(var(--start-y) * -1px)
+        )
+        rotateY(atan2(var(--delta-y), var(--delta-x)));
+
+    filter: brightness(var(--light, 1));
+}
+
+body.show-wall-ids .wall {
+    font-size: 12px;
+    color: white;
+    text-shadow: 0 0 2px black, 0 0 2px black;
+    overflow: hidden;
+    padding: 2px;
+}
+
+button.wall {
+    border: none;
+    padding: 0;
+    cursor: default;
+    appearance: none;
+}
+
+
+/* Scrolling Textures */
+
+@property --scroll-offset {
+    syntax: "<length>";
+    inherits: false;
+    initial-value: 0px;
+}
+
+@keyframes scroll-texture {
+    from { --scroll-offset: 0px; }
+    to   { --scroll-offset: -128px; }
+}
+
+body.scroll-textures .wall.scroll-texture {
+    animation: scroll-texture 3.66s linear infinite;
+    background-position-x: calc(var(--texture-offset-x, 0) * -1px + var(--scroll-offset));
+}
+
+/* Lower-unpegged walls: texture pinned to bottom (doors, lifts) */
+.wall.unpegged {
+    background-position-y: calc(100% + var(--texture-offset-y, 0) * -1px);
+}
+
+/* Sky walls — invisible occluders above wall tops in sky-ceiling sectors.
+   Hidden by default; shown as hotpink via the debug toggle. */
+.sky-wall {
+    display: none;
+    filter: none;
+}
+
+body.show-sky-walls .sky-wall {
+    display: block;
+    background: hotpink;
+}
+
+
+

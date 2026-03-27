@@ -1,0 +1,59 @@
+/* ========================================================================
+   Enemies — combined sprite sheets (walk + attack + death in one image)
+   Rows 0-4: walk rotations (mirrored 6-8 via scaleX(-1) set by JS)
+   Row 5: attack (front-facing)
+   Row 6: death
+   --cols = total columns in sheet (max frames across all states)
+   --frames = frames in current animation (walk by default)
+   JS sets --heading and --frames when switching to attack/death
+   ======================================================================== */
+
+.sprite[data-type="zombieman"] {
+    background-image: url('/assets/sprites/sheets/POSS.png');
+    --w: 48; --h: 55; --cols: 5; --frames: 2; --rows: 7;
+}
+
+.sprite[data-type="shotgun-guy"] {
+    background-image: url('/assets/sprites/sheets/SPOS.png');
+    --w: 52; --h: 60; --cols: 5; --frames: 2; --rows: 7;
+}
+
+.sprite[data-type="imp"] {
+    background-image: url('/assets/sprites/sheets/TROO.png');
+    --w: 58; --h: 62; --cols: 5; --frames: 2; --rows: 7;
+}
+
+.sprite[data-type="demon"] {
+    background-image: url('/assets/sprites/sheets/SARG.png');
+    --w: 64; --h: 59; --cols: 6; --frames: 2; --rows: 7;
+}
+
+/* Spectre: invisible Demon variant — same sprites with SVG fuzz displacement.
+   Based on: linuxdoom-1.10/r_things.c — MF_SHADOW flag renders with "fuzz" effect.
+   Uses animated feTurbulence → feDisplacementMap → feColorMatrix (see #fuzz in index.html) */
+.sprite[data-type="spectre"] {
+    background-image: url('/assets/sprites/sheets/SARG.png');
+    --w: 64; --h: 59; --cols: 6; --frames: 2; --rows: 7;
+    filter: url(#fuzz);
+    opacity: 0.35;
+
+    &[data-state="dead"] { filter: none; }
+}
+
+.sprite[data-type="baron"] {
+    background-image: url('/assets/sprites/sheets/BOSS.png');
+    --w: 69; --h: 74; --cols: 7; --frames: 2; --rows: 7;
+}
+
+/* ========================================================================
+   Destructibles — barrel idle (row 0) + explosion (row 1)
+   ======================================================================== */
+
+.sprite[data-type="barrel"] {
+    background-image: url('/assets/sprites/sheets/BAR1.png');
+    --w: 60; --h: 53; --cols: 5; --frames: 2; --rows: 2;
+}
+
+.barrel .sprite[data-state="dead"] {
+    animation-name: sprite-hide;
+}

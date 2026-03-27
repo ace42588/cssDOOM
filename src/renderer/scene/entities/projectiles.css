@@ -1,0 +1,80 @@
+/* Projectiles */
+
+.projectile {
+    background-repeat: no-repeat;
+
+    rotate: y calc(var(--player-angle) * 1rad);
+
+    animation:
+        projectile-move var(--duration) linear both,
+        projectile-glow 150ms ease-in-out infinite alternate;
+}
+
+@keyframes projectile-move {
+    from {
+        translate:
+            calc(var(--start-x) * 1px)
+            calc(var(--start-z) * -1px)
+            calc(var(--start-y) * -1px);
+    }
+    to {
+        translate:
+            calc(var(--end-x) * 1px)
+            calc(var(--end-z) * -1px)
+            calc(var(--end-y) * -1px);
+    }
+}
+
+@keyframes projectile-glow {
+    from { filter: brightness(1.8); }
+    to   { filter: brightness(2.5); }
+}
+
+
+/* Bullet Puff */
+
+.puff {
+    width: 15px;
+    height: 15px;
+    background: url('/assets/sprites/PUFF_SHEET.png') no-repeat;
+    background-size: 60px 15px;
+    transform-origin: 50% 50%;
+    transform:
+        translate3d(
+            calc(var(--x) * 1px),
+            calc(var(--z) * -1px),
+            calc(var(--y) * -1px)
+        )
+        translate(-50%, -50%)
+        rotateY(calc(var(--player-angle) * 1rad));
+    animation: puff 200ms steps(3) forwards;
+}
+
+@keyframes puff {
+    from { background-position-x: 0; }
+    to   { background-position-x: -45px; }
+}
+
+
+/* Fireball Explosion */
+
+.fireball-explosion {
+    width: 50px;
+    height: 44px;
+    transform-origin: 50% 50%;
+    transform:
+        translate3d(
+            calc(var(--x) * 1px - 25px),
+            calc(var(--z) * -1px - 22px),
+            calc(var(--y) * -1px)
+        )
+        rotateY(calc(var(--player-angle) * 1rad));
+    animation: fireball-explode 300ms steps(1) forwards;
+    image-rendering: pixelated;
+}
+
+@keyframes fireball-explode {
+    0%, 33%  { background: url('/assets/sprites/BAL1C0.png') no-repeat center / contain; }
+    33%, 66% { background: url('/assets/sprites/BAL1D0.png') no-repeat center / contain; }
+    66%, 100%{ background: url('/assets/sprites/BAL1E0.png') no-repeat center / contain; }
+}

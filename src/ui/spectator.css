@@ -1,0 +1,391 @@
+/* ========================================================================
+   Spectator Mode — custom properties for camera control
+   ======================================================================== */
+
+@property --spectator-offset-x {
+    syntax: "<number>";
+    inherits: true;
+    initial-value: 0;
+}
+
+@property --spectator-offset-y {
+    syntax: "<number>";
+    inherits: true;
+    initial-value: 0;
+}
+
+@property --spectator-height {
+    syntax: "<number>";
+    inherits: true;
+    initial-value: 3000;
+}
+
+@property --spectator-angle {
+    syntax: "<number>";
+    inherits: true;
+    initial-value: 0;
+}
+
+@property --follow-height {
+    syntax: "<number>";
+    inherits: true;
+    initial-value: 300;
+}
+
+@property --player-floor {
+    syntax: "<number>";
+    inherits: true;
+    initial-value: 0;
+}
+
+/* Top-down spectator mode: camera looks down at the map */
+body.spectator:not(.follow-mode) #scene {
+    translate: 0 0 var(--perspective);
+    rotate: x -70deg;
+    transform:
+        rotateY(calc(var(--spectator-angle) * 1rad))
+        translate3d(
+            calc((var(--player-x) + var(--spectator-offset-x)) * -1px),
+            calc(var(--spectator-height) * 1px),
+            calc((var(--player-y) + var(--spectator-offset-y)) * 1px)
+        );
+    transition: none;
+}
+
+/* Follow mode: camera behind the player using sin/cos */
+body.spectator.follow-mode #scene {
+    --follow-dist: calc(var(--follow-height) * 0.7);
+    translate: 0 10vh var(--perspective);
+    rotate: x -55deg;
+    transform:
+        rotateY(calc(var(--player-angle) * -1rad))
+        translate3d(
+            calc((var(--player-x) + sin(calc(var(--player-angle) * 1rad)) * var(--follow-dist)) * -1px),
+            calc((var(--follow-height) + var(--player-floor)) * 1px),
+            calc((var(--player-y) - cos(calc(var(--player-angle) * 1rad)) * var(--follow-dist)) * 1px)
+        );
+    transition: none;
+}
+
+/* In follow mode, billboard player sprite toward player angle instead of spectator angle */
+body.spectator.follow-mode #player > .sprite {
+    transform:
+        translateX(-50%)
+        rotateY(calc(var(--player-angle) * 1rad))
+        scaleX(var(--mirror, 1));
+}
+
+body.spectator #viewport::after {
+    opacity: 1;
+    transition: opacity 1.5s;
+}
+
+body.spectator #status {
+    transform: translateY(100%);
+    pointer-events: none;
+    transition-delay: 0s;
+}
+
+body.spectator #weapon {
+    transform: translateY(calc(100% + 100px));
+    pointer-events: none;
+    transition-delay: 0s;
+}
+
+/* Player container — shared positioning for marker, sprite, and shadow */
+#player {
+    display: none;
+    top: 0; left: 0; width: 0; height: 0;
+    backface-visibility: visible !important;
+
+    /* Position from raw DOOM coordinates (DOOM→CSS: X=X, Y=−Z, height=−Y) */
+    transform:
+        translate3d(
+            calc(var(--player-x) * 1px),
+            calc(var(--player-floor) * -1px),
+            calc(var(--player-y) * -1px)
+        );
+}
+
+body.spectator #player {
+    display: block;
+}
+
+body.spectator #player > .sprite {
+    animation: sprite-cycle calc(var(--frames) * 150ms) steps(var(--frames)) infinite paused;
+    opacity: 1;
+    transition: opacity 1s ease 0.5s;
+
+    @starting-style {
+        opacity: 0;
+    }
+}
+
+body.spectator #player > .marker {
+    opacity: 0.4;
+
+    @starting-style {
+        opacity: 0;
+    }
+}
+
+/* Player marker — FOV arc */
+#player > .marker {
+    --marker-color: #fff;
+
+    width: 80px;
+    height: 80px;
+    margin: -50px 0 0 -40px;
+    opacity: 0;
+    border-radius: 50%;
+    backface-visibility: visible !important;
+    transition: opacity 1s ease 0.5s;
+
+    transform:
+        translateY(-10px)
+        rotateX(90deg)
+        rotateZ(calc(var(--player-angle) * -1rad));
+
+    /* 90° arc centered at top (player facing direction) */
+    background: conic-gradient(
+        from -45deg,
+        var(--marker-color) 0deg,
+        var(--marker-color) 90deg,
+        transparent 90deg
+    );
+
+    /* Cut out center to make it an arc line */
+    -webkit-mask: radial-gradient(circle, transparent 60%, black 63%);
+    mask: radial-gradient(circle, transparent 60%, black 63%);
+
+    filter: drop-shadow(0 0 8px var(--marker-color));
+}
+
+#player > .marker.firing {
+    --marker-color: #ff8800;
+}
+
+/* Player sprite — billboard toward spectator camera */
+#player > .sprite {
+    opacity: 0;
+    transition: opacity 0.3s ease 0s;
+    bottom: 0;
+    backface-visibility: visible !important;
+    transform-origin: 50% 100%;
+    transform:
+        translateX(-50%)
+        rotateY(calc(var(--spectator-angle, 0) * -1rad))
+        scaleX(var(--mirror, 1));
+
+    background-image: url('/assets/sprites/sheets/PLAY.png');
+    --w: 45; --h: 56; --frames: 4; --rows: 5;
+    animation-play-state: paused;
+    animation-duration: calc(var(--frames) * 150ms);
+}
+
+#renderer.moving #player > .sprite {
+    animation-play-state: running, running;
+}
+
+/* Player shadow */
+#player::before {
+    content: '';
+    position: absolute;
+    width: 32px;
+    height: 32px;
+    margin: -16px 0 0 -16px;
+    background: rgba(0, 0, 0, 0.5);
+    border-radius: 50%;
+    transform: rotateX(90deg);
+    backface-visibility: visible !important;
+    filter: blur(4px);
+}
+
+
+body.spectator #scene :not(.sector, .ceiling) {
+    backface-visibility: visible;
+}
+
+body.spectator #scene .ceiling {
+    display: none;
+}
+
+
+
+/* ========================================================================
+   Aim Line (follow mode)
+   ======================================================================== */
+
+#aim-line {
+    display: none;
+    position: fixed;
+    left: 50%;
+    top: 12px;
+    bottom: 55%;
+    width: 1px;
+    background: rgba(255, 255, 255, 0.15);
+    z-index: 998;
+    pointer-events: none;
+}
+
+body.spectator.follow-mode #aim-line {
+    display: block;
+}
+
+
+/* ========================================================================
+   Spectator Button
+   ======================================================================== */
+
+#spectator-button {
+    position: fixed;
+    top: calc(12px + env(safe-area-inset-top, 0px));
+    right: calc(12px + env(safe-area-inset-right, 0px));
+    z-index: 999;
+    width: 38px;
+    height: 38px;
+    background: none;
+    border: none;
+    padding: 4px;
+    cursor: pointer;
+    transition: filter 0.15s;
+
+    & img {
+        width: 100%;
+        height: 100%;
+        filter: invert(0.55);
+        transition: filter 0.15s;
+    }
+
+    &:hover img { filter: invert(1); }
+}
+
+body.spectator #spectator-button {
+
+    & img { filter: invert(1); }
+}
+
+
+/* ========================================================================
+   Spectator Controls
+   ======================================================================== */
+
+#spectator-controls {
+    anchor-name: --spectator-controls;
+    position: fixed;
+    bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+    left: calc(20px + env(safe-area-inset-left, 0px));
+    right: calc(20px + env(safe-area-inset-right, 0px));
+    z-index: 1003;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    padding: 8px;
+    opacity: 1;
+    transition: opacity 0.3s;
+
+    &.hidden { opacity: 0; pointer-events: none; }
+
+    & button {
+        width: 40px;
+        height: 40px;
+        background: #333;
+        border: none;
+        color: #ddd;
+        font-size: 17px;
+        cursor: pointer;
+        user-select: none;
+        -webkit-user-select: none;
+        touch-action: manipulation;
+
+        box-shadow: 
+            #000 0 2px 0 0px, 
+            #000 0 -2px 0 0px, 
+            #000 2px 0 0 0px, 
+            #000 -2px 0 0 0px, 
+            inset #555 -2px -2px 0 0;
+
+        & img {
+            width: 22px;
+            height: 22px;
+            filter: invert(0.67);
+            transition: filter 0.15s;
+            margin-top: 2px;
+        }
+
+        &:hover { background: #444; color: #fff; }
+        &:hover img { filter: invert(1); }
+        &:active, &.pressed {
+            background: #555;
+            box-shadow: 
+                #000 0 2px 0 0px, 
+                #000 0 -2px 0 0px, 
+                #000 2px 0 0 0px, 
+                #000 -2px 0 0 0px;
+
+            color: #fff;
+        }
+        &:active img, &.pressed img { filter: invert(1); }
+    }
+}
+
+.spectator-group {
+    display: flex;
+    gap: 10px;
+    transition: opacity 0.3s;
+}
+
+/* Hide pan/rotate controls in follow mode — camera follows player automatically */
+body.follow-mode #spectator-rotate,
+body.follow-mode #spectator-arrows {
+    opacity: 0;
+    pointer-events: none;
+    visibility: hidden;
+    width: 0;
+    height: 0;
+    overflow: hidden;
+}
+
+.spectator-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+#spectator-arrows {
+    display: grid;
+    grid-template-columns: repeat(3, 40px);
+    grid-template-rows: repeat(2, 40px);
+    gap: 10px;
+
+    & button:nth-child(1) { grid-column: 2; grid-row: 1; }
+    & button:nth-child(2) { grid-column: 1; grid-row: 2; }
+    & button:nth-child(3) { grid-column: 2; grid-row: 2; }
+    & button:nth-child(4) { grid-column: 3; grid-row: 2; }
+}
+
+#spectator-tabs {
+    gap: 0;
+}
+
+.spectator-tab {
+    width: auto !important;
+    height: 40px !important;
+    padding: 0 12px !important;
+
+    & img {
+        width: 26px;
+        height: 26px;
+        filter: invert(0.67);
+        transition: filter 0.15s;
+        margin-top: 2px;
+    }
+
+    &.active img { filter: invert(1); }
+    &:hover img { filter: invert(1); }
+}
+
+.spectator-tab.active {
+    background: #777 !important;
+    color: #fff;
+}

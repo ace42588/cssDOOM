@@ -1,0 +1,36 @@
+
+@keyframes sprite-cycle {
+    from { background-position-x: 0; }
+    to   { background-position-x: calc(var(--w) * var(--frames) * -1px); }
+}
+
+@keyframes sprite-stop {
+    from { background-position-x: 0; }
+    to   { background-position-x: calc(var(--w) * (1 - var(--frames)) * 1px); }
+}
+
+@keyframes sprite-hide {
+    from { background-position-x: 0; }
+    to   { background-position-x: calc(var(--w) * (1 - var(--frames)) * 1px); visibility: hidden; }
+}
+
+.sprite {
+    --heading: 0;
+    --rows: 1;
+
+    width: calc(var(--w) * 1px);
+    height: calc(var(--h) * 1px);
+
+    background-repeat: no-repeat;
+    background-size: calc(var(--w) * var(--cols, var(--frames)) * 1px) calc(var(--h) * var(--rows) * 1px);
+    background-position-y: calc(var(--heading) * var(--h) * -1px);
+    animation: sprite-cycle calc(var(--frames) * 250ms) steps(var(--frames)) infinite;
+
+    &[data-state="attacking"] {
+        animation: sprite-stop 600ms steps(calc(var(--frames) - 1)) forwards;
+    }
+
+    &[data-state="dead"] {
+        animation: sprite-stop calc(var(--frames) * 100ms) steps(calc(var(--frames) - 1)) forwards;
+    }
+}

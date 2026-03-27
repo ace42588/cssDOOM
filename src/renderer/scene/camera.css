@@ -1,0 +1,45 @@
+/* Camera Transform — inverse of player position/angle applied to the scene */
+
+#scene {
+    translate: 0 0 var(--perspective);
+    rotate: x 0deg;
+    transform:
+        rotateY(calc(var(--player-angle) * -1rad))
+        translate3d(
+            calc(var(--player-x) * -1px),
+            calc(var(--player-z) * 1px),
+            calc(var(--player-y) * 1px)
+        );
+
+    /* Transition player Z for falling effect */
+    transition: --player-z 0.25s ease-out;
+}
+
+
+/* Head Bob */
+
+@property --bob {
+    syntax: "<number>";
+    inherits: false;
+    initial-value: 0;
+}
+
+@keyframes head-bob {
+    0%, 100% { --bob: 0; }
+    50%      { --bob: 6; }
+}
+
+body.head-bob {
+    #scene {
+        transform:
+            rotateY(calc(var(--player-angle) * -1rad))
+            translate3d(
+                calc(var(--player-x) * -1px),
+                calc(var(--player-z) * 1px + var(--bob, 0) * 1px),
+                calc(var(--player-y) * 1px)
+            );
+    }
+    .moving #scene {
+        animation: head-bob 400ms ease-in-out infinite;
+    }
+}

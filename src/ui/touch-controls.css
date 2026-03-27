@@ -1,0 +1,139 @@
+/* Touch Controls — only visible on touch devices */
+
+#touch-controls {
+    display: none;
+}
+
+@media (pointer: coarse) {
+    #touch-controls {
+        display: block;
+        position: fixed;
+        inset: 0;
+        z-index: 1001;
+        pointer-events: none;
+    }
+
+}
+
+/* Hit zones */
+
+#touch-look-zone {
+    position: fixed;
+    position-anchor: --status;
+    top: calc(56px + env(safe-area-inset-top, 0px));
+    bottom: anchor(top);
+    left: 0;
+    right: 0;
+    margin-bottom: 130px;
+    pointer-events: auto;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+#touch-joystick-zone {
+    position: fixed;
+    position-anchor: --status;
+    bottom: anchor(top);
+    left: 0;
+    width: 160px;
+    height: 160px;
+    margin-bottom: 8px;
+    transition: bottom 0.3s ease-in-out;
+    pointer-events: auto;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+/* Joystick — anchored above the status bar */
+
+#touch-joystick-base {
+    position: fixed;
+    position-anchor: --status;
+    bottom: anchor(top);
+    left: 24px;
+    width: 100px;
+    height: 100px;
+    margin-bottom: 16px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    pointer-events: none;
+    z-index: 1002;
+    transition: bottom 0.3s ease-in-out;
+}
+
+#touch-joystick-knob {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 44px;
+    height: 44px;
+    margin-left: -22px;
+    margin-top: -22px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.35);
+}
+
+/* Use button — anchored above the status bar */
+
+#touch-use {
+    position: fixed;
+    position-anchor: --status;
+    bottom: anchor(top);
+    right: 24px;
+    width: 64px;
+    height: 64px;
+    margin-bottom: 34px;
+    pointer-events: auto;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    border: none;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.15);
+    z-index: 1002;
+    transition: bottom 0.3s ease-in-out;
+}
+
+#touch-use:active {
+    filter: brightness(1.4);
+}
+
+/* In spectator mode, re-anchor touch controls above the spectator controls
+   instead of the status bar (which is off-screen) */
+
+body.spectator #touch-look-zone,
+body.spectator #touch-joystick-zone,
+body.spectator #touch-joystick-base,
+body.spectator #touch-use,
+body.spectator #touch-fire {
+    position-anchor: --spectator-controls;
+}
+
+
+/* Invisible fire overlay positioned on top of the weapon */
+
+#touch-fire {
+    position: fixed;
+    position-anchor: --status;
+    bottom: anchor(top);
+    right: 104px;
+    width: 64px;
+    height: 64px;
+    margin-bottom: 34px;
+    pointer-events: auto;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    border: none;
+    background: rgba(255, 80, 40, 0.25);
+    border-radius: 50%;
+    z-index: 1002;
+    transition: bottom 0.3s ease-in-out;
+}
+
+#touch-fire:active {
+    filter: brightness(1.4);
+}

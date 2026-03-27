@@ -1,0 +1,15 @@
+/* Doors */
+
+.door {
+    top: 0; left: 0; width: 0; height: 0;
+}
+
+.door > .panel {
+    top: 0; left: 0; width: 0; height: 0;
+    transform: translateY(0px);
+    transition: transform 1s ease-in-out;
+}
+
+.door[data-state="open"] > .panel {
+    transform: translateY(var(--offset));
+}

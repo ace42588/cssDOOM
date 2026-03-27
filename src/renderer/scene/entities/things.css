@@ -1,0 +1,67 @@
+/* Things (enemies, barrels, pickups, decorations) */
+
+.enemy, .barrel, .pickup, .decoration {
+    width: 0; height: 0;
+    transform: translate3d(
+        calc(var(--x) * 1px),
+        calc(var(--floor-z) * -1px),
+        calc(var(--y) * -1px)
+    );
+}
+
+.enemy { transition: --floor-z 0.4s ease-out; }
+
+.pickup.collected {
+    visibility: hidden;
+}
+
+
+/* Sprites */
+
+.decoration img,
+.pickup img,
+.sprite {
+    bottom: 0;
+    transform-origin: 50% 100%;
+    transform:
+        translateX(-50%)
+        rotateY(calc(var(--player-angle) * 1rad))
+        scaleX(var(--mirror, 1));
+
+    filter: brightness(var(--light, 1));
+}
+
+
+/* ========================================================================
+   Pickups
+   ======================================================================== */
+
+.sprite[data-type="soulsphere"] {
+    background-image: url('/assets/sprites/sheets/SOUL.png');
+    --w: 25; --h: 25; --frames: 4;
+}
+
+.sprite[data-type="health-bonus"] {
+    background-image: url('/assets/sprites/sheets/BON1.png');
+    --w: 14; --h: 18; --frames: 4;
+}
+
+.sprite[data-type="armor-bonus"] {
+    background-image: url('/assets/sprites/sheets/BON2.png');
+    --w: 16; --h: 15; --frames: 4;
+}
+
+.sprite[data-type="green-armor"] {
+    background-image: url('/assets/sprites/sheets/ARM1.png');
+    --w: 31; --h: 17; --frames: 2;
+}
+
+.sprite[data-type="blue-armor"] {
+    background-image: url('/assets/sprites/sheets/ARM2.png');
+    --w: 31; --h: 17; --frames: 2;
+}
+
+.sprite[data-type="invisibility"] {
+    background-image: url('/assets/sprites/sheets/PINS.png');
+    --w: 25; --h: 25; --frames: 4;
+}
