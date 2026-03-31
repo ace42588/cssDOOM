@@ -210,6 +210,30 @@ export const SHOOTABLE = new Set([...ENEMIES, 2035]);
 // ============================================================================
 
 export const BARREL_RADIUS = 16;               // Collision radius (map units)
+
+// Maps DOOM thing types with MF_SOLID to their collision radius.
+// Based on: linuxdoom-1.10/info.c — mobjinfo[].radius and MF_SOLID flag.
+// Enemies and barrels are handled separately (ENEMY_AI_STATS.radius and BARREL_RADIUS).
+export const SOLID_THING_RADIUS = {
+    25: 16,     // Impaled Human
+    26: 16,     // Twitching Impaled
+    27: 16,     // Skull on Pole
+    28: 16,     // Skulls and Candles
+    29: 16,     // Skull on Stick
+    35: 16,     // Candelabra
+    43: 16,     // Burning Tree
+    44: 16,     // Tall Blue Firestick
+    45: 16,     // Tall Green Firestick
+    46: 16,     // Tall Red Firestick
+    47: 16,     // Brown Stump
+    48: 16,     // Tall Tech Column
+    54: 32,     // Big Tree
+    55: 16,     // Short Blue Firestick
+    56: 16,     // Short Green Firestick
+    57: 16,     // Short Red Firestick
+    70: 16,     // Burning Barrel
+    2028: 16,   // Floor Lamp
+};
 export const BARREL_EXPLOSION_RADIUS = 128;    // Blast damage radius (map units)
 export const BARREL_EXPLOSION_DAMAGE = 128;    // Maximum damage at point-blank; falls off linearly with distance
 

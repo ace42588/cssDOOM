@@ -86,7 +86,7 @@ function canWalkDir(enemy, dir) {
     const testX = enemy.x + stepSize * dirDX[dir];
     const testY = enemy.y + stepSize * dirDY[dir];
     const floorHeight = getFloorHeightAt(enemy.x, enemy.y);
-    return canMoveTo(testX, testY, enemy.ai.radius, floorHeight, MAX_STEP_HEIGHT);
+    return canMoveTo(testX, testY, enemy.ai.radius, floorHeight, MAX_STEP_HEIGHT, enemy);
 }
 
 /**
@@ -237,12 +237,12 @@ function moveEnemyToward(enemy, targetX, targetY, deltaTime) {
     const enemyFloorHeight = getFloorHeightAt(enemy.x, enemy.y);
 
     // Try full diagonal move first, then axis-aligned sliding, then give up
-    if (canMoveTo(newX, newY, enemy.ai.radius, enemyFloorHeight, MAX_STEP_HEIGHT)) {
+    if (canMoveTo(newX, newY, enemy.ai.radius, enemyFloorHeight, MAX_STEP_HEIGHT, enemy)) {
         enemy.x = newX;
         enemy.y = newY;
-    } else if (canMoveTo(newX, enemy.y, enemy.ai.radius, enemyFloorHeight, MAX_STEP_HEIGHT)) {
+    } else if (canMoveTo(newX, enemy.y, enemy.ai.radius, enemyFloorHeight, MAX_STEP_HEIGHT, enemy)) {
         enemy.x = newX;
-    } else if (canMoveTo(enemy.x, newY, enemy.ai.radius, enemyFloorHeight, MAX_STEP_HEIGHT)) {
+    } else if (canMoveTo(enemy.x, newY, enemy.ai.radius, enemyFloorHeight, MAX_STEP_HEIGHT, enemy)) {
         enemy.y = newY;
     } else {
         // Fully blocked — force direction re-evaluation

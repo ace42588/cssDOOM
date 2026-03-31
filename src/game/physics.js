@@ -5,7 +5,7 @@
  * from spatial-grid.js.
  */
 
-import { PLAYER_RADIUS, PLAYER_HEIGHT, MAX_STEP_HEIGHT, BARREL_RADIUS, EYE_HEIGHT } from './constants.js';
+import { PLAYER_RADIUS, PLAYER_HEIGHT, MAX_STEP_HEIGHT, BARREL_RADIUS, SOLID_THING_RADIUS, EYE_HEIGHT } from './constants.js';
 import { state } from './state.js';
 import { isDoorClosed, getDoorEntry } from './mechanics/doors.js';
 import { circleLineCollision, pointInPolygon } from './geometry.js';
@@ -51,7 +51,7 @@ function crossesLinedef(newX, newY, _radius, wall) {
  * that position without colliding with solid walls, barrels, or lift shafts,
  * and without encountering an impassable step height change.
  */
-export function canMoveTo(newX, newY, radius = PLAYER_RADIUS, currentFloorHeight = state.floorHeight, maxDropHeight = Infinity) {
+export function canMoveTo(newX, newY, radius = PLAYER_RADIUS, currentFloorHeight = state.floorHeight, maxDropHeight = Infinity, excludeThing = null) {
     // Check collision against walls via spatial grid.
     // Solid walls and closed doors always block. Two-sided linedefs (windows,
     // ledges) block only when the player crosses the linedef and the opening
@@ -86,14 +86,27 @@ export function canMoveTo(newX, newY, radius = PLAYER_RADIUS, currentFloorHeight
     });
     if (blocked) return false;
 
-    // Check collision against barrels (type 2035 = explosive barrel)
+    // Check collision against solid things (enemies, barrels, solid decorations).
+    // Based on: linuxdoom-1.10/p_map.c:PIT_CheckThing() — any MF_SOLID thing blocks.
+    // Dead enemies lose MF_SOLID (P_KillMobj sets collected=true here).
     const things = state.things;
     for (let i = 0, thingCount = things.length; i < thingCount; i++) {
         const thing = things[i];
-        if (thing.collected || thing.type !== 2035) continue;
+        if (thing.collected || thing === excludeThing) continue;
+        let thingRadius;
+        if (thing.ai) {
+            thingRadius = thing.ai.radius;
+        } else if (thing.type === 2035) {
+            thingRadius = BARREL_RADIUS;
+        } else if (thing.solidRadius) {
+            thingRadius = thing.solidRadius;
+        } else {
+            continue;
+        }
         const deltaX = newX - thing.x;
         const deltaY = newY - thing.y;
-        if (deltaX * deltaX + deltaY * deltaY < (radius + BARREL_RADIUS) * (radius + BARREL_RADIUS)) {
+        const combinedRadius = radius + thingRadius;
+        if (deltaX * deltaX + deltaY * deltaY < combinedRadius * combinedRadius) {
             return false;
         }
     }

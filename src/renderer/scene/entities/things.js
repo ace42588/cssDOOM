@@ -8,7 +8,7 @@
 
 import {
     THING_HEALTH, ENEMIES, PICKUPS, SHOOTABLE,
-    ENEMY_AI_STATS, LINE_OF_SIGHT_CHECK_INTERVAL,
+    ENEMY_AI_STATS, LINE_OF_SIGHT_CHECK_INTERVAL, SOLID_THING_RADIUS,
 } from '../../../game/constants.js';
 import { THING_SPRITES, THING_NAMES } from '../constants.js';
 
@@ -60,7 +60,7 @@ export function buildThings() {
         thingContainer.hidden = true;
         appendToSector(thingContainer, sector?.sectorIndex);
 
-        if (PICKUPS.has(thing.type) || SHOOTABLE.has(thing.type)) {
+        if (PICKUPS.has(thing.type) || SHOOTABLE.has(thing.type) || SOLID_THING_RADIUS[thing.type]) {
             // Game-only data — no DOM references
             const entry = {
                 x: thing.x,
@@ -69,6 +69,12 @@ export function buildThings() {
                 collected: false,
                 hp: THING_HEALTH[thing.type] || 0
             };
+
+            // Solid decorations: store collision radius for canMoveTo() checks.
+            // Based on: linuxdoom-1.10/info.c — MF_SOLID decorations block movement.
+            if (SOLID_THING_RADIUS[thing.type] && !SHOOTABLE.has(thing.type)) {
+                entry.solidRadius = SOLID_THING_RADIUS[thing.type];
+            }
 
             const aiStats = ENEMY_AI_STATS[thing.type];
             if (aiStats) {
