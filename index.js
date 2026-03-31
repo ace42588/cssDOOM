@@ -18,6 +18,15 @@ import { initGamepadInput } from './src/input/gamepad.js';
 import { initDebugMenu, updateDebugStats } from './src/ui/debug.js';
 import './src/ui/spectator.js';
 
+let debugEnabled = false;
+
+window.debug = function() {
+    if (!debugEnabled) {
+        debugEnabled = true;
+        initDebugMenu();
+        console.log('Debug menu enabled');
+    }
+};
 
 /**
  * Game Loop
@@ -38,7 +47,7 @@ function gameLoop(timestamp) {
     updateHud();
     updateCamera();
 
-    if (import.meta.env.DEV) updateDebugStats();
+    if (import.meta.env.DEV || debugEnabled) updateDebugStats();
 
     requestAnimationFrame(gameLoop);
 }
@@ -48,7 +57,7 @@ function gameLoop(timestamp) {
  * Initialization
  */
 async function init() {
-    if (import.meta.env.DEV) initDebugMenu();
+    if (import.meta.env.DEV) { debugEnabled = true; initDebugMenu(); }
     initKeyboardInput();
     initMouseInput();
     initTouchInput();
