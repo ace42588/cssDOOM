@@ -91,7 +91,9 @@ export function updateProjectiles() {
             const playerDeltaY = projectile.y - state.playerY;
             if (playerDeltaX * playerDeltaX + playerDeltaY * playerDeltaY < PROJECTILE_HIT_RADIUS * PROJECTILE_HIT_RADIUS) {
                 spawnFireballExplosion(projectile.x, projectile.y, projectile.z);
-                damagePlayer(projectile.damage);
+                // Roll damage on impact: (P_Random()%8+1) * missileDamage
+                // Based on: linuxdoom-1.10/p_inter.c:P_DamageMobj() missile damage
+                damagePlayer((Math.floor(Math.random() * 8) + 1) * projectile.missileDamage);
                 playSound(projectile.hitSound);
                 renderer.removeProjectile(projectile.id);
                 state.projectiles.splice(index, 1);
@@ -120,7 +122,8 @@ export function updateProjectiles() {
                     damageEnemy(thing, projectile.damage, 'player');
                     rocketExplosion(projectile.x, projectile.y);
                 } else {
-                    damageEnemy(thing, projectile.damage, projectile.source);
+                    // Roll damage on impact: (P_Random()%8+1) * missileDamage
+                    damageEnemy(thing, (Math.floor(Math.random() * 8) + 1) * projectile.missileDamage, projectile.source);
                 }
                 renderer.removeProjectile(projectile.id);
                 state.projectiles.splice(index, 1);
@@ -210,7 +213,7 @@ export function spawnProjectile(enemy, projectileDefinition) {
         z: spawnHeight,
         directionX, directionY, directionZ,
         speed,
-        damage: enemy.ai.damage,
+        missileDamage: projectileDefinition.missileDamage,
         hitSound: projectileDefinition.hitSound,
         source: enemy, // which enemy fired this — used for infighting retarget on hit
         lifetime,

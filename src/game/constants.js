@@ -253,9 +253,12 @@ export const ENEMY_AI_STATS = {
 
 // Defines projectile visuals and physics for enemies that fire projectiles
 // instead of using hitscan attacks.
+// missileDamage: base damage multiplier for impact, matching DOOM's mobjinfo.damage field.
+// Impact damage is rolled as (P_Random()%8+1) * missileDamage.
+// Based on: linuxdoom-1.10/info.c — MT_TROOPSHOT damage=3, MT_BRUISERSHOT damage=8
 export const ENEMY_PROJECTILES = {
-    3001: { sprite: 'BAL1A0', speed: 700, sound: 'DSFIRSHT', hitSound: 'DSFIRXPL', size: 15 },  // Imp fireball (20*FRACUNIT ≈ 700 units/sec)
-    3003: { sprite: 'BAL7A1A5', speed: 700, sound: 'DSFIRSHT', hitSound: 'DSFIRXPL', size: 16 }, // Baron fireball (same speed as Imp)
+    3001: { sprite: 'BAL1A0', speed: 700, sound: 'DSFIRSHT', hitSound: 'DSFIRXPL', size: 15, missileDamage: 3 },  // Imp fireball: 3–24 damage
+    3003: { sprite: 'BAL7A1A5', speed: 700, sound: 'DSFIRSHT', hitSound: 'DSFIRXPL', size: 16, missileDamage: 8 }, // Baron fireball: 8–64 damage
 };
 
 export const ENEMY_RADIUS = 20;               // Collision radius for all enemies (map units)
