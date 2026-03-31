@@ -28,58 +28,172 @@ import { spawnProjectile } from './projectiles.js';
  */
 let lastAlertSoundTime = 0;
 
-// 8 cardinal/diagonal directions for DOOM-style grid-aligned movement
-const DIRECTION_ANGLES = [0, Math.PI/4, Math.PI/2, 3*Math.PI/4, Math.PI, -3*Math.PI/4, -Math.PI/2, -Math.PI/4];
+// ============================================================================
+// DOOM-style 8-directional movement system
+// Based on: linuxdoom-1.10/p_enemy.c — direction enums, xspeed/yspeed,
+// P_NewChaseDir, P_Move, P_TryWalk
+// ============================================================================
+
+const DI_EAST = 0;
+const DI_NORTHEAST = 1;
+const DI_NORTH = 2;
+const DI_NORTHWEST = 3;
+const DI_WEST = 4;
+const DI_SOUTHWEST = 5;
+const DI_SOUTH = 6;
+const DI_SOUTHEAST = 7;
+const DI_NODIR = 8;
+
+// opposite[dir] — the reverse direction, used for turnaround prevention.
+// Based on: linuxdoom-1.10/p_enemy.c:opposite[]
+const oppositeDir = [DI_WEST, DI_SOUTHWEST, DI_SOUTH, DI_SOUTHEAST, DI_EAST, DI_NORTHEAST, DI_NORTH, DI_NORTHWEST, DI_NODIR];
+
+// Diagonal direction lookup: diagDir[((deltaY<0)<<1) + (deltaX>0)]
+// Maps quadrant to the appropriate diagonal direction.
+// Based on: linuxdoom-1.10/p_enemy.c:diags[]
+const diagDir = [DI_NORTHWEST, DI_NORTHEAST, DI_SOUTHWEST, DI_SOUTHEAST];
+
+// Movement vectors per direction (cardinal = 1.0, diagonal ≈ 0.7071)
+// Based on: linuxdoom-1.10/p_enemy.c:xspeed[]/yspeed[] tables
+const dirDX = [1, 0.7071, 0, -0.7071, -1, -0.7071, 0, 0.7071];
+const dirDY = [0, 0.7071, 1, 0.7071, 0, -0.7071, -1, -0.7071];
 
 /**
- * Picks a DOOM-style movement direction for an enemy. Finds the closest
- * cardinal/diagonal direction toward the target, then randomly offsets by
- * one step (45 degrees) to create zig-zag movement patterns similar to
- * the original DOOM AI. Prevents selecting the exact opposite of the
- * previous direction (turnaround prevention).
+ * Tests whether an enemy can take one step in a given direction.
+ * The step distance matches DOOM's P_Move: mobjinfo.speed map units.
+ * We derive this from the enemy's effective speed and chase tics:
+ * stepSize = speed * chaseTics / 35 (recovering the original DOOM speed).
+ *
+ * Based on: linuxdoom-1.10/p_enemy.c:P_TryWalk() → P_Move()
+ */
+function canWalkDir(enemy, dir) {
+    if (dir >= DI_NODIR) return false;
+    const stepSize = enemy.ai.speed * (enemy.ai.chaseTics || 3) / 35;
+    const testX = enemy.x + stepSize * dirDX[dir];
+    const testY = enemy.y + stepSize * dirDY[dir];
+    const floorHeight = getFloorHeightAt(enemy.x, enemy.y);
+    return canMoveTo(testX, testY, ENEMY_RADIUS, floorHeight, MAX_STEP_HEIGHT);
+}
+
+/**
+ * Picks a DOOM-style movement direction for an enemy, following the exact
+ * try-order from P_NewChaseDir:
+ *   1. Try the diagonal toward the target
+ *   2. Try the horizontal axis toward the target
+ *   3. Try the vertical axis toward the target
+ *      (2 and 3 are randomly swapped ~21% of the time, or when |ΔY|>|ΔX|)
+ *   4. Try the previous direction
+ *   5. Exhaustive scan of all 8 directions (random forward/backward order)
+ *   6. Last resort: try the turnaround direction
+ *   7. Give up: set DI_NODIR (enemy is stuck)
+ *
+ * Each candidate is tested for walkability via canWalkDir before committing.
+ * The turnaround direction (opposite of previous) is excluded from steps 1-5.
+ *
+ * On success, sets enemy.ai.moveDir and enemy.ai.moveTimer based on DOOM's
+ * movecount mechanism: random 0-15, scaled by chase frame duration.
  *
  * Based on: linuxdoom-1.10/p_enemy.c:P_NewChaseDir()
- * Accuracy: Approximation — prevents turnaround like DOOM, but uses
- * simplified direction selection instead of DOOM's exact try-order logic.
+ * Accuracy: Exact try-order and turnaround logic. Uses canMoveTo instead of
+ * DOOM's P_TryMove/P_CheckPosition, which is functionally equivalent.
  */
 function pickMoveDirection(enemy, targetX, targetY) {
     const deltaX = targetX - enemy.x;
     const deltaY = targetY - enemy.y;
-    const angleToTarget = Math.atan2(deltaY, deltaX);
 
-    // Find the closest of 8 cardinal/diagonal directions to the target angle
-    let bestDirectionIndex = 0;
-    let bestAngleDifference = Infinity;
-    for (let directionIndex = 0; directionIndex < 8; directionIndex++) {
-        let angleDifference = Math.abs(angleToTarget - DIRECTION_ANGLES[directionIndex]);
-        if (angleDifference > Math.PI) angleDifference = Math.PI * 2 - angleDifference;
-        if (angleDifference < bestAngleDifference) { bestAngleDifference = angleDifference; bestDirectionIndex = directionIndex; }
-    }
+    const oldDir = enemy.ai.moveDir ?? DI_NODIR;
+    const turnaround = oppositeDir[oldDir];
 
-    // Randomly offset by +/-1 direction slot to create zig-zag movement
-    const randomOffset = Math.random() < 0.5 ? 0 : (Math.random() < 0.5 ? 1 : -1);
-    let chosenIndex = (bestDirectionIndex + randomOffset + 8) % 8;
+    // Determine horizontal and vertical preferences (DOOM uses 10*FRACUNIT dead zone)
+    let horizDir, vertDir;
+    if (deltaX > 10) horizDir = DI_EAST;
+    else if (deltaX < -10) horizDir = DI_WEST;
+    else horizDir = DI_NODIR;
 
-    // Turnaround prevention: if the chosen direction is the exact opposite of
-    // the previous direction, pick the best direction without offset instead.
-    // Based on: linuxdoom-1.10/p_enemy.c:P_NewChaseDir() — turnaround = opposite
-    if (enemy.ai.lastMoveDir !== undefined) {
-        const oppositeIndex = (enemy.ai.lastMoveDir + 4) % 8;
-        if (chosenIndex === oppositeIndex) {
-            chosenIndex = bestDirectionIndex;
+    if (deltaY < -10) vertDir = DI_SOUTH;
+    else if (deltaY > 10) vertDir = DI_NORTH;
+    else vertDir = DI_NODIR;
+
+    // Step 1: Try diagonal toward target
+    if (horizDir !== DI_NODIR && vertDir !== DI_NODIR) {
+        const diag = diagDir[((deltaY < 0) ? 2 : 0) + (deltaX > 0 ? 1 : 0)];
+        if (diag !== turnaround && canWalkDir(enemy, diag)) {
+            commitDirection(enemy, diag);
+            return;
         }
     }
-    enemy.ai.lastMoveDir = chosenIndex;
 
-    return DIRECTION_ANGLES[chosenIndex];
+    // Steps 2-3: Try axis-aligned directions
+    // Randomly swap try order (~21% chance) or when |ΔY| > |ΔX|
+    if (Math.random() * 255 > 200 || Math.abs(deltaY) > Math.abs(deltaX)) {
+        const tmp = horizDir; horizDir = vertDir; vertDir = tmp;
+    }
+    if (horizDir === turnaround) horizDir = DI_NODIR;
+    if (vertDir === turnaround) vertDir = DI_NODIR;
+
+    if (horizDir !== DI_NODIR && canWalkDir(enemy, horizDir)) {
+        commitDirection(enemy, horizDir);
+        return;
+    }
+    if (vertDir !== DI_NODIR && canWalkDir(enemy, vertDir)) {
+        commitDirection(enemy, vertDir);
+        return;
+    }
+
+    // Step 4: Try old direction
+    if (oldDir !== DI_NODIR && oldDir !== turnaround && canWalkDir(enemy, oldDir)) {
+        commitDirection(enemy, oldDir);
+        return;
+    }
+
+    // Step 5: Exhaustive scan of all 8 directions (random forward or backward)
+    if (Math.random() < 0.5) {
+        for (let dir = DI_EAST; dir <= DI_SOUTHEAST; dir++) {
+            if (dir !== turnaround && canWalkDir(enemy, dir)) {
+                commitDirection(enemy, dir);
+                return;
+            }
+        }
+    } else {
+        for (let dir = DI_SOUTHEAST; dir >= DI_EAST; dir--) {
+            if (dir !== turnaround && canWalkDir(enemy, dir)) {
+                commitDirection(enemy, dir);
+                return;
+            }
+        }
+    }
+
+    // Step 6: Last resort — try turnaround
+    if (turnaround !== DI_NODIR && canWalkDir(enemy, turnaround)) {
+        commitDirection(enemy, turnaround);
+        return;
+    }
+
+    // Step 7: Completely stuck
+    enemy.ai.moveDir = DI_NODIR;
+}
+
+/**
+ * Commits a chosen direction and sets the move timer based on DOOM's movecount.
+ * movecount = random(0..15), which corresponds to that many A_Chase calls before
+ * the next direction pick. Duration = movecount × chaseTics / 35 seconds.
+ * Based on: linuxdoom-1.10/p_enemy.c:P_TryWalk() — movecount = P_Random()&15
+ */
+function commitDirection(enemy, dir) {
+    enemy.ai.moveDir = dir;
+    const moveCount = Math.floor(Math.random() * 16);
+    enemy.ai.moveTimer = moveCount * (enemy.ai.chaseTics || 3) / 35;
 }
 
 /**
  * Moves an enemy toward a target position using DOOM-style cardinal movement.
- * The enemy periodically picks a new movement direction (every 0.5-1 seconds)
- * and tries to move along it. If blocked by a wall, it tries sliding along
- * just the X or Y axis. If fully blocked, it forces a direction re-evaluation
- * on the next frame.
+ * Each frame, the enemy moves along its current direction at its configured speed.
+ * When the move timer expires (DOOM's movecount depleted) or the enemy is blocked,
+ * a new direction is picked via pickMoveDirection.
+ *
+ * Based on: linuxdoom-1.10/p_enemy.c:A_Chase() movement section + P_Move()
+ * Accuracy: Uses continuous delta-time movement instead of discrete per-tic steps.
+ * Direction selection and timer mechanism match DOOM exactly.
  */
 function moveEnemyToward(enemy, targetX, targetY, deltaTime) {
     if (debug.noEnemyMove) return;
@@ -88,16 +202,19 @@ function moveEnemyToward(enemy, targetX, targetY, deltaTime) {
     const distSqToTarget = deltaX * deltaX + deltaY * deltaY;
     if (distSqToTarget <= MELEE_RANGE * MELEE_RANGE) return;
 
-    // Pick a new movement direction periodically (every 0.5-1 seconds)
-    enemy.ai.moveTimer = (enemy.ai.moveTimer || 0) - deltaTime;
-    if (enemy.ai.moveTimer <= 0 || enemy.ai.moveDir === undefined) {
-        enemy.ai.moveDir = pickMoveDirection(enemy, targetX, targetY);
-        enemy.ai.moveTimer = 0.5 + Math.random() * 0.5; // re-evaluate every 0.5-1s
+    // Count down the move timer; pick a new direction when it expires
+    // Based on: A_Chase() — if (--actor->movecount < 0 || !P_Move(actor)) P_NewChaseDir(actor);
+    enemy.ai.moveTimer = (enemy.ai.moveTimer ?? 0) - deltaTime;
+    if (enemy.ai.moveTimer <= 0 || enemy.ai.moveDir === undefined || enemy.ai.moveDir === DI_NODIR) {
+        pickMoveDirection(enemy, targetX, targetY);
     }
 
+    const dir = enemy.ai.moveDir;
+    if (dir === undefined || dir >= DI_NODIR) return;
+
     const movementStep = enemy.ai.speed * deltaTime;
-    const movementX = Math.cos(enemy.ai.moveDir) * movementStep;
-    const movementY = Math.sin(enemy.ai.moveDir) * movementStep;
+    const movementX = dirDX[dir] * movementStep;
+    const movementY = dirDY[dir] * movementStep;
 
     let newX = enemy.x + movementX;
     let newY = enemy.y + movementY;
@@ -114,8 +231,8 @@ function moveEnemyToward(enemy, targetX, targetY, deltaTime) {
     } else if (canMoveTo(enemy.x, newY, ENEMY_RADIUS, enemyFloorHeight, MAX_STEP_HEIGHT)) {
         enemy.y = newY;
     } else {
-        // Fully blocked — force direction re-evaluation next frame
-        enemy.ai.moveTimer = 0;
+        // Fully blocked — force direction re-evaluation
+        pickMoveDirection(enemy, targetX, targetY);
     }
 
     // Update the enemy's facing direction based on actual movement vector

@@ -240,12 +240,15 @@ export const ENEMY_AI_STATS = {
     //   Based on: linuxdoom-1.10/info.c state frame durations for attack sequences.
     // painDuration: seconds the enemy flinches when hit.
     //   Based on: linuxdoom-1.10/info.c state frame durations for pain sequences.
-    3004: { speed: 70,  attackRange: 1500, damage: 0,  cooldown: 1.5, sightRange: 3000, melee: false, alertSound: 'DSPOSIT1', pellets: 1, hitscanSound: 'DSPISTOL', painChance: 200, reactionTime: 8/35, attackDuration: 0.457, painDuration: 0.171 },  // Zombieman
-    9:    { speed: 70,  attackRange: 1500, damage: 0,  cooldown: 2.0, sightRange: 3000, melee: false, alertSound: 'DSPOSIT2', pellets: 3, hitscanSound: 'DSSHOTGN', painChance: 170, reactionTime: 8/35, attackDuration: 0.457, painDuration: 0.171 },  // Shotgun Guy
-    3001: { speed: 80,  attackRange: 1500, damage: 15, cooldown: 2.0, sightRange: 3000, melee: false, alertSound: 'DSBGSIT1', painChance: 200, reactionTime: 8/35, attackDuration: 0.457, painDuration: 0.171 },  // Imp
-    3002: { speed: 120, attackRange: 80,   damage: 40, cooldown: 1.0, sightRange: 3000, melee: true,  alertSound: 'DSSGTSIT', painChance: 180, reactionTime: 8/35, attackDuration: 0.343, painDuration: 0.171 },  // Demon (melee only)
-    58:   { speed: 120, attackRange: 80,   damage: 40, cooldown: 1.0, sightRange: 3000, melee: true,  alertSound: 'DSSGTSIT', painChance: 180, reactionTime: 8/35, attackDuration: 0.343, painDuration: 0.171 },  // Spectre (invisible Demon)
-    3003: { speed: 60,  attackRange: 1500, damage: 60, cooldown: 2.5, sightRange: 3000, melee: false, alertSound: 'DSPOSIT3', painChance: 50,  reactionTime: 8/35, attackDuration: 0.571, painDuration: 0.171 },  // Baron
+    // Speeds are effective map units/sec = mobjinfo.speed × (35 / chaseTics).
+    // chaseTics is the tic count per chase animation frame (from info.c states[]).
+    // Based on: linuxdoom-1.10/info.c mobjinfo[].speed and state tic counts.
+    3004: { speed: 70,  chaseTics: 4, attackRange: 1500, damage: 0,  cooldown: 1.5, sightRange: 3000, melee: false, alertSound: 'DSPOSIT1', pellets: 1, hitscanSound: 'DSPISTOL', painChance: 200, reactionTime: 8/35, attackDuration: 0.457, painDuration: 0.171 },  // Zombieman (speed 8, 4-tic frames)
+    9:    { speed: 93,  chaseTics: 3, attackRange: 1500, damage: 0,  cooldown: 2.0, sightRange: 3000, melee: false, alertSound: 'DSPOSIT2', pellets: 3, hitscanSound: 'DSSHOTGN', painChance: 170, reactionTime: 8/35, attackDuration: 0.457, painDuration: 0.171 },  // Shotgun Guy (speed 8, 3-tic frames)
+    3001: { speed: 93,  chaseTics: 3, attackRange: 1500, damage: 15, cooldown: 2.0, sightRange: 3000, melee: false, alertSound: 'DSBGSIT1', painChance: 200, reactionTime: 8/35, attackDuration: 0.457, painDuration: 0.171 },  // Imp (speed 8, 3-tic frames)
+    3002: { speed: 175, chaseTics: 2, attackRange: 80,   damage: 40, cooldown: 1.0, sightRange: 3000, melee: true,  alertSound: 'DSSGTSIT', painChance: 180, reactionTime: 8/35, attackDuration: 0.343, painDuration: 0.171 },  // Demon (speed 10, 2-tic frames)
+    58:   { speed: 175, chaseTics: 2, attackRange: 80,   damage: 40, cooldown: 1.0, sightRange: 3000, melee: true,  alertSound: 'DSSGTSIT', painChance: 180, reactionTime: 8/35, attackDuration: 0.343, painDuration: 0.171 },  // Spectre (speed 10, 2-tic frames)
+    3003: { speed: 93,  chaseTics: 3, attackRange: 1500, damage: 60, cooldown: 2.5, sightRange: 3000, melee: false, alertSound: 'DSPOSIT3', painChance: 50,  reactionTime: 8/35, attackDuration: 0.571, painDuration: 0.171 },  // Baron (speed 8, 3-tic frames)
 };
 
 // Defines projectile visuals and physics for enemies that fire projectiles
