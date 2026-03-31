@@ -17,6 +17,7 @@ import { state } from '../game/state.js';
 import { transitionToLevel, resetGameState } from '../game/player/damage.js';
 import { teardownScene, buildScene } from '../renderer/scene/scene.js';
 import { showLevelTransition, hideLevelTransition } from '../ui/overlay.js';
+import { buildSectorAdjacency } from '../game/sound-propagation.js';
 
 /** The currently loaded map's parsed JSON data. Null until a map is loaded. */
 export let mapData = null;
@@ -64,6 +65,7 @@ export async function loadMap(name) {
     }
 
     await buildScene();
+    buildSectorAdjacency();
 
     // Drop camera from intro height to eye level after scene is ready
     setTimeout(() => { state.playerZ = state.floorHeight + EYE_HEIGHT; }, 600);

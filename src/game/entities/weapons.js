@@ -18,6 +18,7 @@ import { setEnemyState } from './enemies.js';
 import { damageEnemy } from './combat.js';
 import * as renderer from '../../renderer/index.js';
 import { input } from '../../input/index.js';
+import { propagateSound } from '../sound-propagation.js';
 
 // ============================================================================
 // Weapon Loading & Equipping
@@ -101,6 +102,7 @@ export function fireWeapon() {
             if (weapon.ammoType) state.ammo[weapon.ammoType] -= weapon.ammoPerShot;
             playSound(weapon.sound);
             checkWeaponHit();
+            alertNearbyEnemies();
         }, weapon.fireRate);
     } else {
         // Non-continuous weapons: re-allow firing after the fire rate elapses.
@@ -130,28 +132,15 @@ export function stopAutoFire() {
 // ============================================================================
 
 /**
- * When the player fires a weapon, all idle enemies within 1500 units who have
- * line-of-sight to the player are woken up and transition to the 'chasing'
- * state. This simulates DOOM's sound propagation system where gunfire alerts
- * nearby monsters through connected sectors.
+ * When the player fires a weapon, propagate sound through connected sectors.
+ * Enemies in reached sectors will wake up during their next AI idle check.
+ *
+ * Based on: linuxdoom-1.10/p_enemy.c:P_NoiseAlert() → P_RecursiveSound()
+ * Sound floods through two-sided linedefs, blocked by ML_SOUNDBLOCK lines
+ * (can pass through at most one sound-blocking line).
  */
 function alertNearbyEnemies() {
-    const allThings = state.things;
-    for (let index = 0, length = allThings.length; index < length; index++) {
-        const thing = allThings[index];
-        if (thing.collected || !thing.ai) continue;
-        if (thing.ai.state !== 'idle') continue;
-
-        // Calculate squared distance to player for range check (avoids sqrt)
-        const deltaX = thing.x - state.playerX;
-        const deltaY = thing.y - state.playerY;
-        if (deltaX * deltaX + deltaY * deltaY > 1500 * 1500) continue;
-
-        // Only alert if the enemy has line-of-sight to the player
-        if (hasLineOfSight(thing.x, thing.y, state.playerX, state.playerY)) {
-            setEnemyState(index, thing, 'chasing');
-        }
-    }
+    propagateSound();
 }
 
 // ============================================================================

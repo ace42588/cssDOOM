@@ -9,9 +9,10 @@ import {
 } from '../constants.js';
 
 import { state, debug } from '../state.js';
-import { canMoveTo, getFloorHeightAt, getSectorLightAt } from '../physics.js';
+import { canMoveTo, getFloorHeightAt, getSectorLightAt, getSectorAt } from '../physics.js';
 import * as renderer from '../../renderer/index.js';
 import { hasLineOfSight } from '../line-of-sight.js';
+import { isSectorAlerted } from '../sound-propagation.js';
 import { damagePlayer } from '../player/damage.js';
 import { playSound } from '../../audio/audio.js';
 import { setEnemyState, respawnEnemy } from './enemies.js';
@@ -328,11 +329,23 @@ function updateSingleEnemy(thingIndex, enemy, deltaTime, currentTime) {
 
     switch (enemyAI.state) {
         case 'idle':
-            // Periodically check if the player is visible (throttled to save performance)
+            // Periodically check if the player is visible or gunfire was heard
             enemyAI.losTimer += deltaTime;
             if (enemyAI.losTimer >= LINE_OF_SIGHT_CHECK_INTERVAL) {
                 enemyAI.losTimer = 0;
+                // Wake up if: player visible within sight range, OR sector heard gunfire
+                // Based on: linuxdoom-1.10/p_enemy.c:A_Look() — checks soundtarget first,
+                // then checks line of sight within alldirections range
+                let shouldWake = false;
                 if (distSqToTarget < enemyAI.sightRange * enemyAI.sightRange && hasLineOfSight(enemy.x, enemy.y, targetPos.x, targetPos.y)) {
+                    shouldWake = true;
+                } else {
+                    const sector = getSectorAt(enemy.x, enemy.y);
+                    if (sector && isSectorAlerted(sector.sectorIndex)) {
+                        shouldWake = true;
+                    }
+                }
+                if (shouldWake) {
                     setEnemyState(thingIndex, enemy, 'chasing');
                     // Reaction time: delay before the enemy can first attack after
                     // spotting the player. Based on: linuxdoom-1.10/p_enemy.c:A_Chase()
