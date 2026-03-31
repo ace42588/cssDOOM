@@ -6,7 +6,7 @@
  * is set once on the container and inherited by all children.
  */
 
-import { LIGHT_MINIMUM_BRIGHTNESS, DOOM_LIGHT_MAX } from './constants.js';
+import { LIGHT_MINIMUM_BRIGHTNESS, DOOM_LIGHT_MAX, LIGHT_DISTANCE_OFFSET } from './constants.js';
 
 import { mapData } from '../../shared/maps.js';
 import { dom, sceneState } from '../dom.js';
@@ -31,6 +31,18 @@ function applyLightEffect(element, specialType) {
     element.classList.add(className);
 }
 
+/**
+ * Converts a DOOM sector light level (0–255) to a CSS --light value (0–1).
+ * Based on DOOM's R_InitLightTables: lightnum = lightLevel/16 selects from
+ * 32 colormaps. LIGHT_DISTANCE_OFFSET compensates for DOOM's scalelight
+ * close-range brightening effect.
+ */
+function doomLightToCSS(lightLevel) {
+    const startmap = (15 - lightLevel / 16) * 4 - LIGHT_DISTANCE_OFFSET;
+    const colormap = Math.max(0, Math.min(31, startmap));
+    return Math.max(LIGHT_MINIMUM_BRIGHTNESS, 1 - colormap / 32);
+}
+
 export function buildSectorContainers() {
     const sectors = mapData.sectors;
     if (!sectors) return;
@@ -41,7 +53,7 @@ export function buildSectorContainers() {
         container.className = 'sector';
 
         container.style.setProperty('--light',
-            Math.max(LIGHT_MINIMUM_BRIGHTNESS, sector.lightLevel / DOOM_LIGHT_MAX));
+            doomLightToCSS(sector.lightLevel));
 
         if (sector.specialType) {
             applyLightEffect(container, sector.specialType);
@@ -56,7 +68,7 @@ export function buildSectorContainers() {
 export function getSectorLight(sectorIndex) {
     const sectorData = mapData.sectors?.[sectorIndex];
     if (!sectorData) return 1;
-    return Math.max(LIGHT_MINIMUM_BRIGHTNESS, sectorData.lightLevel / DOOM_LIGHT_MAX);
+    return doomLightToCSS(sectorData.lightLevel);
 }
 
 export function appendToSector(element, sectorIndex) {
