@@ -112,9 +112,10 @@ export function updateProjectiles() {
             if (thing.collected || thing === projectile.source) continue;
             if (!SHOOTABLE.has(thing.type)) continue;
 
+            const enemyRadius = thing.ai ? thing.ai.radius : ENEMY_RADIUS;
             const enemyDeltaX = projectile.x - thing.x;
             const enemyDeltaY = projectile.y - thing.y;
-            if (enemyDeltaX * enemyDeltaX + enemyDeltaY * enemyDeltaY < (PROJECTILE_HIT_RADIUS + ENEMY_RADIUS) * (PROJECTILE_HIT_RADIUS + ENEMY_RADIUS)) {
+            if (enemyDeltaX * enemyDeltaX + enemyDeltaY * enemyDeltaY < (PROJECTILE_HIT_RADIUS + enemyRadius) * (PROJECTILE_HIT_RADIUS + enemyRadius)) {
                 spawnFireballExplosion(projectile.x, projectile.y, projectile.z);
                 playSound(projectile.hitSound);
                 // Player rockets deal direct hit damage + splash damage in a radius

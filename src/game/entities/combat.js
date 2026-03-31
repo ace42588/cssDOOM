@@ -91,7 +91,8 @@ export function enemyHitscanAttackEnemy(attacker, attackerAI) {
     const deltaX = target.x - attacker.x;
     const deltaY = target.y - attacker.y;
     const distanceToTarget = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-    const targetAngularSize = Math.atan2(ENEMY_RADIUS, distanceToTarget);
+    const targetRadius = target.ai ? target.ai.radius : ENEMY_RADIUS;
+    const targetAngularSize = Math.atan2(targetRadius, distanceToTarget);
 
     let totalDamage = 0;
     for (let pellet = 0; pellet < attackerAI.pellets; pellet++) {
