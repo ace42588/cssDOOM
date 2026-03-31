@@ -78,3 +78,36 @@
     33%, 66% { background: url('/assets/sprites/BAL1D0.png') no-repeat center / contain; }
     66%, 100%{ background: url('/assets/sprites/BAL1E0.png') no-repeat center / contain; }
 }
+
+
+/* Teleport Fog — spawned at departure and arrival points */
+
+.teleport-fog {
+    width: 42px;
+    height: 56px;
+    transform-origin: 50% 100%;
+    transform:
+        translate3d(
+            calc(var(--x) * 1px),
+            calc(var(--z) * -1px),
+            calc(var(--y) * -1px)
+        )
+        translateX(-50%)
+        rotateY(calc(var(--player-angle) * 1rad));
+    animation: teleport-fog 1714ms steps(1) forwards;
+    image-rendering: pixelated;
+}
+
+@keyframes teleport-fog {
+    0%    { background: url('/assets/sprites/TFOGA0.png') no-repeat center bottom / contain; }
+    10%   { background: url('/assets/sprites/TFOGB0.png') no-repeat center bottom / contain; }
+    20%   { background: url('/assets/sprites/TFOGC0.png') no-repeat center bottom / contain; }
+    30%   { background: url('/assets/sprites/TFOGD0.png') no-repeat center bottom / contain; }
+    40%   { background: url('/assets/sprites/TFOGE0.png') no-repeat center bottom / contain; }
+    50%   { background: url('/assets/sprites/TFOGF0.png') no-repeat center bottom / contain; }
+    60%   { background: url('/assets/sprites/TFOGG0.png') no-repeat center bottom / contain; }
+    70%   { background: url('/assets/sprites/TFOGH0.png') no-repeat center bottom / contain; }
+    80%   { background: url('/assets/sprites/TFOGI0.png') no-repeat center bottom / contain; }
+    90%   { background: url('/assets/sprites/TFOGJ0.png') no-repeat center bottom / contain; }
+    100%  { background: none; }
+}

@@ -15,13 +15,14 @@
  * 4. One-shot teleporters (W1, type 39/125) are disabled after first use.
  */
 
-import { WALK_TRIGGER_RANGE, EYE_HEIGHT } from '../constants.js';
+import { WALK_TRIGGER_RANGE, EYE_HEIGHT, PLAYER_RADIUS, SHOOTABLE, BARREL_RADIUS } from '../constants.js';
 
 import { state } from '../state.js';
 import { mapData } from '../../shared/maps.js';
 import { getFloorHeightAt } from '../physics.js';
 import * as renderer from '../../renderer/index.js';
 import { playSound } from '../../audio/audio.js';
+import { damageEnemy } from '../entities/combat.js';
 
 /**
  * Checks all teleporter linedefs each frame. Uses the same closest-point-on-segment
@@ -53,6 +54,25 @@ export function checkTeleporters() {
         tp._wasNear = isNear;
 
         if (isNear && !wasNear) {
+            // Save departure position for fog
+            const departX = state.playerX;
+            const departY = state.playerY;
+            const departZ = state.floorHeight;
+
+            // Telefrag: kill anything shootable at the destination
+            // Based on: linuxdoom-1.10/p_map.c:PIT_StompThing()
+            const allThings = state.things;
+            for (let j = 0, len = allThings.length; j < len; j++) {
+                const thing = allThings[j];
+                if (thing.collected) continue;
+                if (!SHOOTABLE.has(thing.type)) continue;
+                const thingRadius = thing.ai ? thing.ai.radius : BARREL_RADIUS;
+                const blockDist = PLAYER_RADIUS + thingRadius;
+                if (Math.abs(thing.x - tp.destX) < blockDist && Math.abs(thing.y - tp.destY) < blockDist) {
+                    damageEnemy(thing, 10000, 'player');
+                }
+            }
+
             // Teleport the player
             state.playerX = tp.destX;
             state.playerY = tp.destY;
@@ -60,7 +80,10 @@ export function checkTeleporters() {
             state.floorHeight = getFloorHeightAt(state.playerX, state.playerY);
             state.playerZ = state.floorHeight + EYE_HEIGHT;
 
-            // Trigger teleport fog flash
+            // Spawn teleport fog at departure and arrival
+            // Based on: linuxdoom-1.10/p_telept.c — spawns MT_TFOG at both ends
+            renderer.createTeleportFog(departX, departZ, departY);
+            renderer.createTeleportFog(state.playerX, state.floorHeight, state.playerY);
             renderer.triggerFlash('teleport-flash');
             playSound('DSTELEPT');
 

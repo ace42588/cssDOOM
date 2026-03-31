@@ -190,6 +190,17 @@ export function createExplosion(x, y, z) {
     el.addEventListener('animationend', () => el.remove());
 }
 
+/** Spawn a teleport fog sprite at the given world position. Self-removes after animation. */
+export function createTeleportFog(x, z, y) {
+    const el = document.createElement('div');
+    el.className = 'teleport-fog';
+    el.style.setProperty('--x', x);
+    el.style.setProperty('--z', z);
+    el.style.setProperty('--y', y);
+    dom.scene.appendChild(el);
+    el.addEventListener('animationend', () => el.remove());
+}
+
 /**
  * Create a projectile DOM element, append it to the scene, and store it
  * in sceneState.projectileDom keyed by the given ID.

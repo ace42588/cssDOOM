@@ -16,7 +16,7 @@ export {
     setEnemyState, resetEnemy, killEnemy,
     updateEnemyRotation, updateThingPosition, updateThingLight,
     collectItem,
-    createPuff, createExplosion, createProjectile, removeProjectile,
+    createPuff, createExplosion, createTeleportFog, createProjectile, removeProjectile,
 } from './scene/entities/sprites.js';
 
 // Player visuals
