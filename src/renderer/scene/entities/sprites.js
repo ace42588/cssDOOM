@@ -157,13 +157,18 @@ export function updateThingPosition(thingIndex, x, y, floorHeight) {
  * Reparent a thing's DOM element to a different sector container using moveBefore().
  * This preserves running CSS animations (walk cycles, light effects) while inheriting
  * the new sector's --light value (including any CSS light animations).
+ * Falls back to appendChild() in browsers that don't support moveBefore (e.g. Safari).
  */
 export function reparentThingToSector(thingIndex, sectorIndex) {
     const domData = sceneState.thingDom.get(thingIndex);
     if (!domData) return;
     const target = sceneState.sectorContainers[sectorIndex];
     if (!target || domData.element.parentNode === target) return;
-    target.moveBefore(domData.element, null);
+    if (target.moveBefore) {
+        target.moveBefore(domData.element, null);
+    } else {
+        target.appendChild(domData.element);
+    }
 }
 
 /** Mark a pickup/thing element as collected (hides it via CSS). */
