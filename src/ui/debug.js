@@ -207,6 +207,7 @@ for (const toggle of TOGGLES) {
 }
 
 const DEBUG_TOGGLES = [
+    { name: 'all-enemies-shadow', label: 'All enemies shadow', defaultOn: false },
     { name: 'show-sky-walls', label: 'Show sky walls', defaultOn: false },
     { name: 'show-wall-ids', label: 'Show wall IDs', defaultOn: false },
     { name: 'show-sector-ids', label: 'Show sector IDs', defaultOn: false },

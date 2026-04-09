@@ -45,6 +45,11 @@
     --w: 69; --h: 74; --cols: 7; --frames: 2; --rows: 7;
 }
 
+body.all-enemies-shadow .enemy .sprite {
+    filter: url(#fuzz);
+    opacity: 0.35;
+}
+
 /* ========================================================================
    Destructibles — barrel idle (row 0) + explosion (row 1)
    ======================================================================== */
