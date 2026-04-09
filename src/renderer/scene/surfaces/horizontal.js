@@ -116,6 +116,7 @@ export function buildHorizontalSurface(sector, height, textureName, surfaceType)
     surfaceElement._midX = centerX;
     surfaceElement._midY = centerY;
     surfaceElement._sectorIndex = sector.sectorIndex;
+    if (surfaceType === 'floor') surfaceElement.dataset.sector = sector.sectorIndex;
     surfaceElement._type = surfaceType;
     surfaceElement._height = height;
     surfaceElement._minX = minX;

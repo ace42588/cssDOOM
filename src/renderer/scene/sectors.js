@@ -51,6 +51,7 @@ export function buildSectorContainers() {
         const sector = sectors[i];
         const container = document.createElement('div');
         container.className = 'sector';
+        container.id = `s${i}`;
 
         container.style.setProperty('--light',
             doomLightToCSS(sector.lightLevel));

@@ -209,6 +209,7 @@ for (const toggle of TOGGLES) {
 const DEBUG_TOGGLES = [
     { name: 'show-sky-walls', label: 'Show sky walls', defaultOn: false },
     { name: 'show-wall-ids', label: 'Show wall IDs', defaultOn: false },
+    { name: 'show-sector-ids', label: 'Show sector IDs', defaultOn: false },
 ];
 
 // Ordered to match processing order in updateCulling()

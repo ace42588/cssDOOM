@@ -25,6 +25,18 @@
     filter: brightness(var(--light, 1));
 }
 
+body.show-sector-ids .floor::after {
+    content: attr(data-sector);
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    translate: -50% -50%;
+    font-size: 24px;
+    color: white;
+    text-shadow: 0 0 4px black, 0 0 4px black;
+    pointer-events: none;
+}
+
 
 /* Animated Flats */
 
