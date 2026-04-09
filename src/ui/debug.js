@@ -201,6 +201,11 @@ const TOGGLES = [
     { name: 'head-bob', label: 'Head bob', defaultOn: true },
 ];
 
+// Apply default feature toggles immediately so they work without the debug menu
+for (const toggle of TOGGLES) {
+    if (toggle.defaultOn) document.body.classList.add(toggle.name);
+}
+
 const DEBUG_TOGGLES = [
     { name: 'show-sky-walls', label: 'Show sky walls', defaultOn: false },
     { name: 'show-wall-ids', label: 'Show wall IDs', defaultOn: false },
@@ -234,9 +239,7 @@ export function initDebugMenu() {
         const label = document.createElement('label');
         const checkbox = document.createElement('input');
         checkbox.type = 'checkbox';
-        checkbox.checked = toggle.defaultOn;
-
-        if (toggle.defaultOn) document.body.classList.add(toggle.name);
+        checkbox.checked = document.body.classList.contains(toggle.name);
 
         checkbox.addEventListener('change', () => {
             document.body.classList.toggle(toggle.name, checkbox.checked);
