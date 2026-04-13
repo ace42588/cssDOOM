@@ -1,0 +1,669 @@
+# System of Record template: cssDOOM map JSON ingested via the in-repo gRPC adapter.
+# `type` must match the custom adapter registration in your SGNL tenant.
+# `adapterConfig` is base64("{}") — global-only; do not encode a map name (maps come from MAPS_DIR / public/maps).
+
+displayName: cssDOOM maps
+icon: ""
+description: DOOM map geometry and gameplay objects from native JSON (one file per map). Map is the root entity; arrays in JSON are child entities nested under each Map during sync.
+address: "127.0.0.1:8080"
+defaultSyncFrequency: HOURLY
+defaultSyncMinInterval: 1
+defaultApiCallFrequency: SECONDLY
+defaultApiCallMinInterval: 1
+type: "CssDoomMap-1.0.0"
+adapterConfig: "e30="
+auth:
+  - bearer:
+      authToken: "{{Input Required: Bearer token (same value as gRPC metadata key token)}}"
+
+entities:
+  Map:
+    displayName: Map
+    externalId: map
+    description: Root map document (vertices, linedefs, sectors, walls, …).
+    syncFrequency: HOURLY
+    syncMinInterval: 1
+    apiCallFrequency: SECONDLY
+    apiCallMinInterval: 1
+    pageSize: 10
+    pagesOrderedById: true
+    attributes:
+      - name: name
+        externalId: name
+        type: String
+        indexed: true
+        uniqueId: true
+      - name: playerStartX
+        externalId: playerStart.x
+        type: Double
+        indexed: false
+      - name: playerStartY
+        externalId: playerStart.y
+        type: Double
+        indexed: false
+      - name: playerStartAngle
+        externalId: playerStart.angle
+        type: Double
+        indexed: false
+      - name: playerStartFloorHeight
+        externalId: playerStart.floorHeight
+        type: Int64
+        indexed: false
+      - name: boundsMinX
+        externalId: bounds.minX
+        type: Double
+        indexed: false
+      - name: boundsMaxX
+        externalId: bounds.maxX
+        type: Double
+        indexed: false
+      - name: boundsMinY
+        externalId: bounds.minY
+        type: Double
+        indexed: false
+      - name: boundsMaxY
+        externalId: bounds.maxY
+        type: Double
+        indexed: false
+
+  vertices:
+    displayName: Vertices
+    externalId: vertices
+    description: Vertex coordinates (index = array position in map JSON).
+    parent: map
+    syncFrequency: HOURLY
+    syncMinInterval: 1
+    apiCallFrequency: SECONDLY
+    apiCallMinInterval: 1
+    pageSize: 500
+    pagesOrderedById: true
+    attributes:
+      - name: index
+        externalId: index
+        type: Int64
+        indexed: true
+        uniqueId: true
+      - name: x
+        externalId: x
+        type: Int64
+        indexed: true
+      - name: y
+        externalId: y
+        type: Int64
+        indexed: true
+
+  linedefs:
+    displayName: Linedefs
+    externalId: linedefs
+    description: Linedefs between vertex indices.
+    parent: map
+    syncFrequency: HOURLY
+    syncMinInterval: 1
+    apiCallFrequency: SECONDLY
+    apiCallMinInterval: 1
+    pageSize: 500
+    pagesOrderedById: true
+    attributes:
+      - name: index
+        externalId: index
+        type: Int64
+        indexed: true
+        uniqueId: true
+      - name: startVertex
+        externalId: startVertex
+        type: Int64
+        indexed: true
+      - name: endVertex
+        externalId: endVertex
+        type: Int64
+        indexed: true
+      - name: flags
+        externalId: flags
+        type: Int64
+        indexed: false
+      - name: specialType
+        externalId: specialType
+        type: Int64
+        indexed: false
+      - name: sectorTag
+        externalId: sectorTag
+        type: Int64
+        indexed: true
+      - name: frontSidedef
+        externalId: frontSidedef
+        type: Int64
+        indexed: true
+      - name: backSidedef
+        externalId: backSidedef
+        type: Int64
+        indexed: true
+
+  sidedefs:
+    displayName: Sidedefs
+    externalId: sidedefs
+    description: Sidedef texture references and sector link.
+    parent: map
+    syncFrequency: HOURLY
+    syncMinInterval: 1
+    apiCallFrequency: SECONDLY
+    apiCallMinInterval: 1
+    pageSize: 500
+    pagesOrderedById: true
+    attributes:
+      - name: index
+        externalId: index
+        type: Int64
+        indexed: true
+        uniqueId: true
+      - name: xOffset
+        externalId: xOffset
+        type: Int64
+        indexed: false
+      - name: yOffset
+        externalId: yOffset
+        type: Int64
+        indexed: false
+      - name: upperTexture
+        externalId: upperTexture
+        type: String
+        indexed: false
+      - name: lowerTexture
+        externalId: lowerTexture
+        type: String
+        indexed: false
+      - name: middleTexture
+        externalId: middleTexture
+        type: String
+        indexed: false
+      - name: sectorIndex
+        externalId: sectorIndex
+        type: Int64
+        indexed: true
+
+  sectors:
+    displayName: Sectors
+    externalId: sectors
+    description: Sector floor/ceiling and specials.
+    parent: map
+    syncFrequency: HOURLY
+    syncMinInterval: 1
+    apiCallFrequency: SECONDLY
+    apiCallMinInterval: 1
+    pageSize: 500
+    pagesOrderedById: true
+    attributes:
+      - name: index
+        externalId: index
+        type: Int64
+        indexed: true
+        uniqueId: true
+      - name: floorHeight
+        externalId: floorHeight
+        type: Int64
+        indexed: false
+      - name: ceilingHeight
+        externalId: ceilingHeight
+        type: Int64
+        indexed: false
+      - name: floorTexture
+        externalId: floorTexture
+        type: String
+        indexed: false
+      - name: ceilingTexture
+        externalId: ceilingTexture
+        type: String
+        indexed: false
+      - name: lightLevel
+        externalId: lightLevel
+        type: Int64
+        indexed: false
+      - name: specialType
+        externalId: specialType
+        type: Int64
+        indexed: false
+      - name: tag
+        externalId: tag
+        type: Int64
+        indexed: true
+
+  things:
+    displayName: Things
+    externalId: things
+    description: Map things (spawns, pickups, actors).
+    parent: map
+    syncFrequency: HOURLY
+    syncMinInterval: 1
+    apiCallFrequency: SECONDLY
+    apiCallMinInterval: 1
+    pageSize: 500
+    pagesOrderedById: true
+    attributes:
+      - name: index
+        externalId: index
+        type: Int64
+        indexed: true
+        uniqueId: true
+      - name: x
+        externalId: x
+        type: Int64
+        indexed: true
+      - name: y
+        externalId: y
+        type: Int64
+        indexed: true
+      - name: angle
+        externalId: angle
+        type: Int64
+        indexed: false
+      - name: type
+        externalId: type
+        type: Int64
+        indexed: true
+      - name: flags
+        externalId: flags
+        type: Int64
+        indexed: false
+
+  walls:
+    displayName: Walls
+    externalId: walls
+    description: Render/collision wall segments.
+    parent: map
+    syncFrequency: HOURLY
+    syncMinInterval: 1
+    apiCallFrequency: SECONDLY
+    apiCallMinInterval: 1
+    pageSize: 500
+    pagesOrderedById: true
+    attributes:
+      - name: index
+        externalId: index
+        type: Int64
+        indexed: true
+        uniqueId: true
+      - name: startX
+        externalId: start.x
+        type: Int64
+        indexed: true
+      - name: startY
+        externalId: start.y
+        type: Int64
+        indexed: true
+      - name: endX
+        externalId: end.x
+        type: Int64
+        indexed: true
+      - name: endY
+        externalId: end.y
+        type: Int64
+        indexed: true
+      - name: bottomHeight
+        externalId: bottomHeight
+        type: Int64
+        indexed: false
+      - name: topHeight
+        externalId: topHeight
+        type: Int64
+        indexed: false
+      - name: isSolid
+        externalId: isSolid
+        type: Bool
+        indexed: false
+      - name: isDoor
+        externalId: isDoor
+        type: Bool
+        indexed: false
+      - name: isScrolling
+        externalId: isScrolling
+        type: Bool
+        indexed: false
+      - name: linedefIndex
+        externalId: linedefIndex
+        type: Int64
+        indexed: true
+      - name: wallId
+        externalId: wallId
+        type: String
+        indexed: true
+      - name: texture
+        externalId: texture
+        type: String
+        indexed: false
+      - name: xOffset
+        externalId: xOffset
+        type: Int64
+        indexed: false
+      - name: yOffset
+        externalId: yOffset
+        type: Int64
+        indexed: false
+      - name: sectorIndex
+        externalId: sectorIndex
+        type: Int64
+        indexed: true
+      - name: lightLevel
+        externalId: lightLevel
+        type: Int64
+        indexed: false
+      - name: specialType
+        externalId: specialType
+        type: Int64
+        indexed: false
+
+  sectorPolygons:
+    displayName: Sector polygons
+    externalId: sectorPolygons
+    description: Per-sector polygon rollup; boundaries stored as JSON string.
+    parent: map
+    syncFrequency: HOURLY
+    syncMinInterval: 1
+    apiCallFrequency: SECONDLY
+    apiCallMinInterval: 1
+    pageSize: 500
+    pagesOrderedById: true
+    attributes:
+      - name: index
+        externalId: index
+        type: Int64
+        indexed: true
+        uniqueId: true
+      - name: sectorIndex
+        externalId: sectorIndex
+        type: Int64
+        indexed: true
+      - name: floorHeight
+        externalId: floorHeight
+        type: Int64
+        indexed: false
+      - name: ceilingHeight
+        externalId: ceilingHeight
+        type: Int64
+        indexed: false
+      - name: lightLevel
+        externalId: lightLevel
+        type: Int64
+        indexed: false
+      - name: floorTexture
+        externalId: floorTexture
+        type: String
+        indexed: false
+      - name: ceilingTexture
+        externalId: ceilingTexture
+        type: String
+        indexed: false
+      - name: specialType
+        externalId: specialType
+        type: Int64
+        indexed: false
+      - name: boundaries
+        externalId: boundaries
+        type: String
+        indexed: false
+      - name: hasHoles
+        externalId: hasHoles
+        type: Bool
+        indexed: false
+
+  doors:
+    displayName: Doors
+    externalId: doors
+    description: Door specials.
+    parent: map
+    syncFrequency: HOURLY
+    syncMinInterval: 1
+    apiCallFrequency: SECONDLY
+    apiCallMinInterval: 1
+    pageSize: 100
+    pagesOrderedById: true
+    attributes:
+      - name: index
+        externalId: index
+        type: Int64
+        indexed: true
+        uniqueId: true
+      - name: sectorIndex
+        externalId: sectorIndex
+        type: Int64
+        indexed: true
+      - name: closedHeight
+        externalId: closedHeight
+        type: Int64
+        indexed: false
+      - name: openHeight
+        externalId: openHeight
+        type: Int64
+        indexed: false
+      - name: floorHeight
+        externalId: floorHeight
+        type: Int64
+        indexed: false
+      - name: keyRequired
+        externalId: keyRequired
+        type: String
+        indexed: false
+
+  lifts:
+    displayName: Lifts
+    externalId: lifts
+    description: Platforms / lifts; nested arrays as JSON strings.
+    parent: map
+    syncFrequency: HOURLY
+    syncMinInterval: 1
+    apiCallFrequency: SECONDLY
+    apiCallMinInterval: 1
+    pageSize: 100
+    pagesOrderedById: true
+    attributes:
+      - name: index
+        externalId: index
+        type: Int64
+        indexed: true
+        uniqueId: true
+      - name: sectorIndex
+        externalId: sectorIndex
+        type: Int64
+        indexed: true
+      - name: tag
+        externalId: tag
+        type: Int64
+        indexed: true
+      - name: upperHeight
+        externalId: upperHeight
+        type: Int64
+        indexed: false
+      - name: lowerHeight
+        externalId: lowerHeight
+        type: Int64
+        indexed: false
+      - name: oneWay
+        externalId: oneWay
+        type: Bool
+        indexed: false
+      - name: shaftWalls
+        externalId: shaftWalls
+        type: String
+        indexed: false
+      - name: collisionEdges
+        externalId: collisionEdges
+        type: String
+        indexed: false
+
+  triggers:
+    displayName: Triggers
+    externalId: triggers
+    description: Walkover trigger segments.
+    parent: map
+    syncFrequency: HOURLY
+    syncMinInterval: 1
+    apiCallFrequency: SECONDLY
+    apiCallMinInterval: 1
+    pageSize: 100
+    pagesOrderedById: true
+    attributes:
+      - name: index
+        externalId: index
+        type: Int64
+        indexed: true
+        uniqueId: true
+      - name: startX
+        externalId: start.x
+        type: Int64
+        indexed: true
+      - name: startY
+        externalId: start.y
+        type: Int64
+        indexed: true
+      - name: endX
+        externalId: end.x
+        type: Int64
+        indexed: true
+      - name: endY
+        externalId: end.y
+        type: Int64
+        indexed: true
+      - name: sectorTag
+        externalId: sectorTag
+        type: Int64
+        indexed: true
+      - name: specialType
+        externalId: specialType
+        type: Int64
+        indexed: false
+
+  teleporters:
+    displayName: Teleporters
+    externalId: teleporters
+    description: Teleporter lines (often empty).
+    parent: map
+    syncFrequency: HOURLY
+    syncMinInterval: 1
+    apiCallFrequency: SECONDLY
+    apiCallMinInterval: 1
+    pageSize: 100
+    pagesOrderedById: true
+    attributes:
+      - name: index
+        externalId: index
+        type: Int64
+        indexed: true
+        uniqueId: true
+
+  crushers:
+    displayName: Crushers
+    externalId: crushers
+    description: Crusher specials (often empty).
+    parent: map
+    syncFrequency: HOURLY
+    syncMinInterval: 1
+    apiCallFrequency: SECONDLY
+    apiCallMinInterval: 1
+    pageSize: 100
+    pagesOrderedById: true
+    attributes:
+      - name: index
+        externalId: index
+        type: Int64
+        indexed: true
+        uniqueId: true
+
+  sightLines:
+    displayName: Sight lines
+    externalId: sightLines
+    description: Sight occlusion segments.
+    parent: map
+    syncFrequency: HOURLY
+    syncMinInterval: 1
+    apiCallFrequency: SECONDLY
+    apiCallMinInterval: 1
+    pageSize: 500
+    pagesOrderedById: true
+    attributes:
+      - name: index
+        externalId: index
+        type: Int64
+        indexed: true
+        uniqueId: true
+      - name: startX
+        externalId: start.x
+        type: Int64
+        indexed: true
+      - name: startY
+        externalId: start.y
+        type: Int64
+        indexed: true
+      - name: endX
+        externalId: end.x
+        type: Int64
+        indexed: true
+      - name: endY
+        externalId: end.y
+        type: Int64
+        indexed: true
+      - name: openBottom
+        externalId: openBottom
+        type: Int64
+        indexed: false
+      - name: openTop
+        externalId: openTop
+        type: Int64
+        indexed: false
+      - name: frontSector
+        externalId: frontSector
+        type: Int64
+        indexed: true
+      - name: backSector
+        externalId: backSector
+        type: Int64
+        indexed: true
+
+relationships:
+  LinedefStartVertex:
+    name: LinedefStartVertex
+    displayName: Linedef start vertex
+    fromAttribute: linedefs.startVertex
+    toAttribute: vertices.index
+  LinedefEndVertex:
+    name: LinedefEndVertex
+    displayName: Linedef end vertex
+    fromAttribute: linedefs.endVertex
+    toAttribute: vertices.index
+  SidedefSector:
+    name: SidedefSector
+    displayName: Sidedef to sector
+    fromAttribute: sidedefs.sectorIndex
+    toAttribute: sectors.index
+  WallSector:
+    name: WallSector
+    displayName: Wall to sector
+    fromAttribute: walls.sectorIndex
+    toAttribute: sectors.index
+  WallLinedef:
+    name: WallLinedef
+    displayName: Wall to linedef
+    fromAttribute: walls.linedefIndex
+    toAttribute: linedefs.index
+  SectorPolygonSector:
+    name: SectorPolygonSector
+    displayName: Sector polygon to sector
+    fromAttribute: sectorPolygons.sectorIndex
+    toAttribute: sectors.index
+  DoorSector:
+    name: DoorSector
+    displayName: Door to sector
+    fromAttribute: doors.sectorIndex
+    toAttribute: sectors.index
+  LiftSector:
+    name: LiftSector
+    displayName: Lift to sector
+    fromAttribute: lifts.sectorIndex
+    toAttribute: sectors.index
+  SightLineFrontSector:
+    name: SightLineFrontSector
+    displayName: Sight line front sector
+    fromAttribute: sightLines.frontSector
+    toAttribute: sectors.index
+  SightLineBackSector:
+    name: SightLineBackSector
+    displayName: Sight line back sector
+    fromAttribute: sightLines.backSector
+    toAttribute: sectors.index

@@ -1,0 +1,827 @@
+{
+  "datasource": {
+    "id": "38c96d7c-c042-4823-9337-cf658ad20000",
+    "type": "DOOM-1.0.0"
+  },
+  "entity": {
+    "id": "38c96d7c-c042-4823-9337-cf658ad21000",
+    "external_id": "map",
+    "ordered": true,
+    "attributes": [
+      {
+        "type": "ATTRIBUTE_TYPE_STRING",
+        "external_id": "name",
+        "id": "38c96d7c-c042-4823-9337-cf658ad20001",
+        "list": false,
+        "ordered": false
+      },
+      {
+        "type": "ATTRIBUTE_TYPE_DOUBLE",
+        "external_id": "playerStart.x",
+        "id": "38c96d7c-c042-4823-9337-cf658ad20002",
+        "list": false,
+        "ordered": false
+      },
+      {
+        "type": "ATTRIBUTE_TYPE_DOUBLE",
+        "external_id": "playerStart.y",
+        "id": "38c96d7c-c042-4823-9337-cf658ad20003",
+        "list": false,
+        "ordered": false
+      },
+      {
+        "type": "ATTRIBUTE_TYPE_DOUBLE",
+        "external_id": "playerStart.angle",
+        "id": "38c96d7c-c042-4823-9337-cf658ad20004",
+        "list": false,
+        "ordered": false
+      },
+      {
+        "type": "ATTRIBUTE_TYPE_INT64",
+        "external_id": "playerStart.floorHeight",
+        "id": "38c96d7c-c042-4823-9337-cf658ad20005",
+        "list": false,
+        "ordered": false
+      },
+      {
+        "type": "ATTRIBUTE_TYPE_DOUBLE",
+        "external_id": "bounds.minX",
+        "id": "38c96d7c-c042-4823-9337-cf658ad20006",
+        "list": false,
+        "ordered": false
+      },
+      {
+        "type": "ATTRIBUTE_TYPE_DOUBLE",
+        "external_id": "bounds.maxX",
+        "id": "38c96d7c-c042-4823-9337-cf658ad20007",
+        "list": false,
+        "ordered": false
+      },
+      {
+        "type": "ATTRIBUTE_TYPE_DOUBLE",
+        "external_id": "bounds.minY",
+        "id": "38c96d7c-c042-4823-9337-cf658ad20008",
+        "list": false,
+        "ordered": false
+      },
+      {
+        "type": "ATTRIBUTE_TYPE_DOUBLE",
+        "external_id": "bounds.maxY",
+        "id": "38c96d7c-c042-4823-9337-cf658ad20009",
+        "list": false,
+        "ordered": false
+      }
+    ],
+    "child_entities": [
+      {
+        "id": "38c96d7c-c042-4823-9337-cf658ad22001",
+        "external_id": "vertices",
+        "ordered": true,
+        "attributes": [
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "index",
+            "id": "38c96d7c-c042-4823-9337-cf658ad2000a",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "x",
+            "id": "38c96d7c-c042-4823-9337-cf658ad2000b",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "y",
+            "id": "38c96d7c-c042-4823-9337-cf658ad2000c",
+            "list": false,
+            "ordered": false
+          }
+        ],
+        "child_entities": []
+      },
+      {
+        "id": "38c96d7c-c042-4823-9337-cf658ad22002",
+        "external_id": "linedefs",
+        "ordered": true,
+        "attributes": [
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "index",
+            "id": "38c96d7c-c042-4823-9337-cf658ad2000d",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "startVertex",
+            "id": "38c96d7c-c042-4823-9337-cf658ad2000e",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "endVertex",
+            "id": "38c96d7c-c042-4823-9337-cf658ad2000f",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "flags",
+            "id": "38c96d7c-c042-4823-9337-cf658ad20010",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "specialType",
+            "id": "38c96d7c-c042-4823-9337-cf658ad20011",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "sectorTag",
+            "id": "38c96d7c-c042-4823-9337-cf658ad20012",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "frontSidedef",
+            "id": "38c96d7c-c042-4823-9337-cf658ad20013",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "backSidedef",
+            "id": "38c96d7c-c042-4823-9337-cf658ad20014",
+            "list": false,
+            "ordered": false
+          }
+        ],
+        "child_entities": []
+      },
+      {
+        "id": "38c96d7c-c042-4823-9337-cf658ad22003",
+        "external_id": "sidedefs",
+        "ordered": true,
+        "attributes": [
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "index",
+            "id": "38c96d7c-c042-4823-9337-cf658ad20015",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "xOffset",
+            "id": "38c96d7c-c042-4823-9337-cf658ad20016",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "yOffset",
+            "id": "38c96d7c-c042-4823-9337-cf658ad20017",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_STRING",
+            "external_id": "upperTexture",
+            "id": "38c96d7c-c042-4823-9337-cf658ad20018",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_STRING",
+            "external_id": "lowerTexture",
+            "id": "38c96d7c-c042-4823-9337-cf658ad20019",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_STRING",
+            "external_id": "middleTexture",
+            "id": "38c96d7c-c042-4823-9337-cf658ad2001a",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "sectorIndex",
+            "id": "38c96d7c-c042-4823-9337-cf658ad2001b",
+            "list": false,
+            "ordered": false
+          }
+        ],
+        "child_entities": []
+      },
+      {
+        "id": "38c96d7c-c042-4823-9337-cf658ad22004",
+        "external_id": "sectors",
+        "ordered": true,
+        "attributes": [
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "index",
+            "id": "38c96d7c-c042-4823-9337-cf658ad2001c",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "floorHeight",
+            "id": "38c96d7c-c042-4823-9337-cf658ad2001d",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "ceilingHeight",
+            "id": "38c96d7c-c042-4823-9337-cf658ad2001e",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_STRING",
+            "external_id": "floorTexture",
+            "id": "38c96d7c-c042-4823-9337-cf658ad2001f",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_STRING",
+            "external_id": "ceilingTexture",
+            "id": "38c96d7c-c042-4823-9337-cf658ad20020",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "lightLevel",
+            "id": "38c96d7c-c042-4823-9337-cf658ad20021",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "specialType",
+            "id": "38c96d7c-c042-4823-9337-cf658ad20022",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "tag",
+            "id": "38c96d7c-c042-4823-9337-cf658ad20023",
+            "list": false,
+            "ordered": false
+          }
+        ],
+        "child_entities": []
+      },
+      {
+        "id": "38c96d7c-c042-4823-9337-cf658ad22005",
+        "external_id": "things",
+        "ordered": true,
+        "attributes": [
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "index",
+            "id": "38c96d7c-c042-4823-9337-cf658ad20024",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "x",
+            "id": "38c96d7c-c042-4823-9337-cf658ad20025",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "y",
+            "id": "38c96d7c-c042-4823-9337-cf658ad20026",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "angle",
+            "id": "38c96d7c-c042-4823-9337-cf658ad20027",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "type",
+            "id": "38c96d7c-c042-4823-9337-cf658ad20028",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "flags",
+            "id": "38c96d7c-c042-4823-9337-cf658ad20029",
+            "list": false,
+            "ordered": false
+          }
+        ],
+        "child_entities": []
+      },
+      {
+        "id": "38c96d7c-c042-4823-9337-cf658ad22006",
+        "external_id": "walls",
+        "ordered": true,
+        "attributes": [
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "index",
+            "id": "38c96d7c-c042-4823-9337-cf658ad2002a",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "start.x",
+            "id": "38c96d7c-c042-4823-9337-cf658ad2002b",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "start.y",
+            "id": "38c96d7c-c042-4823-9337-cf658ad2002c",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "end.x",
+            "id": "38c96d7c-c042-4823-9337-cf658ad2002d",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "end.y",
+            "id": "38c96d7c-c042-4823-9337-cf658ad2002e",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "bottomHeight",
+            "id": "38c96d7c-c042-4823-9337-cf658ad2002f",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "topHeight",
+            "id": "38c96d7c-c042-4823-9337-cf658ad20030",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_BOOL",
+            "external_id": "isSolid",
+            "id": "38c96d7c-c042-4823-9337-cf658ad20031",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_BOOL",
+            "external_id": "isDoor",
+            "id": "38c96d7c-c042-4823-9337-cf658ad20032",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_BOOL",
+            "external_id": "isScrolling",
+            "id": "38c96d7c-c042-4823-9337-cf658ad20033",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "linedefIndex",
+            "id": "38c96d7c-c042-4823-9337-cf658ad20034",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_STRING",
+            "external_id": "wallId",
+            "id": "38c96d7c-c042-4823-9337-cf658ad20035",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_STRING",
+            "external_id": "texture",
+            "id": "38c96d7c-c042-4823-9337-cf658ad20036",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "xOffset",
+            "id": "38c96d7c-c042-4823-9337-cf658ad20037",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "yOffset",
+            "id": "38c96d7c-c042-4823-9337-cf658ad20038",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "sectorIndex",
+            "id": "38c96d7c-c042-4823-9337-cf658ad20039",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "lightLevel",
+            "id": "38c96d7c-c042-4823-9337-cf658ad2003a",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "specialType",
+            "id": "38c96d7c-c042-4823-9337-cf658ad2003b",
+            "list": false,
+            "ordered": false
+          }
+        ],
+        "child_entities": []
+      },
+      {
+        "id": "38c96d7c-c042-4823-9337-cf658ad22007",
+        "external_id": "sectorPolygons",
+        "ordered": true,
+        "attributes": [
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "index",
+            "id": "38c96d7c-c042-4823-9337-cf658ad2003c",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "sectorIndex",
+            "id": "38c96d7c-c042-4823-9337-cf658ad2003d",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "floorHeight",
+            "id": "38c96d7c-c042-4823-9337-cf658ad2003e",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "ceilingHeight",
+            "id": "38c96d7c-c042-4823-9337-cf658ad2003f",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "lightLevel",
+            "id": "38c96d7c-c042-4823-9337-cf658ad20040",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_STRING",
+            "external_id": "floorTexture",
+            "id": "38c96d7c-c042-4823-9337-cf658ad20041",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_STRING",
+            "external_id": "ceilingTexture",
+            "id": "38c96d7c-c042-4823-9337-cf658ad20042",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "specialType",
+            "id": "38c96d7c-c042-4823-9337-cf658ad20043",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_STRING",
+            "external_id": "boundaries",
+            "id": "38c96d7c-c042-4823-9337-cf658ad20044",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_BOOL",
+            "external_id": "hasHoles",
+            "id": "38c96d7c-c042-4823-9337-cf658ad20045",
+            "list": false,
+            "ordered": false
+          }
+        ],
+        "child_entities": []
+      },
+      {
+        "id": "38c96d7c-c042-4823-9337-cf658ad22008",
+        "external_id": "doors",
+        "ordered": true,
+        "attributes": [
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "index",
+            "id": "38c96d7c-c042-4823-9337-cf658ad20046",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "sectorIndex",
+            "id": "38c96d7c-c042-4823-9337-cf658ad20047",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "closedHeight",
+            "id": "38c96d7c-c042-4823-9337-cf658ad20048",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "openHeight",
+            "id": "38c96d7c-c042-4823-9337-cf658ad20049",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "floorHeight",
+            "id": "38c96d7c-c042-4823-9337-cf658ad2004a",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_STRING",
+            "external_id": "keyRequired",
+            "id": "38c96d7c-c042-4823-9337-cf658ad2004b",
+            "list": false,
+            "ordered": false
+          }
+        ],
+        "child_entities": []
+      },
+      {
+        "id": "38c96d7c-c042-4823-9337-cf658ad22009",
+        "external_id": "lifts",
+        "ordered": true,
+        "attributes": [
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "index",
+            "id": "38c96d7c-c042-4823-9337-cf658ad2004c",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "sectorIndex",
+            "id": "38c96d7c-c042-4823-9337-cf658ad2004d",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "tag",
+            "id": "38c96d7c-c042-4823-9337-cf658ad2004e",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "upperHeight",
+            "id": "38c96d7c-c042-4823-9337-cf658ad2004f",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "lowerHeight",
+            "id": "38c96d7c-c042-4823-9337-cf658ad20050",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_BOOL",
+            "external_id": "oneWay",
+            "id": "38c96d7c-c042-4823-9337-cf658ad20051",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_STRING",
+            "external_id": "shaftWalls",
+            "id": "38c96d7c-c042-4823-9337-cf658ad20052",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_STRING",
+            "external_id": "collisionEdges",
+            "id": "38c96d7c-c042-4823-9337-cf658ad20053",
+            "list": false,
+            "ordered": false
+          }
+        ],
+        "child_entities": []
+      },
+      {
+        "id": "38c96d7c-c042-4823-9337-cf658ad2200a",
+        "external_id": "triggers",
+        "ordered": true,
+        "attributes": [
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "index",
+            "id": "38c96d7c-c042-4823-9337-cf658ad20054",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "start.x",
+            "id": "38c96d7c-c042-4823-9337-cf658ad20055",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "start.y",
+            "id": "38c96d7c-c042-4823-9337-cf658ad20056",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "end.x",
+            "id": "38c96d7c-c042-4823-9337-cf658ad20057",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "end.y",
+            "id": "38c96d7c-c042-4823-9337-cf658ad20058",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "sectorTag",
+            "id": "38c96d7c-c042-4823-9337-cf658ad20059",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "specialType",
+            "id": "38c96d7c-c042-4823-9337-cf658ad2005a",
+            "list": false,
+            "ordered": false
+          }
+        ],
+        "child_entities": []
+      },
+      {
+        "id": "38c96d7c-c042-4823-9337-cf658ad2200b",
+        "external_id": "teleporters",
+        "ordered": true,
+        "attributes": [
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "index",
+            "id": "38c96d7c-c042-4823-9337-cf658ad2005b",
+            "list": false,
+            "ordered": false
+          }
+        ],
+        "child_entities": []
+      },
+      {
+        "id": "38c96d7c-c042-4823-9337-cf658ad2200c",
+        "external_id": "crushers",
+        "ordered": true,
+        "attributes": [
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "index",
+            "id": "38c96d7c-c042-4823-9337-cf658ad2005c",
+            "list": false,
+            "ordered": false
+          }
+        ],
+        "child_entities": []
+      },
+      {
+        "id": "38c96d7c-c042-4823-9337-cf658ad2200d",
+        "external_id": "sightLines",
+        "ordered": true,
+        "attributes": [
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "index",
+            "id": "38c96d7c-c042-4823-9337-cf658ad2005d",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "start.x",
+            "id": "38c96d7c-c042-4823-9337-cf658ad2005e",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "start.y",
+            "id": "38c96d7c-c042-4823-9337-cf658ad2005f",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "end.x",
+            "id": "38c96d7c-c042-4823-9337-cf658ad20060",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "end.y",
+            "id": "38c96d7c-c042-4823-9337-cf658ad20061",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "openBottom",
+            "id": "38c96d7c-c042-4823-9337-cf658ad20062",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "openTop",
+            "id": "38c96d7c-c042-4823-9337-cf658ad20063",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "frontSector",
+            "id": "38c96d7c-c042-4823-9337-cf658ad20064",
+            "list": false,
+            "ordered": false
+          },
+          {
+            "type": "ATTRIBUTE_TYPE_INT64",
+            "external_id": "backSector",
+            "id": "38c96d7c-c042-4823-9337-cf658ad20065",
+            "list": false,
+            "ordered": false
+          }
+        ],
+        "child_entities": []
+      }
+    ]
+  },
+  "page_size": "100"
+}
