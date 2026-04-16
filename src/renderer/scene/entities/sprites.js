@@ -177,6 +177,17 @@ export function collectItem(thingIndex) {
     if (domData) domData.element.classList.add('collected');
 }
 
+/**
+ * Toggle visibility of a thing's container without touching its gameplay
+ * state. Used by body-swap so the camera isn't staring at the inside of the
+ * monster sprite it's currently driving.
+ */
+export function setThingVisible(thingIndex, visible) {
+    const domData = sceneState.thingDom.get(thingIndex);
+    if (!domData) return;
+    domData.element.classList.toggle('possessed-hidden', !visible);
+}
+
 /** Spawn a bullet puff element at the given position. Self-removes after animation. */
 export function createPuff(x, z, y) {
     const el = document.createElement('div');

@@ -9,6 +9,7 @@
  */
 
 import { player } from '../game/state.js';
+import { getControlled, isControllingPlayer } from '../game/possession.js';
 import { dom } from './dom.js';
 import { WEAPONS } from '../game/constants.js';
 
@@ -36,9 +37,17 @@ function ensureHudMessageElement() {
 
 export function updateHud() {
     const style = dom.status.style;
+    const controlled = getControlled();
+    const possessing = !isControllingPlayer();
+
+    // Toggle possessed state on the renderer — CSS hides weapon/ammo rows.
+    dom.renderer.classList.toggle('possessed', possessing);
+
     const weapon = WEAPONS[player.currentWeapon];
     const currentAmmo = weapon.ammoType ? Math.round(player.ammo[weapon.ammoType]) : 0;
-    const currentHealth = Math.round(player.health);
+    const currentHealth = possessing
+        ? Math.round(controlled.hp ?? 0)
+        : Math.round(player.health);
     const currentArmor = Math.round(player.armor);
 
     if (currentAmmo !== prev.ammo) {
@@ -50,7 +59,12 @@ export function updateHud() {
         prev.health = currentHealth;
         style.setProperty('--health', currentHealth);
 
-        const faceRow = currentHealth >= 80 ? 0 : currentHealth >= 60 ? 1 : currentHealth >= 40 ? 2 : currentHealth >= 20 ? 3 : 4;
+        // Face row is driven by the possessed body's HP when possessing, so
+        // the marine portrait still tracks how hurt "you" are.
+        const pct = possessing && controlled.maxHp
+            ? (currentHealth / controlled.maxHp) * 100
+            : currentHealth;
+        const faceRow = pct >= 80 ? 0 : pct >= 60 ? 1 : pct >= 40 ? 2 : pct >= 20 ? 3 : 4;
         if (faceRow !== prev.faceRow) {
             prev.faceRow = faceRow;
             style.setProperty('--face-row', faceRow);
@@ -62,7 +76,6 @@ export function updateHud() {
         style.setProperty('--armor', currentArmor);
     }
 
-    // Per-type ammo counts and maximums
     for (const type of AMMO_TYPES) {
         const cur = Math.round(player.ammo[type]);
         if (cur !== prev[type]) {
@@ -78,9 +91,13 @@ export function updateHud() {
         }
     }
 
-    // Weapon ownership
+    // Weapon ownership — hide all slots while possessing (monsters don't
+    // own player weapons).
     for (let weaponSlot = 2; weaponSlot <= 7; weaponSlot++) {
-        dom.renderer.classList.toggle(WEAPON_CLASSES[weaponSlot], player.ownedWeapons.has(weaponSlot));
+        dom.renderer.classList.toggle(
+            WEAPON_CLASSES[weaponSlot],
+            !possessing && player.ownedWeapons.has(weaponSlot),
+        );
     }
 }
 

@@ -37,32 +37,27 @@
  */
 
 import { player } from '../../game/state.js';
+import { getControlledEye } from '../../game/possession.js';
 import { dom } from '../dom.js';
 
 /**
- * Pushes the current player position and viewing angle to CSS custom
+ * Pushes the current view position and viewing angle to CSS custom
  * properties on the viewport element. The CSS transform on #scene reads
  * these properties to compute the inverse camera transform each frame.
+ *
+ * With body-swap, the "view" tracks whichever actor is currently under
+ * user control — the normal player character or a possessed monster.
  */
 export function updateCamera() {
     const viewportStyle = dom.viewport.style;
+    const eye = getControlledEye();
 
-    // Horizontal position along the east-west axis
-    viewportStyle.setProperty('--player-x', player.x);
+    viewportStyle.setProperty('--player-x', eye.x);
+    viewportStyle.setProperty('--player-y', eye.y);
+    viewportStyle.setProperty('--player-z', eye.z);
+    viewportStyle.setProperty('--player-floor', eye.floorHeight || 0);
+    viewportStyle.setProperty('--player-angle', eye.angle);
 
-    // Horizontal position along the north-south axis
-    viewportStyle.setProperty('--player-y', player.y);
-
-    // Vertical position / height
-    viewportStyle.setProperty('--player-z', player.z);
-
-    // Floor height at player position
-    viewportStyle.setProperty('--player-floor', player.floorHeight || 0);
-
-    // Viewing angle in radians (0 = north, increasing clockwise)
-    viewportStyle.setProperty('--player-angle', player.angle);
-
-    // Toggle firing class on player marker for spectator mode visual feedback
     const marker = document.querySelector('#player > .marker');
     if (marker) {
         marker.classList.toggle('firing', player.isFiring);

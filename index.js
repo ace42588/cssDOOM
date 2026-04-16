@@ -8,6 +8,7 @@ import { updateGame } from './src/game/index.js';
 import { loadMap } from './src/game/lifecycle.js';
 import { updateCamera, startCullingLoop, updateHud } from './src/renderer/index.js';
 import { updateMenuSelection } from './src/ui/menu.js';
+import { isBodySwapOpen } from './src/ui/body-swap.js';
 import { hideInitialOverlay } from './src/ui/overlay.js';
 import { initKeyboardInput } from './src/input/keyboard.js';
 import { initMouseInput } from './src/input/mouse.js';
@@ -15,6 +16,7 @@ import { initTouchInput } from './src/input/touch.js';
 import { initGamepadInput } from './src/input/gamepad.js';
 import { initDebugMenu, updateDebugStats } from './src/ui/debug.js';
 import './src/ui/spectator.js';
+import './src/ui/body-swap.js';
 import { emitCaepSessionEstablished } from './src/sgnl/client/caep.js';
 import { initScimPush } from './src/sgnl/client/scim.js';
 import { runActorRegressionChecks } from './src/game/actors/regressions.js';
@@ -39,6 +41,16 @@ function gameLoop(timestamp) {
     }
 
     if (player.isDead) {
+        updateCamera();
+        requestAnimationFrame(gameLoop);
+        return;
+    }
+
+    // Body-swap picker pauses simulation (AI, movement, projectiles) while
+    // the user decides which body to inhabit. The camera keeps rendering so
+    // the world behind the overlay animates visually.
+    if (isBodySwapOpen()) {
+        updateHud();
         updateCamera();
         requestAnimationFrame(gameLoop);
         return;

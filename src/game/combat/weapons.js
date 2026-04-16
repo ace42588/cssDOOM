@@ -4,7 +4,7 @@
 
 import { state, player } from '../state.js';
 import {
-    WEAPONS, SHOOTABLE, EYE_HEIGHT,
+    WEAPONS, SHOOTABLE, EYE_HEIGHT, ENEMIES, ENEMY_PROJECTILES,
     PLAYER_ROCKET_SPEED, PLAYER_ROCKET_RADIUS,
     ROCKET_SPLASH_DAMAGE,
 } from '../constants.js';
@@ -23,6 +23,7 @@ import { propagateSound } from '../sound-propagation.js';
 import { getHorizontalDistance, randomDoomSpreadAngleRadians } from '../geometry.js';
 import { distance2 } from '../actors/math.js';
 import { markGameStateDirty, markPlayerDirty } from '../../sgnl/client/scim.js';
+import { getControlled, isControllingPlayer } from '../possession.js';
 
 // ============================================================================
 // Weapon Loading & Equipping
@@ -73,6 +74,13 @@ let automaticFireInterval = null;
  */
 export function fireWeapon() {
     if (player.isDead || player.isFiring || renderer.isWeaponSwitching()) return;
+
+    // Body-swap: if the user is possessing a monster, trigger its built-in
+    // attack (melee/hitscan/projectile) instead of the player weapon path.
+    if (!isControllingPlayer()) {
+        fireMonsterAttack();
+        return;
+    }
 
     const weapon = WEAPONS[player.currentWeapon];
     if (!weapon) return;
@@ -384,4 +392,189 @@ function spawnPuff(hitX, hitY, hitFloorHeight) {
     const floorHeight = isTargetHit ? hitFloorHeight : getFloorHeightAt(hitX, hitY);
     const puffHeight = floorHeight + (isTargetHit ? EYE_HEIGHT * 0.5 : EYE_HEIGHT);
     renderer.createPuff(hitX, puffHeight, hitY);
+}
+
+// ============================================================================
+// Monster attack (body-swap)
+// ============================================================================
+
+/**
+ * Fire the built-in attack of the currently-possessed monster. The user is
+ * driving the monster, so attacks are aimed in the direction the camera is
+ * facing (derived from the monster's `viewAngle`).
+ *
+ * Three attack types are supported, matching the enemy AI:
+ *   - melee: Demon/Spectre-style short-range bite (any shootable in the
+ *     front cone within meleeRange takes damage).
+ *   - projectile: Imp/Baron fireball — spawns the projectile with a synthetic
+ *     target far in the aim direction so the existing spawnProjectile path
+ *     can build the direction vector.
+ *   - hitscan: Zombieman/Shotgun Guy — picks the closest shootable within
+ *     the firing cone and rolls pellet damage.
+ */
+function fireMonsterAttack() {
+    const monster = getControlled();
+    if (!monster || !monster.ai) return;
+
+    const cooldownMs = (monster.ai.cooldown || 1) * 1000;
+    const now = performance.now();
+    if (now - (monster.ai.lastAttack || 0) < cooldownMs) return;
+    monster.ai.lastAttack = now;
+    player.isFiring = true;
+    // Briefly flash the monster into its attack sprite.
+    setEnemyState(monster, 'attacking');
+    setTimeout(() => {
+        if (getControlled() === monster) {
+            setEnemyState(monster, 'chasing');
+        }
+        player.isFiring = false;
+    }, Math.min(cooldownMs, 350));
+
+    const viewAngle = typeof monster.viewAngle === 'number'
+        ? monster.viewAngle
+        : (monster.facing ?? 0) - Math.PI / 2;
+    const forwardX = -Math.sin(viewAngle);
+    const forwardY = Math.cos(viewAngle);
+
+    if (monster.ai.melee || monster.ai.meleeRange) {
+        const meleeRange = monster.ai.meleeRange || 80;
+        const meleeTarget = findShootableInCone(monster, forwardX, forwardY, meleeRange);
+        if (meleeTarget) {
+            const rng = Math.floor(Math.random() * 10) + 1;
+            const damage = monster.type === 3003 ? rng * 10 : rng * 4;
+            if (hasLineOfSight(monster, meleeTarget)) {
+                applyMonsterDamage(meleeTarget, damage, monster);
+            }
+            playSound(
+                monster.type === 3002 || monster.type === 58 ? 'DSSGTATK' : 'DSCLAW',
+            );
+        }
+        // If the monster also has a ranged attack, fall through only if no
+        // melee target was hit. Pure melee monsters stop here.
+        if (meleeTarget || monster.type === 3002 || monster.type === 58) return;
+    }
+
+    const projectileDef = ENEMY_PROJECTILES[monster.type];
+    if (projectileDef) {
+        spawnPossessedProjectile(monster, projectileDef, forwardX, forwardY);
+        return;
+    }
+
+    // Hitscan fallback (Zombieman/Shotgun Guy)
+    const pellets = monster.ai.pellets || 1;
+    if (monster.ai.hitscanSound) playSound(monster.ai.hitscanSound);
+    const target = findShootableInCone(monster, forwardX, forwardY, monster.ai.attackRange || 1500);
+    for (let i = 0; i < pellets; i++) {
+        const spread = randomDoomSpreadAngleRadians(22.5);
+        const sx = -Math.sin(viewAngle + spread);
+        const sy = Math.cos(viewAngle + spread);
+        const rayTarget = findShootableInCone(monster, sx, sy, monster.ai.attackRange || 1500);
+        const chosen = rayTarget || target;
+        if (chosen && hasLineOfSight(monster, chosen)) {
+            const damage = (Math.floor(Math.random() * 5) + 1) * 3;
+            applyMonsterDamage(chosen, damage, monster);
+            renderer.createPuff(chosen.x, getFloorHeightAt(chosen.x, chosen.y) + EYE_HEIGHT * 0.5, chosen.y);
+        } else {
+            const wallHit = rayHitPoint(monster.x, monster.y, sx, sy, monster.ai.attackRange || 1500);
+            if (wallHit) renderer.createPuff(wallHit.x, getFloorHeightAt(wallHit.x, wallHit.y) + EYE_HEIGHT, wallHit.y);
+        }
+    }
+    propagateSound();
+}
+
+/**
+ * Spawn a projectile from the possessed monster aimed in the look direction.
+ * Mirrors the geometry of `ai/projectiles.js:spawnProjectile()` but takes a
+ * forward vector directly so we avoid routing through `ai.target` (and sidestep
+ * the circular import that would pull spawnProjectile into this module).
+ */
+function spawnPossessedProjectile(monster, projectileDef, forwardX, forwardY) {
+    const floorHeight = getFloorHeightAt(monster.x, monster.y);
+    const spawnHeight = floorHeight + EYE_HEIGHT * 0.8;
+
+    const speed = state.skillLevel === 5 ? projectileDef.speed * 2 : projectileDef.speed;
+    const lifetime = 5;
+    const endX = monster.x + forwardX * speed * lifetime;
+    const endY = monster.y + forwardY * speed * lifetime;
+    const endZ = spawnHeight;
+
+    const projectileId = state.nextProjectileId++;
+    renderer.createProjectile(projectileId, {
+        type: 'enemy',
+        width: projectileDef.size, height: projectileDef.size,
+        sprite: projectileDef.sprite,
+        startX: monster.x, startY: monster.y, startZ: spawnHeight,
+        endX, endY, endZ, duration: lifetime,
+    });
+
+    state.projectiles.push({
+        id: projectileId,
+        startX: monster.x,
+        startY: monster.y,
+        startZ: spawnHeight,
+        x: monster.x,
+        y: monster.y,
+        z: spawnHeight,
+        directionX: forwardX,
+        directionY: forwardY,
+        directionZ: 0,
+        speed,
+        missileDamage: projectileDef.missileDamage,
+        hitSound: projectileDef.hitSound,
+        source: monster,
+        lifetime,
+        spawnTime: performance.now() / 1000,
+    });
+    playSound(projectileDef.sound);
+}
+
+/**
+ * Find the closest damageable thing / player within a forward cone. Used
+ * by the possessed monster's attacks — the user aims by looking.
+ */
+function findShootableInCone(source, dirX, dirY, range) {
+    let closestDistance = Infinity;
+    let closest = null;
+
+    const candidates = state.things;
+    for (let i = 0; i < candidates.length; i++) {
+        const thing = candidates[i];
+        if (thing === source) continue;
+        if (thing.collected) continue;
+        if (!SHOOTABLE.has(thing.type)) continue;
+        const dx = thing.x - source.x;
+        const dy = thing.y - source.y;
+        const d = Math.sqrt(dx * dx + dy * dy);
+        if (d === 0 || d > range) continue;
+        const dot = (dx * dirX + dy * dirY) / d;
+        if (dot < 0.92) continue;
+        if (d < closestDistance) {
+            closestDistance = d;
+            closest = thing;
+        }
+    }
+
+    // The normal player character is also a valid target when it's AI-driven.
+    if (!player.isDead && !player.isAiDead) {
+        const dx = player.x - source.x;
+        const dy = player.y - source.y;
+        const d = Math.sqrt(dx * dx + dy * dy);
+        if (d > 0 && d <= range) {
+            const dot = (dx * dirX + dy * dirY) / d;
+            if (dot >= 0.92 && d < closestDistance) {
+                closestDistance = d;
+                closest = player;
+            }
+        }
+    }
+
+    return closest;
+}
+
+function applyMonsterDamage(target, damage, source) {
+    if (target === player) {
+        damagePlayer(damage);
+        return;
+    }
+    damageEnemy(target, damage, source);
 }

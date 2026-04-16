@@ -60,6 +60,15 @@ export const player = {
     // Active powerups — each key is a powerup name, value is remaining duration
     // in seconds. Based on: linuxdoom-1.10/d_player.h:player_t.powers[]
     powerups: {},
+
+    // ── Body-swap / possession ────────────────────────────────────────
+    // When the user possesses a monster, the player object stays on the
+    // map and is AI-controlled. `isAiDead` marks the character as
+    // un-selectable in the picker without tripping the normal game-over
+    // path (which uses `isDead`). `ai` is lazily installed by
+    // `src/game/possession.js` when the player first becomes AI-driven.
+    isAiDead: false,
+    ai: null,
 };
 
 export const state = {

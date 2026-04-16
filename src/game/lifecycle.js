@@ -5,6 +5,7 @@
 import { state, player } from './state.js';
 import { MAPS, mapData, currentMap, setMapState } from '../data/maps.js';
 import { equipWeapon } from './combat/weapons.js';
+import { resetPossession } from './possession.js';
 import * as renderer from '../renderer/index.js';
 import {
     beginLevelTransition,
@@ -79,6 +80,9 @@ function clearSceneState() {
         delete player.powerups[name];
     }
     renderer.setPlayerDead(false);
+    // Return control to the normal player character; clear any player-AI
+    // state and the AI-dead flag carried over from a previous level.
+    resetPossession();
 }
 
 /** Level transition — keep inventory, clear keys (keys are per-level). */

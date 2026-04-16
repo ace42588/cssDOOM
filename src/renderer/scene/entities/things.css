@@ -15,6 +15,13 @@
     visibility: hidden;
 }
 
+/* Body-swap: hide the monster sprite the user is currently possessing so the
+   camera isn't looking at itself from inside. Applied as a CSS class rather
+   than `hidden` so it doesn't interact with the culling system. */
+.possessed-hidden {
+    visibility: hidden;
+}
+
 
 /* Sprites */
 

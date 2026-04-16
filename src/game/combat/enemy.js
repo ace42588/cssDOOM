@@ -28,6 +28,7 @@ import {
   normalizeDamageSource,
   resolveDamageTarget,
 } from './damage.js';
+import { getControlled, onPossessedDeath } from '../possession.js';
 import * as renderer from "../../renderer/index.js";
 import {
   getHorizontalDistance,
@@ -201,6 +202,12 @@ export function damageEnemy(target, damage, source) {
     // Target killed
     normalizedTarget.collected = true;
     renderer.killEnemy(thingIndex, normalizedTarget.type);
+
+    // Body-swap: if the user was possessing this monster, auto-cycle to
+    // the next living body (or trigger game-over if nothing's left).
+    if (normalizedTarget === getControlled()) {
+      onPossessedDeath(normalizedTarget);
+    }
 
     if (normalizedTarget.type === 2035) {
       playSound("DSBAREXP");

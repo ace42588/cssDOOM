@@ -15,6 +15,7 @@ import { state, player } from '../../game/state.js';
 import { sceneState } from '../dom.js';
 import { MAX_RENDER_DISTANCE } from '../../game/constants.js';
 import { spectatorActive } from '../../ui/spectator.js';
+import { getControlledEye } from '../../game/possession.js';
 
 // Culling flags — toggled by the debug menu
 export const culling = {
@@ -301,14 +302,17 @@ export function updateCulling() {
     let frustumCulled = 0;
     let skyCulled = 0;
 
-    const playerX = player.x;
-    const playerY = player.y;
+    // Culling runs from the camera's point of view, which may be the player
+    // character or a possessed monster.
+    const eye = getControlledEye();
+    const playerX = eye.x;
+    const playerY = eye.y;
     const distSq = MAX_RENDER_DISTANCE * MAX_RENDER_DISTANCE;
     const skyPlanes = culling.sky ? sceneState.skyWallPlanes : null;
 
     // Precompute frustum parameters
-    const sinAngle = Math.sin(player.angle);
-    const cosAngle = Math.cos(player.angle);
+    const sinAngle = Math.sin(eye.angle);
+    const cosAngle = Math.cos(eye.angle);
     const halfFov = Math.atan2(window.innerWidth / 2, sceneState.perspectiveValue) + FRUSTUM_MARGIN;
 
     // Cull walls

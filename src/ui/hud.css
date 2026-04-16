@@ -428,6 +428,18 @@
     opacity: 0.3;
 }
 
+/* ========================================================================
+   Body-swap: possession HUD adjustments
+   When the user is possessing a monster, hide weapon-specific HUD bits.
+   The health slot stays but shows the monster's HP (updated by hud.js).
+   ======================================================================== */
+#renderer.possessed #weapon,
+#renderer.possessed #hud-ammo,
+#renderer.possessed #hud-ammo-types,
+#renderer.possessed #hud-arms {
+    visibility: hidden;
+}
+
 #renderer.powerup-radsuit #viewport {
     filter: sepia(0.3) hue-rotate(60deg) brightness(1.1);
 }

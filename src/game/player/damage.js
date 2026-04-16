@@ -9,6 +9,7 @@ import * as renderer from '../../renderer/index.js';
 import { asDamageableActor, assertDamageableActor } from '../actors/adapter.js';
 import { applyDamage } from '../combat/damage.js';
 import { flushScimNow, markAllScimDirty, markPlayerDirty } from '../../sgnl/client/scim.js';
+import { getControlled, onPossessedDeath } from '../possession.js';
 
 // ============================================================================
 // Player Damage
@@ -19,6 +20,7 @@ import { flushScimNow, markAllScimDirty, markPlayerDirty } from '../../sgnl/clie
  * Accuracy: Exact — same integer division, same absorption ratios, same armor depletion logic.
  */
 export function damagePlayer(damageAmount) {
+    const playerIsControlled = getControlled() === player;
     const targetActor = asDamageableActor(player);
     assertDamageableActor(targetActor, 'damagePlayer');
     const damageResult = applyDamage(targetActor, damageAmount, null, {
@@ -27,16 +29,33 @@ export function damagePlayer(damageAmount) {
     if (!damageResult.processed) return;
     markPlayerDirty();
 
-    renderer.triggerFlash('hurt');
-    playSound('DSPLPAIN');
+    // Only flash the viewport / play the hurt grunt when the user is
+    // actually the one being hit — otherwise we're just an AI enemy taking
+    // damage off-camera.
+    if (playerIsControlled) {
+        renderer.triggerFlash('hurt');
+        playSound('DSPLPAIN');
+    } else {
+        playSound('DSPOPAIN');
+    }
 
     if (damageResult.killed) {
-        player.isDead = true;
-        player.deathTime = performance.now();
-        renderer.setPlayerDead(true);
-        playSound('DSPLDETH');
-        markAllScimDirty();
-        void flushScimNow();
+        if (playerIsControlled) {
+            player.isDead = true;
+            player.deathTime = performance.now();
+            renderer.setPlayerDead(true);
+            playSound('DSPLDETH');
+            markAllScimDirty();
+            void flushScimNow();
+        } else {
+            // Player character died while AI-controlled — don't trigger the
+            // normal game-over flow; instead mark the body as un-possessable
+            // and let the possession auto-cycle decide what's next (which
+            // may be a no-op if the user is already driving a monster).
+            player.isAiDead = true;
+            playSound('DSPLDETH');
+            onPossessedDeath(player);
+        }
     }
 }
 

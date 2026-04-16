@@ -30,6 +30,7 @@ import { tryUseLift } from '../game/mechanics/lifts.js';
 import { fireWeapon, equipWeapon, stopAutoFire } from '../game/combat/weapons.js';
 import { loadMap } from '../game/lifecycle.js';
 import { isMenuOpen, toggleMenu } from '../ui/menu.js';
+import { isBodySwapOpen, toggleBodySwap } from '../ui/body-swap.js';
 import { registerInputProvider } from './index.js';
 
 // Internal key state — not exposed to the game layer
@@ -50,9 +51,28 @@ export function initKeyboardInput() {
     // (use, fire, weapon switch). Repeated key events are ignored.
     document.addEventListener('keydown', event => {
 
-        // Escape toggles the menu overlay
+        // Escape closes whichever overlay is open; else toggles the menu.
         if (event.code === 'Escape') {
-            toggleMenu(!isMenuOpen());
+            if (isBodySwapOpen()) {
+                toggleBodySwap(false);
+            } else {
+                toggleMenu(!isMenuOpen());
+            }
+            event.preventDefault();
+            return;
+        }
+
+        // Body-swap picker: KeyB toggles, and while open it consumes input
+        // so no gameplay actions fire under the dialog.
+        if (isBodySwapOpen()) {
+            if (event.code === 'KeyB') {
+                toggleBodySwap(false);
+                event.preventDefault();
+            }
+            return;
+        }
+        if (event.code === 'KeyB') {
+            toggleBodySwap(true);
             event.preventDefault();
             return;
         }
@@ -143,6 +163,12 @@ export function initKeyboardInput() {
  * Converts boolean key flags into analog-style moveX/moveY/turn values.
  */
 function getInput() {
+    // Suppress gameplay input while the body-swap picker or menu is open so
+    // the game pauses rather than leaking held keys under the overlay.
+    if (isBodySwapOpen() || isMenuOpen()) {
+        return { moveX: 0, moveY: 0, turn: 0, run: false };
+    }
+
     let moveX = 0, moveY = 0, turn = 0;
 
     if (keys.up) moveY += 1;
