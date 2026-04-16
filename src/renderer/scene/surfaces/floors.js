@@ -2,7 +2,7 @@
  * Floor surface construction and manipulation.
  */
 
-import { mapData } from '../../../shared/maps.js';
+import { mapData } from '../../../data/maps.js';
 import { sceneState } from '../../dom.js';
 import { playSound } from '../../../audio/audio.js';
 import { buildHorizontalSurface } from './horizontal.js';

@@ -13,7 +13,7 @@
 
 import { NO_TEXTURE, SKY_TEXTURE } from '../constants.js';
 
-import { mapData } from '../../../shared/maps.js';
+import { mapData } from '../../../data/maps.js';
 import { sceneState } from '../../dom.js';
 import { appendToSector, getSectorLight } from '../sectors.js';
 

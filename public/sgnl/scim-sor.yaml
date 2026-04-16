@@ -1,0 +1,360 @@
+# System of Record: cssDOOM SCIM 2.0 entity push (Player + GameState).
+# Ingests resources whose schemas match the JSON files in this directory:
+#   scim-player-schema.json   → Player entity (+ child Powerup)
+#   scim-game-state-schema.json → GameState entity (+ child DoorState, LiftState, CrusherState)
+#
+# `type` must match the SCIM 2.0 Entity Push adapter registration in your SGNL tenant.
+# `adapterConfig` is base64("{}").
+
+displayName: cssDOOM game state (SCIM)
+icon: ""
+description: >-
+  Mutable game-session state pushed from the CSS DOOM client via SCIM 2.0.
+  Player and GameState are root entities correlated by correlationId;
+  child entities capture per-sector doors, lifts, crushers, and active powerups.
+address: "{{Input Required: SCIM 2.0 push endpoint base URL}}"
+defaultSyncFrequency: NEVER
+defaultSyncMinInterval: 1
+defaultApiCallFrequency: SECONDLY
+defaultApiCallMinInterval: 1
+type: "SCIM-2.0"
+adapterConfig: "e30="
+auth:
+  - bearer:
+      authToken: "{{Input Required: Bearer token for SCIM push endpoint}}"
+
+entities:
+  # ─── Root: Player ────────────────────────────────────────────────────
+  Player:
+    displayName: Player
+    externalId: "urn:cssdoom:params:scim:schemas:extension:player:2.0:Player"
+    description: Per-session player state (position, vitals, ammo, inventory, powerups).
+    syncFrequency: NEVER
+    syncMinInterval: 1
+    apiCallFrequency: SECONDLY
+    apiCallMinInterval: 1
+    pageSize: 50
+    pagesOrderedById: true
+    attributes:
+      - name: correlationId
+        externalId: correlationId
+        type: String
+        indexed: true
+        uniqueId: true
+      - name: mapName
+        externalId: mapName
+        type: String
+        indexed: true
+      - name: displayName
+        externalId: displayName
+        type: String
+        indexed: false
+      # position (complex → flattened)
+      - name: positionX
+        externalId: position.x
+        type: Double
+        indexed: false
+      - name: positionY
+        externalId: position.y
+        type: Double
+        indexed: false
+      - name: positionZ
+        externalId: position.z
+        type: Double
+        indexed: false
+      - name: positionAngle
+        externalId: position.angle
+        type: Double
+        indexed: false
+      # vitals (complex → flattened)
+      - name: health
+        externalId: vitals.health
+        type: Int64
+        indexed: true
+      - name: armor
+        externalId: vitals.armor
+        type: Int64
+        indexed: false
+      - name: armorType
+        externalId: vitals.armorType
+        type: Int64
+        indexed: false
+      - name: isDead
+        externalId: vitals.isDead
+        type: Bool
+        indexed: true
+      - name: deathTime
+        externalId: vitals.deathTime
+        type: Double
+        indexed: false
+      # ammo (complex → flattened)
+      - name: ammoBullets
+        externalId: ammo.bullets
+        type: Int64
+        indexed: false
+      - name: ammoShells
+        externalId: ammo.shells
+        type: Int64
+        indexed: false
+      - name: ammoRockets
+        externalId: ammo.rockets
+        type: Int64
+        indexed: false
+      - name: ammoCells
+        externalId: ammo.cells
+        type: Int64
+        indexed: false
+      # maxAmmo (complex → flattened)
+      - name: maxAmmoBullets
+        externalId: maxAmmo.bullets
+        type: Int64
+        indexed: false
+      - name: maxAmmoShells
+        externalId: maxAmmo.shells
+        type: Int64
+        indexed: false
+      - name: maxAmmoRockets
+        externalId: maxAmmo.rockets
+        type: Int64
+        indexed: false
+      - name: maxAmmoCells
+        externalId: maxAmmo.cells
+        type: Int64
+        indexed: false
+      # inventory (complex → flattened; multi-valued fields serialized as JSON strings)
+      - name: hasBackpack
+        externalId: inventory.hasBackpack
+        type: Bool
+        indexed: false
+      - name: currentWeapon
+        externalId: inventory.currentWeapon
+        type: Int64
+        indexed: false
+      - name: ownedWeapons
+        externalId: inventory.ownedWeapons
+        type: String
+        indexed: false
+      - name: collectedKeys
+        externalId: inventory.collectedKeys
+        type: String
+        indexed: true
+      - name: updatedAt
+        externalId: updatedAt
+        type: DateTime
+        indexed: true
+
+  # ─── Child of Player: Powerup ───────────────────────────────────────
+  Powerup:
+    displayName: Powerup
+    externalId: powerups
+    description: Active powerup with remaining duration (child of Player).
+    parent: Player
+    syncFrequency: NEVER
+    syncMinInterval: 1
+    apiCallFrequency: SECONDLY
+    apiCallMinInterval: 1
+    pageSize: 50
+    pagesOrderedById: true
+    attributes:
+      - name: name
+        externalId: name
+        type: String
+        indexed: true
+        uniqueId: true
+      - name: remainingSeconds
+        externalId: remainingSeconds
+        type: Double
+        indexed: false
+
+  # ─── Root: GameState ─────────────────────────────────────────────────
+  GameState:
+    displayName: GameState
+    externalId: "urn:cssdoom:params:scim:schemas:extension:state:2.0:GameState"
+    description: Per-session mutable world state (things, projectiles, mechanics).
+    syncFrequency: NEVER
+    syncMinInterval: 1
+    apiCallFrequency: SECONDLY
+    apiCallMinInterval: 1
+    pageSize: 50
+    pagesOrderedById: true
+    attributes:
+      - name: correlationId
+        externalId: correlationId
+        type: String
+        indexed: true
+        uniqueId: true
+      - name: mapName
+        externalId: mapName
+        type: String
+        indexed: true
+      - name: skillLevel
+        externalId: skillLevel
+        type: Int64
+        indexed: true
+      - name: thingCount
+        externalId: thingCount
+        type: Int64
+        indexed: false
+      - name: projectileCount
+        externalId: projectileCount
+        type: Int64
+        indexed: false
+      - name: nextProjectileId
+        externalId: nextProjectileId
+        type: Int64
+        indexed: false
+      - name: thingsSnapshot
+        externalId: thingsSnapshot
+        type: String
+        indexed: false
+      - name: projectilesSnapshot
+        externalId: projectilesSnapshot
+        type: String
+        indexed: false
+      - name: updatedAt
+        externalId: updatedAt
+        type: DateTime
+        indexed: true
+
+  # ─── Child of GameState: DoorState ──────────────────────────────────
+  DoorState:
+    displayName: Door state
+    externalId: doorState
+    description: Runtime door open/passable state per sector.
+    parent: GameState
+    syncFrequency: NEVER
+    syncMinInterval: 1
+    apiCallFrequency: SECONDLY
+    apiCallMinInterval: 1
+    pageSize: 100
+    pagesOrderedById: true
+    attributes:
+      - name: sectorIndex
+        externalId: sectorIndex
+        type: Int64
+        indexed: true
+        uniqueId: true
+      - name: open
+        externalId: open
+        type: Bool
+        indexed: true
+      - name: passable
+        externalId: passable
+        type: Bool
+        indexed: false
+      - name: keyRequired
+        externalId: keyRequired
+        type: String
+        indexed: true
+
+  # ─── Child of GameState: LiftState ──────────────────────────────────
+  LiftState:
+    displayName: Lift state
+    externalId: liftState
+    description: Runtime lift position and movement per sector.
+    parent: GameState
+    syncFrequency: NEVER
+    syncMinInterval: 1
+    apiCallFrequency: SECONDLY
+    apiCallMinInterval: 1
+    pageSize: 100
+    pagesOrderedById: true
+    attributes:
+      - name: sectorIndex
+        externalId: sectorIndex
+        type: Int64
+        indexed: true
+        uniqueId: true
+      - name: tag
+        externalId: tag
+        type: Int64
+        indexed: true
+      - name: currentHeight
+        externalId: currentHeight
+        type: Double
+        indexed: false
+      - name: targetHeight
+        externalId: targetHeight
+        type: Double
+        indexed: false
+      - name: lowerHeight
+        externalId: lowerHeight
+        type: Double
+        indexed: false
+      - name: upperHeight
+        externalId: upperHeight
+        type: Double
+        indexed: false
+      - name: moving
+        externalId: moving
+        type: Bool
+        indexed: true
+      - name: oneWay
+        externalId: oneWay
+        type: Bool
+        indexed: false
+
+  # ─── Child of GameState: CrusherState ───────────────────────────────
+  CrusherState:
+    displayName: Crusher state
+    externalId: crusherState
+    description: Runtime crusher position and damage timer per sector.
+    parent: GameState
+    syncFrequency: NEVER
+    syncMinInterval: 1
+    apiCallFrequency: SECONDLY
+    apiCallMinInterval: 1
+    pageSize: 100
+    pagesOrderedById: true
+    attributes:
+      - name: sectorIndex
+        externalId: sectorIndex
+        type: Int64
+        indexed: true
+        uniqueId: true
+      - name: active
+        externalId: active
+        type: Bool
+        indexed: true
+      - name: direction
+        externalId: direction
+        type: Int64
+        indexed: false
+      - name: currentHeight
+        externalId: currentHeight
+        type: Double
+        indexed: false
+      - name: topHeight
+        externalId: topHeight
+        type: Double
+        indexed: false
+      - name: crushHeight
+        externalId: crushHeight
+        type: Double
+        indexed: false
+      - name: damageTimer
+        externalId: damageTimer
+        type: Double
+        indexed: false
+
+relationships:
+  PlayerGameState:
+    name: PlayerGameState
+    displayName: Player to game state
+    fromAttribute: Player.correlationId
+    toAttribute: GameState.correlationId
+  DoorStateSector:
+    name: DoorStateSector
+    displayName: Door state links to map door by sector
+    fromAttribute: DoorState.sectorIndex
+    toAttribute: DoorState.sectorIndex
+  LiftStateSector:
+    name: LiftStateSector
+    displayName: Lift state links to map lift by sector
+    fromAttribute: LiftState.sectorIndex
+    toAttribute: LiftState.sectorIndex
+  CrusherStateSector:
+    name: CrusherStateSector
+    displayName: Crusher state links to map crusher by sector
+    fromAttribute: CrusherState.sectorIndex
+    toAttribute: CrusherState.sectorIndex

@@ -21,14 +21,14 @@
 
 import 'gamecontroller.js';
 import { input } from './index.js';
-import { state } from '../game/state.js';
-import { currentMap } from '../shared/maps.js';
+import { player } from '../game/state.js';
+import { currentMap } from '../data/maps.js';
 import { isMenuOpen, toggleMenu } from '../ui/menu.js';
 import { tryOpenDoor } from '../game/mechanics/doors.js';
 import { tryUseSwitch } from '../game/mechanics/switches.js';
 import { tryUseLift } from '../game/mechanics/lifts.js';
-import { fireWeapon, equipWeapon, stopAutoFire } from '../game/entities/weapons.js';
-import { loadMap } from '../shared/maps.js';
+import { fireWeapon, equipWeapon, stopAutoFire } from '../game/combat/weapons.js';
+import { loadMap } from '../game/lifecycle.js';
 import { registerInputProvider } from './index.js';
 
 const STICK_DEADZONE = 0.15;
@@ -86,8 +86,8 @@ function setupGamepad(gamepad) {
     gamepad.before('button0', () => {
         if (handleDeadRestart()) return;
         if (isMenuOpen()) return;
-        tryOpenDoor();
-        tryUseSwitch();
+        void tryOpenDoor();
+        void tryUseSwitch();
         tryUseLift();
     });
 
@@ -154,15 +154,15 @@ function setupGamepad(gamepad) {
 // ============================================================================
 
 function cycleWeapon(direction) {
-    const owned = [...state.ownedWeapons].sort((a, b) => a - b);
-    const currentIndex = owned.indexOf(state.currentWeapon);
+    const owned = [...player.ownedWeapons].sort((a, b) => a - b);
+    const currentIndex = owned.indexOf(player.currentWeapon);
     const nextIndex = (currentIndex + direction + owned.length) % owned.length;
     equipWeapon(owned[nextIndex]);
 }
 
 function handleDeadRestart() {
-    if (!state.isDead) return false;
-    if (performance.now() - state.deathTime > 4000) {
+    if (!player.isDead) return false;
+    if (performance.now() - player.deathTime > 4000) {
         loadMap(currentMap);
     }
     return true;

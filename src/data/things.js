@@ -1,0 +1,141 @@
+/**
+ * Canonical thing metadata shared by game and renderer.
+ */
+
+export const ENEMY_THING_TYPES = [9, 58, 3001, 3002, 3003, 3004];
+
+export const PICKUP_THING_TYPES = [
+  2001, 2002, 2003, 2004, 2005, 2006,
+  8,
+  2007, 2008, 2010, 2046, 2048, 2049,
+  2011, 2012, 2013, 2014, 2015, 2018, 2019,
+  2022, 2023, 2024, 2025, 2026, 2045,
+  5, 6, 13, 38, 39, 40,
+];
+
+export const SHOOTABLE_THING_TYPES = [...ENEMY_THING_TYPES, 2035];
+
+export const THING_HEALTH = {
+  3004: 20,
+  9: 30,
+  3001: 60,
+  3002: 150,
+  58: 150,
+  3003: 1000,
+  2035: 20,
+};
+
+export const SOLID_THING_RADIUS = {
+  25: 16,
+  26: 16,
+  27: 16,
+  28: 16,
+  29: 16,
+  35: 16,
+  43: 16,
+  44: 16,
+  45: 16,
+  46: 16,
+  47: 16,
+  48: 16,
+  54: 32,
+  55: 16,
+  56: 16,
+  57: 16,
+  70: 16,
+  2028: 16,
+};
+
+export const THING_SPRITES = {
+  9: "SPOSA1",
+  3001: "TROOA1",
+  3002: "SARGA1",
+  58: "SARGA1",
+  3003: "BOSSA1",
+  3004: "POSSA1",
+  3005: "HEADA1",
+  3006: "SKULA1",
+  2001: "SHOTA0",
+  2002: "MGUNA0",
+  2003: "LAUNA0",
+  2004: "PLASA0",
+  2005: "CSAWA0",
+  2006: "BFUGA0",
+  2007: "CLIPA0",
+  2008: "SHELA0",
+  2010: "ROCKA0",
+  2046: "BROKA0",
+  2048: "AMMOA0",
+  2049: "SBOXA0",
+  8: "BPAKA0",
+  2011: "STIMA0",
+  2012: "MEDIA0",
+  2013: "SOULA0",
+  2014: "BON1A0",
+  2015: "BON2A0",
+  2018: "ARM1A0",
+  2019: "ARM2A0",
+  2022: "PINVA0",
+  2023: "PSTRA0",
+  2024: "PINSA0",
+  2025: "SUITA0",
+  2026: "PMAPA0",
+  2045: "PVISA0",
+  5: "BKEYA0",
+  6: "YKEYA0",
+  13: "RKEYA0",
+  38: "RSKUA0",
+  39: "YSKUA0",
+  40: "BSKUA0",
+  10: "PLAYW0",
+  12: "PLAYW0",
+  15: "PLAYN0",
+  24: "POL5A0",
+  25: "POL1A0",
+  26: "POL6A0",
+  27: "POL4A0",
+  28: "POL2A0",
+  29: "POL3A0",
+  34: "CANDA0",
+  35: "CBRAA0",
+  43: "TRE1A0",
+  44: "TBLUA0",
+  45: "TGRNA0",
+  46: "TREDA0",
+  47: "SMITA0",
+  48: "ELECA0",
+  54: "TRE2A0",
+  55: "SMBLA0",
+  56: "SMGNA0",
+  57: "SMRDA0",
+  70: "FCANA0",
+  2028: "COLUA0",
+  2035: "BAR1A0",
+};
+
+export const THING_NAMES = {
+  3004: "zombieman",
+  9: "shotgun-guy",
+  3001: "imp",
+  3002: "demon",
+  58: "spectre",
+  3003: "baron",
+  2035: "barrel",
+  2013: "soulsphere",
+  2014: "health-bonus",
+  2015: "armor-bonus",
+  2024: "invisibility",
+  2018: "green-armor",
+  2019: "blue-armor",
+  46: "red-torch",
+};
+
+export const THING_CATEGORY = Object.freeze(
+  Object.fromEntries(
+    [
+      ...ENEMY_THING_TYPES.map((type) => [type, "enemy"]),
+      ...PICKUP_THING_TYPES.map((type) => [type, "pickup"]),
+      [2035, "barrel"],
+    ],
+  ),
+);

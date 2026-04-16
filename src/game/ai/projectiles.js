@@ -2,16 +2,20 @@
  * Projectile movement, collision detection, and explosion effects.
  */
 
-import { SHOOTABLE, ENEMY_RADIUS, EYE_HEIGHT } from '../constants.js';
+import { EYE_HEIGHT } from '../constants.js';
 
-import { state } from '../state.js';
-import { rayHitPoint, getFloorHeightAt } from '../physics.js';
-import { hasLineOfSight } from '../line-of-sight.js';
+import { state, player } from '../state.js';
+import { getFloorHeightAt } from '../physics/queries.js';
+import { rayHitPoint } from '../physics/collision.js';
+import { hasLineOfSight } from '../physics/line-of-sight.js';
 import { damagePlayer } from '../player/damage.js';
 import { playSound } from '../../audio/audio.js';
-import { damageEnemy } from './combat.js';
-import { rocketExplosion } from './weapons.js';
+import { damageEnemy } from '../combat/enemy.js';
+import { rocketExplosion } from '../combat/weapons.js';
+import { getThingDamageRadius, isShootableThing } from '../things/geometry.js';
 import * as renderer from '../../renderer/index.js';
+import { getHorizontalDistance, getTotalDistance, horizontalDistanceSquared, targetInRadius } from '../geometry.js';
+import { resolveTargetActor } from '../actors/math.js';
 
 // ============================================================================
 // Projectiles
@@ -49,12 +53,10 @@ export function updateProjectiles() {
         // Check wall collision: if line-of-sight from old to new position is
         // blocked, the projectile has hit a wall. Find the actual impact point
         // using rayHitPoint so the explosion appears on the wall surface.
-        if (!hasLineOfSight(projectile.x, projectile.y, newX, newY)) {
-            const moveX = newX - projectile.x;
-            const moveY = newY - projectile.y;
-            const moveDist = Math.sqrt(moveX * moveX + moveY * moveY);
-            const dirX = moveX / moveDist;
-            const dirY = moveY / moveDist;
+        if (!hasLineOfSight(projectile, { x: newX, y: newY })) {
+            const moveDist = getHorizontalDistance(projectile, { x: newX, y: newY });
+            const dirX = moveDist > 0 ? (newX - projectile.x) / moveDist : 0;
+            const dirY = moveDist > 0 ? (newY - projectile.y) / moveDist : 0;
             const hitPoint = rayHitPoint(projectile.x, projectile.y, dirX, dirY, moveDist);
             // Pull the explosion 25 units back from the wall so it doesn't clip into the surface
             const impactX = hitPoint ? hitPoint.x - dirX * 25 : projectile.x;
@@ -87,9 +89,7 @@ export function updateProjectiles() {
         // but splash damage from rocketExplosion can still self-damage)
         if (!projectile.isPlayerRocket) {
             // Check player collision using circular hit detection
-            const playerDeltaX = projectile.x - state.playerX;
-            const playerDeltaY = projectile.y - state.playerY;
-            if (playerDeltaX * playerDeltaX + playerDeltaY * playerDeltaY < PROJECTILE_HIT_RADIUS * PROJECTILE_HIT_RADIUS) {
+            if (targetInRadius(player, projectile, PROJECTILE_HIT_RADIUS)) {
                 spawnFireballExplosion(projectile.x, projectile.y, projectile.z);
                 // Roll damage on impact: (P_Random()%8+1) * missileDamage
                 // Based on: linuxdoom-1.10/p_inter.c:P_DamageMobj() missile damage
@@ -110,17 +110,16 @@ export function updateProjectiles() {
         for (let thingIndex = 0, count = allThings.length; thingIndex < count; thingIndex++) {
             const thing = allThings[thingIndex];
             if (thing.collected || thing === projectile.source) continue;
-            if (!SHOOTABLE.has(thing.type)) continue;
+            if (!isShootableThing(thing)) continue;
 
-            const enemyRadius = thing.ai ? thing.ai.radius : ENEMY_RADIUS;
-            const enemyDeltaX = projectile.x - thing.x;
-            const enemyDeltaY = projectile.y - thing.y;
-            if (enemyDeltaX * enemyDeltaX + enemyDeltaY * enemyDeltaY < (PROJECTILE_HIT_RADIUS + enemyRadius) * (PROJECTILE_HIT_RADIUS + enemyRadius)) {
+            const enemyRadius = getThingDamageRadius(thing);
+            const hitRadius = PROJECTILE_HIT_RADIUS + enemyRadius;
+            if (horizontalDistanceSquared(projectile, thing) < hitRadius * hitRadius) {
                 spawnFireballExplosion(projectile.x, projectile.y, projectile.z);
                 playSound(projectile.hitSound);
                 // Player rockets deal direct hit damage + splash damage in a radius
                 if (projectile.isPlayerRocket) {
-                    damageEnemy(thing, projectile.damage, 'player');
+                    damageEnemy(thing, projectile.damage, player);
                     rocketExplosion(projectile.x, projectile.y);
                 } else {
                     // Roll damage on impact: (P_Random()%8+1) * missileDamage
@@ -161,20 +160,11 @@ function spawnFireballExplosion(worldX, worldY, worldZ) {
  */
 export function spawnProjectile(enemy, projectileDefinition) {
     // Resolve target position — aim at the current AI target (player or enemy)
-    let targetX, targetY, targetFloorHeight;
-    if (enemy.ai.target === 'player') {
-        targetX = state.playerX;
-        targetY = state.playerY;
-        targetFloorHeight = state.floorHeight;
-    } else {
-        targetX = enemy.ai.target.x;
-        targetY = enemy.ai.target.y;
-        targetFloorHeight = getFloorHeightAt(targetX, targetY);
-    }
-
-    const deltaX = targetX - enemy.x;
-    const deltaY = targetY - enemy.y;
-    const horizontalDistance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+    const target = resolveTargetActor(enemy, player);
+    const targetX = target.x;
+    const targetY = target.y;
+    const targetFloorHeight =
+        target === player ? player.floorHeight : getFloorHeightAt(targetX, targetY);
 
     // Spawn at enemy position at roughly chest height (80% of eye height)
     const floorHeight = getFloorHeightAt(enemy.x, enemy.y);
@@ -183,10 +173,14 @@ export function spawnProjectile(enemy, projectileDefinition) {
     // Compute 3D direction vector aimed at the target's eye height
     const targetHeight = targetFloorHeight + EYE_HEIGHT;
     const deltaHeight = targetHeight - spawnHeight;
-    const totalDistance = Math.sqrt(horizontalDistance * horizontalDistance + deltaHeight * deltaHeight);
-    const directionX = deltaX / totalDistance;
-    const directionY = deltaY / totalDistance;
-    const directionZ = deltaHeight / totalDistance;
+    const totalDistance = getTotalDistance(
+        { x: enemy.x, y: enemy.y, z: spawnHeight },
+        { x: targetX, y: targetY, z: targetHeight },
+    );
+    const inv = totalDistance > 0 ? 1 / totalDistance : 0;
+    const directionX = (targetX - enemy.x) * inv;
+    const directionY = (targetY - enemy.y) * inv;
+    const directionZ = deltaHeight * inv;
 
     // Create the visual projectile via the renderer
     const speed = state.skillLevel === 5 ? projectileDefinition.speed * 2 : projectileDefinition.speed;

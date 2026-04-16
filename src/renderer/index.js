@@ -7,6 +7,8 @@
 
 // Camera
 export { updateCamera } from './scene/camera.js';
+export { updateHud, clearWeaponSlots, showHudMessage } from './hud.js';
+export { startCullingLoop, updateCulling } from './scene/culling.js';
 
 // Effects
 export { triggerFlash, showPowerup, flickerPowerup, hidePowerup } from './effects.js';

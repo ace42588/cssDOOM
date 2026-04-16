@@ -21,14 +21,14 @@
  */
 
 import { input } from './index.js';
-import { state } from '../game/state.js';
-import { currentMap } from '../shared/maps.js';
+import { player } from '../game/state.js';
+import { currentMap } from '../data/maps.js';
 import { WEAPONS } from '../game/constants.js';
 import { tryOpenDoor } from '../game/mechanics/doors.js';
 import { tryUseSwitch } from '../game/mechanics/switches.js';
 import { tryUseLift } from '../game/mechanics/lifts.js';
-import { fireWeapon, equipWeapon, stopAutoFire } from '../game/entities/weapons.js';
-import { loadMap } from '../shared/maps.js';
+import { fireWeapon, equipWeapon, stopAutoFire } from '../game/combat/weapons.js';
+import { loadMap } from '../game/lifecycle.js';
 import { isMenuOpen, toggleMenu } from '../ui/menu.js';
 import { registerInputProvider } from './index.js';
 
@@ -61,8 +61,8 @@ export function initKeyboardInput() {
         if (isMenuOpen()) return;
 
         // When dead, any key restarts after a 4-second cooldown
-        if (state.isDead) {
-            if (performance.now() - state.deathTime > 4000) loadMap(currentMap);
+        if (player.isDead) {
+            if (performance.now() - player.deathTime > 4000) loadMap(currentMap);
             return;
         }
 
@@ -87,7 +87,7 @@ export function initKeyboardInput() {
             // Strafe modifier: Z (arrows strafe instead of turn)
             case 'KeyZ': keys.strafe = true; break;
             // Use action: open doors and activate switches
-            case 'Space': tryOpenDoor(); tryUseSwitch(); tryUseLift(); break;
+            case 'Space': void tryOpenDoor(); void tryUseSwitch(); tryUseLift(); break;
             // Fire weapon: Alt or X
             case 'AltLeft': case 'AltRight': case 'KeyX': input.fireHeld = true; fireWeapon(); break;
             // Weapon selection: number keys 1-7

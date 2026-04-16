@@ -11,9 +11,9 @@
  * 2 = reached through one block).
  */
 
-import { mapData } from '../shared/maps.js';
-import { getSectorAt } from './physics.js';
-import { state } from './state.js';
+import { mapData } from '../data/maps.js';
+import { getSectorAt } from './physics/queries.js';
+import { player, state } from './state.js';
 
 const ML_SOUNDBLOCK = 0x40;
 
@@ -106,7 +106,7 @@ export function propagateSound() {
     alertedSectors.clear();
     if (!adjacency) return;
 
-    const playerSector = getSectorAt(state.playerX, state.playerY);
+    const playerSector = getSectorAt(player.x, player.y);
     if (!playerSector) return;
 
     const startIndex = playerSector.sectorIndex;

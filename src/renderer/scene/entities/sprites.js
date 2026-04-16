@@ -145,7 +145,7 @@ export function resetEnemy(thingIndex, thingType, x, y, floorHeight) {
 // ============================================================================
 
 /** Update a thing's position and floor height CSS custom properties. */
-export function updateThingPosition(thingIndex, x, y, floorHeight) {
+export function updateThingPosition(thingIndex, {x, y, floorHeight}) {
     const domData = sceneState.thingDom.get(thingIndex);
     if (!domData) return;
     domData.element.style.setProperty('--x', x);

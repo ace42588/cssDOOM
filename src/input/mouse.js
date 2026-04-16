@@ -9,7 +9,7 @@
  */
 
 import { input } from './index.js';
-import { fireWeapon, stopAutoFire } from '../game/entities/weapons.js';
+import { fireWeapon, stopAutoFire } from '../game/combat/weapons.js';
 import { spectatorActive } from '../ui/spectator.js';
 import { registerInputProvider } from './index.js';
 

@@ -7,15 +7,17 @@
  */
 
 import {
-    THING_HEALTH, ENEMIES, PICKUPS, SHOOTABLE,
+    THING_HEALTH, SHOOTABLE,
     ENEMY_AI_STATS, LINE_OF_SIGHT_CHECK_INTERVAL, SOLID_THING_RADIUS,
 } from '../../../game/constants.js';
 import { THING_SPRITES, THING_NAMES } from '../constants.js';
+import { THING_CATEGORY } from '../../../data/things.js';
 
 import { state } from '../../../game/state.js';
-import { mapData } from '../../../shared/maps.js';
+import { registerThingEntry } from '../../../game/things/registry.js';
+import { mapData } from '../../../data/maps.js';
 import { sceneState } from '../../dom.js';
-import { getFloorHeightAt, getSectorAt } from '../../../game/physics.js';
+import { getFloorHeightAt, getSectorAt } from '../../../game/physics/queries.js';
 import { appendToSector } from '../sectors.js';
 
 export function buildThings() {
@@ -35,7 +37,7 @@ export function buildThings() {
         const floorHeight = getFloorHeightAt(thing.x, thing.y);
 
         const thingContainer = document.createElement('div');
-        const category = ENEMIES.has(thing.type) ? 'enemy' : thing.type === 2035 ? 'barrel' : PICKUPS.has(thing.type) ? 'pickup' : 'decoration';
+        const category = THING_CATEGORY[thing.type] ?? 'decoration';
         thingContainer.className = category;
         thingContainer.style.setProperty('--x', thing.x);
         thingContainer.style.setProperty('--floor-z', floorHeight);
@@ -60,7 +62,7 @@ export function buildThings() {
         thingContainer.hidden = true;
         appendToSector(thingContainer, sector?.sectorIndex);
 
-        if (PICKUPS.has(thing.type) || SHOOTABLE.has(thing.type) || SOLID_THING_RADIUS[thing.type]) {
+        if (category === 'pickup' || SHOOTABLE.has(thing.type) || SOLID_THING_RADIUS[thing.type]) {
             // Game-only data — no DOM references
             const entry = {
                 x: thing.x,
@@ -87,7 +89,8 @@ export function buildThings() {
                 entry.ai = {
                     state: 'idle',
                     stateTime: 0,
-                    losTimer: Math.random() * LINE_OF_SIGHT_CHECK_INTERVAL,
+                    wakeCheckTimer: Math.random() * LINE_OF_SIGHT_CHECK_INTERVAL,
+                    rangedLosTimer: 0,
                     lastAttack: 0,
                     damageDealt: false,
                     reactionTimer: 0,
@@ -113,8 +116,7 @@ export function buildThings() {
                 }
             }
 
-            const thingIndex = state.things.length;
-            state.things.push(entry);
+            const thingIndex = registerThingEntry(entry);
 
             // Store DOM refs in renderer state, keyed by thing index
             sceneState.thingDom.set(thingIndex, { element: thingContainer, sprite: spriteElement });

@@ -1,12 +1,52 @@
-# cssDOOM
+# cssDOOM (fork)
 
 A recreation of the original DOOM rendered entirely with CSS. This isn't `<canvas>` or WebGL — every wall, floor, sprite, and effect is a styled DOM element positioned in 3D space via CSS transforms and `preserve-3d`.
 
 The game logic is written in JavaScript using id Software's [open-source release](https://github.com/id-Software/DOOM) as a reference.
 
-**[Play it live at cssdoom.wtf](https://cssdoom.wtf)**
+This repository is a **fork** of [Niels Leenheer’s cssDOOM](https://cssdoom.wtf). It keeps the same CSS-first rendering model while changing how the game is built, loaded, and optionally connected to policy infrastructure:
+
+- **[Vite](https://vitejs.dev/)** — dev server, production build, and HTTP proxies so the browser can call SGNL-style backends without CORS friction in local development.
+- **JSON maps** — levels are shipped as static assets under `public/maps/` (for example `E1M1.json`) and loaded with `fetch` at runtime. To slim or reshape exported map JSON in one pass, run `node scripts/merge-map-json.mjs` (writes files in place under `public/maps`).
+- **Optional [SGNL](https://sgnl.ai/) integration** — small clients for CAEP-style session events, SCIM-shaped player and game-state push, and SGNL Access Evaluations. Nothing is sent until the matching `VITE_*` variables are set; see **Local development** below.
+- **Modular engine** — gameplay is split into focused areas (movement, physics, combat, line specials, things registry, lifecycle) so behavior is easier to extend next to external identity and policy streams.
+
+The upstream demo and article remain the best introduction to the original project:
+
+**[Play the upstream build at cssdoom.wtf](https://cssdoom.wtf)**
 
 **[Read the blog post](https://nielsleenheer.com/articles/2026/css-is-doomed/)**
+
+
+## Local development
+
+```bash
+npm install
+npm run dev      # Vite dev server (optional SGNL proxies from .env)
+npm run build    # static output to dist/
+npm run preview  # serve dist/ with the same proxy configuration as dev
+```
+
+Add a `.env` file at the repo root for secrets and endpoints. Only names beginning with `VITE_` are inlined for the browser; keep tokens out of version control.
+
+| Variable | Role |
+| -------- | ---- |
+| `VITE_CAEP_RECEIVER_URL` | CAEP / SSF receiver; in dev the app posts to `POST /__caep/ssf` and Vite forwards to this URL |
+| `VITE_CAEP_BEARER_TOKEN` | Bearer token for CAEP posts |
+| `VITE_CAEP_SUBJECT_EMAIL` | Optional principal email; also used as the evaluation principal id when opening doors under SGNL Access |
+| `VITE_CAEP_SET_ISS` / `VITE_CAEP_SET_AUD` | Optional JWT `iss` / `aud` (defaults: page origin / `https://sgnl.ai`) |
+| `VITE_CAEP_USE_DIRECT_URL` | Post straight to the receiver from the browser (only if CORS allows it) |
+| `VITE_CAEP_USE_LOCAL_PROXY` | Use the Vite proxy during `vite preview` on localhost |
+| `VITE_SCIM_PUSH_URL` | SCIM push base URL; dev uses `/__scim/v2` with path rewriting |
+| `VITE_SCIM_BEARER_TOKEN` | Bearer token for SCIM |
+| `VITE_SCIM_USE_DIRECT_URL` / `VITE_SCIM_USE_LOCAL_PROXY` | Same idea as CAEP |
+| `VITE_SGNL_EVAL_URL` | SGNL Access Evaluations endpoint; dev uses `POST /__sgnl/access` as a proxy |
+| `VITE_SGNL_EVAL_TOKEN` | Bearer token for evaluations |
+| `VITE_SGNL_EVAL_USE_DIRECT_URL` / `VITE_SGNL_EVAL_USE_LOCAL_PROXY` | Same idea as CAEP |
+
+Example SCIM extensions and related YAML/JSON for treating the map or session as a system of record are in `public/sgnl/`. Product documentation: [help.sgnl.ai](https://help.sgnl.ai/) and [developer.sgnl.ai](https://developer.sgnl.ai/).
+
+On startup, the entry point can emit a CAEP *session established* event when the CAEP URL and token are configured. **Opening a door** calls Access Evaluations when the evaluation URL, token, and `VITE_CAEP_SUBJECT_EMAIL` (principal id) are all set; if anything is missing, evaluation is skipped and doors behave like vanilla DOOM. SCIM entity push is implemented in `src/sgnl/client/scim.js` but is **not** enabled in the default `index.js` (`initScimPush` is commented out) so fresh clones stay quiet until you opt in.
 
 
 ## How it works
@@ -170,4 +210,5 @@ A `@starting-style` transition of `opacity` combined with `display: none` on 3D-
 ## Credits
 
 - Game design, code, and samples by [id Software](https://github.com/id-Software/DOOM) (1993)
-- CSS 3D rendering and JavaScript reimplementation by Niels Leenheer
+- CSS 3D rendering and JavaScript reimplementation by [Niels Leenheer](https://nielsleenheer.com/)
+- This fork adds Vite-based tooling, JSON map loading, SGNL-oriented client hooks, and the refactored engine module layout described above

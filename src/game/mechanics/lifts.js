@@ -21,10 +21,11 @@
 
 import { USE_RANGE, LIFT_RAISE_DELAY, LIFT_USE_SPECIAL } from '../constants.js';
 
-import { state } from '../state.js';
-import { mapData } from '../../shared/maps.js';
+import { state, player } from '../state.js';
+import { mapData } from '../../data/maps.js';
 import { playSound } from '../../audio/audio.js';
 import * as renderer from '../../renderer/index.js';
+import { markGameStateDirty } from '../../sgnl/client/scim.js';
 
 const LIFT_MOVE_DURATION = 1.0; // seconds — must match renderer animation duration
 
@@ -106,6 +107,7 @@ export function activateLift(sectorIndex) {
     liftState.moveFrom = liftState.currentHeight;
     renderer.setLiftState(sectorIndex, 'lowered');
     playSound('DSPSTART');
+    markGameStateDirty();
 
     // One-way lifts (e.g. type 36) stay lowered permanently
     if (!liftState.oneWay) {
@@ -125,6 +127,7 @@ function raiseLift(sectorIndex) {
     liftState.moveFrom = liftState.currentHeight;
     renderer.setLiftState(sectorIndex, 'raised');
     playSound('DSPSTOP');
+    markGameStateDirty();
     liftState.timer = null;
 }
 
@@ -138,6 +141,7 @@ export function updatePlayerFromLift(timestamp) {
     for (let index = 0, count = liftEntries.length; index < count; index++) {
         const liftState = liftEntries[index].entry;
         if (!liftState.moving) continue;
+        markGameStateDirty();
 
         const elapsedSeconds = currentTimeSeconds - liftState.moveStart;
         const interpolation = Math.min(1, elapsedSeconds / LIFT_MOVE_DURATION);
@@ -177,7 +181,7 @@ export function checkWalkOverTriggers() {
         // sign > 0 → front side, sign < 0 → back side.
         const dx = trigger.end.x - trigger.start.x;
         const dy = trigger.end.y - trigger.start.y;
-        const side = (state.playerX - trigger.start.x) * dy - (state.playerY - trigger.start.y) * dx;
+        const side = (player.x - trigger.start.x) * dy - (player.y - trigger.start.y) * dx;
         const currentSide = side > 0;
 
         const previousSide = trigger._previousSide;
@@ -212,10 +216,10 @@ export function checkWalkOverTriggers() {
 export function tryUseLift() {
     if (!liftEntries.length) return;
 
-    const forwardX = -Math.sin(state.playerAngle);
-    const forwardY = Math.cos(state.playerAngle);
-    const checkX = state.playerX + forwardX * USE_RANGE / 2;
-    const checkY = state.playerY + forwardY * USE_RANGE / 2;
+    const forwardX = -Math.sin(player.angle);
+    const forwardY = Math.cos(player.angle);
+    const checkX = player.x + forwardX * USE_RANGE / 2;
+    const checkY = player.y + forwardY * USE_RANGE / 2;
 
     for (const wall of mapData.walls) {
         const linedef = mapData.linedefs[wall.linedefIndex];

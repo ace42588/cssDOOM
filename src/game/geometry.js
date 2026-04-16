@@ -85,3 +85,46 @@ export function rayHitsSegment(originX, originY, directionX, directionY, segment
     const segmentParameter = ((segmentStartX - originX) * directionY - (segmentStartY - originY) * directionX) / crossProductDenominator;
     return rayParameter > 0 && rayParameter < maxDistance && segmentParameter >= 0 && segmentParameter <= 1;
 }
+
+export function getDeltas(t1, t2) {
+    const deltaX = t2.x - t1.x;
+    const deltaY = t2.y - t1.y;
+    const deltaZ = (t2.z ?? 0) - (t1.z ?? 0);
+    return { deltaX, deltaY, deltaZ };
+}
+
+export function horizontalDistanceSquared(t1, t2) {
+    const deltaX = t2.x - t1.x;
+    const deltaY = t2.y - t1.y;
+    return deltaX * deltaX + deltaY * deltaY;
+}
+
+export function getHorizontalDistance(t1, t2) {
+    return Math.sqrt(horizontalDistanceSquared(t1, t2));
+}
+
+export function getTotalDistance(t1, t2) {
+    const { deltaX, deltaY, deltaZ } = getDeltas(t1, t2);
+    return Math.sqrt(deltaX * deltaX + deltaY * deltaY + deltaZ * deltaZ);
+}
+
+export function chebyshevDistance(t1, t2, radius) {
+    const { deltaX, deltaY } = getDeltas(t1, t2);
+    const dx = Math.abs(deltaX);
+    const dy = Math.abs(deltaY);
+    return Math.max(0, Math.max(dx, dy) - radius);
+}
+
+// circular hit detection
+export function targetInRadius(target, source, radius) {
+    return horizontalDistanceSquared(target, source) < radius * radius;
+}
+
+/**
+ * Random angular offset in radians, matching DOOM's (P_Random()-P_Random()) spread
+ * scaled to ±maxDegrees (triangular distribution in angle space).
+ */
+export function randomDoomSpreadAngleRadians(maxDegrees) {
+    const spreadFraction = (Math.floor(Math.random() * 256) - Math.floor(Math.random() * 256)) / 255;
+    return spreadFraction * (maxDegrees * Math.PI / 180);
+}

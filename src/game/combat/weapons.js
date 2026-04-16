@@ -2,23 +2,27 @@
  * Player weapon equipping, firing, hit detection, and rocket projectiles.
  */
 
-import { state } from '../state.js';
+import { state, player } from '../state.js';
 import {
     WEAPONS, SHOOTABLE, EYE_HEIGHT,
     PLAYER_ROCKET_SPEED, PLAYER_ROCKET_RADIUS,
-    ROCKET_SPLASH_DAMAGE, PLAYER_RADIUS,
-    BARREL_RADIUS,
+    ROCKET_SPLASH_DAMAGE,
 } from '../constants.js';
-import { getFloorHeightAt, rayHitPoint } from '../physics.js';
-import { hasLineOfSight } from '../line-of-sight.js';
+import { getFloorHeightAt } from '../physics/queries.js';
+import { rayHitPoint } from '../physics/collision.js';
+import { hasLineOfSight } from '../physics/line-of-sight.js';
 import { damagePlayer } from '../player/damage.js';
 import { hasPowerup } from '../player/pickups.js';
 import { playSound } from '../../audio/audio.js';
-import { setEnemyState } from './enemies.js';
-import { damageEnemy } from './combat.js';
+import { setEnemyState } from '../ai/state.js';
+import { damageEnemy } from './enemy.js';
+import { forEachRadiusDamageTarget } from './radius.js';
 import * as renderer from '../../renderer/index.js';
 import { input } from '../../input/index.js';
 import { propagateSound } from '../sound-propagation.js';
+import { getHorizontalDistance, randomDoomSpreadAngleRadians } from '../geometry.js';
+import { distance2 } from '../actors/math.js';
+import { markGameStateDirty, markPlayerDirty } from '../../sgnl/client/scim.js';
 
 // ============================================================================
 // Weapon Loading & Equipping
@@ -30,11 +34,12 @@ import { propagateSound } from '../sound-propagation.js';
  */
 export function equipWeapon(slot) {
     const weapon = WEAPONS[slot];
-    if (!weapon || !state.ownedWeapons.has(slot)) return;
+    if (!weapon || !player.ownedWeapons.has(slot)) return;
 
-    state.isFiring = false;
-    state.currentWeapon = slot;
+    player.isFiring = false;
+    player.currentWeapon = slot;
     renderer.switchWeapon(weapon.name, weapon.fireRate);
+    markPlayerDirty();
 }
 
 // ============================================================================
@@ -67,17 +72,18 @@ let automaticFireInterval = null;
  *    that the fire animation has completed before allowing re-fire.
  */
 export function fireWeapon() {
-    if (state.isDead || state.isFiring || renderer.isWeaponSwitching()) return;
+    if (player.isDead || player.isFiring || renderer.isWeaponSwitching()) return;
 
-    const weapon = WEAPONS[state.currentWeapon];
+    const weapon = WEAPONS[player.currentWeapon];
     if (!weapon) return;
 
     // Check ammo availability (some weapons like the fist have no ammo type)
-    if (weapon.ammoType && state.ammo[weapon.ammoType] < weapon.ammoPerShot) return;
+    if (weapon.ammoType && player.ammo[weapon.ammoType] < weapon.ammoPerShot) return;
 
     // Deduct ammo cost for this shot
-    if (weapon.ammoType) state.ammo[weapon.ammoType] -= weapon.ammoPerShot;
-    state.isFiring = true;
+    if (weapon.ammoType) player.ammo[weapon.ammoType] -= weapon.ammoPerShot;
+    markPlayerDirty();
+    player.isFiring = true;
 
     playSound(weapon.sound);
 
@@ -95,11 +101,12 @@ export function fireWeapon() {
     if (weapon.continuous && input.fireHeld) {
         stopAutoFire();
         automaticFireInterval = setInterval(() => {
-            if (!input.fireHeld || state.isDead || (weapon.ammoType && state.ammo[weapon.ammoType] < weapon.ammoPerShot)) {
+            if (!input.fireHeld || player.isDead || (weapon.ammoType && player.ammo[weapon.ammoType] < weapon.ammoPerShot)) {
                 stopAutoFire();
                 return;
             }
-            if (weapon.ammoType) state.ammo[weapon.ammoType] -= weapon.ammoPerShot;
+            if (weapon.ammoType) player.ammo[weapon.ammoType] -= weapon.ammoPerShot;
+            markPlayerDirty();
             playSound(weapon.sound);
             checkWeaponHit();
             alertNearbyEnemies();
@@ -108,7 +115,7 @@ export function fireWeapon() {
         // Non-continuous weapons: re-allow firing after the fire rate elapses.
         // If the fire button is still held, immediately fire again.
         setTimeout(() => {
-            state.isFiring = false;
+            player.isFiring = false;
             if (input.fireHeld) fireWeapon();
         }, weapon.fireRate);
     }
@@ -123,7 +130,7 @@ export function stopAutoFire() {
         clearInterval(automaticFireInterval);
         automaticFireInterval = null;
         renderer.stopFiring();
-        state.isFiring = false;
+        player.isFiring = false;
     }
 }
 
@@ -198,9 +205,9 @@ function findHitscanTarget(dirX, dirY, range) {
         if (thing.collected) continue;
         if (!SHOOTABLE.has(thing.type)) continue;
 
-        const deltaX = thing.x - state.playerX;
-        const deltaY = thing.y - state.playerY;
-        const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+        const deltaX = thing.x - player.x;
+        const deltaY = thing.y - player.y;
+        const distance = Math.sqrt(distance2(player, thing));
         if (distance > range) continue;
 
         const dotProduct = (deltaX * dirX + deltaY * dirY) / distance;
@@ -229,11 +236,11 @@ function findHitscanTarget(dirX, dirY, range) {
  * - 'rocket' (Rocket Launcher): Spawns a player projectile instead of hitscan.
  */
 function checkWeaponHit() {
-    const weapon = WEAPONS[state.currentWeapon];
+    const weapon = WEAPONS[player.currentWeapon];
     if (!weapon) return;
 
-    const forwardX = -Math.sin(state.playerAngle);
-    const forwardY = Math.cos(state.playerAngle);
+    const forwardX = -Math.sin(player.angle);
+    const forwardY = Math.cos(player.angle);
 
     if (weapon.damageType === 'rocket') {
         // Rocket launcher spawns a projectile instead of hitscan
@@ -248,18 +255,17 @@ function checkWeaponHit() {
         // Accuracy: Approximation — we use ±22.5° triangular spread via
         // (random - random) to approximate DOOM's (P_Random()-P_Random()).
         for (let pellet = 0; pellet < weapon.pellets; pellet++) {
-            const spreadFraction = (Math.floor(Math.random() * 256) - Math.floor(Math.random() * 256)) / 255;
-            const spreadAngle = spreadFraction * (22.5 * Math.PI / 180); // ±22.5°
-            const pelletAngle = state.playerAngle + spreadAngle;
+            const spreadAngle = randomDoomSpreadAngleRadians(22.5);
+            const pelletAngle = player.angle + spreadAngle;
             const pelletDirX = -Math.sin(pelletAngle);
             const pelletDirY = Math.cos(pelletAngle);
 
             const target = findHitscanTarget(pelletDirX, pelletDirY, weapon.range);
-            if (target && hasLineOfSight(state.playerX, state.playerY, target.x, target.y)) {
+            if (target && hasLineOfSight(player, target)) {
                 spawnPuff(target.x, target.y, getFloorHeightAt(target.x, target.y));
-                damageEnemy(target, rollWeaponDamage('hitscan'), 'player');
+                damageEnemy(target, rollWeaponDamage('hitscan'), player);
             } else {
-                const wallHit = rayHitPoint(state.playerX, state.playerY, pelletDirX, pelletDirY, weapon.range);
+                const wallHit = rayHitPoint(player.x, player.y, pelletDirX, pelletDirY, weapon.range);
                 if (wallHit) spawnPuff(wallHit.x, wallHit.y);
             }
         }
@@ -269,15 +275,15 @@ function checkWeaponHit() {
     // Melee and single-ray hitscan weapons
     const target = findHitscanTarget(forwardX, forwardY, weapon.range);
 
-    if (target && hasLineOfSight(state.playerX, state.playerY, target.x, target.y)) {
+    if (target && hasLineOfSight(player, target)) {
         if (weapon.hitscan) spawnPuff(target.x, target.y, getFloorHeightAt(target.x, target.y));
-        damageEnemy(target, rollWeaponDamage(weapon.damageType), 'player');
+        damageEnemy(target, rollWeaponDamage(weapon.damageType), player);
         return;
     }
 
     // No target or target behind a wall — spawn wall puff
     if (weapon.hitscan) {
-        const wallHitPoint = rayHitPoint(state.playerX, state.playerY, forwardX, forwardY, weapon.range);
+        const wallHitPoint = rayHitPoint(player.x, player.y, forwardX, forwardY, weapon.range);
         if (wallHitPoint) spawnPuff(wallHitPoint.x, wallHitPoint.y);
     }
 }
@@ -297,9 +303,9 @@ function checkWeaponHit() {
  * fixed-point P_MobjThinker().
  */
 function spawnPlayerRocket(forwardX, forwardY) {
-    const spawnX = state.playerX;
-    const spawnY = state.playerY;
-    const spawnZ = state.floorHeight + EYE_HEIGHT * 0.8;
+    const spawnX = player.x;
+    const spawnY = player.y;
+    const spawnZ = player.floorHeight + EYE_HEIGHT * 0.8;
 
     const lifetime = 5;
     const endX = spawnX + forwardX * PLAYER_ROCKET_SPEED * lifetime;
@@ -327,11 +333,12 @@ function spawnPlayerRocket(forwardX, forwardY) {
         speed: PLAYER_ROCKET_SPEED,
         damage: rollWeaponDamage('rocket'),
         hitSound: 'DSBAREXP',
-        source: 'player',
+        source: player,
         lifetime,
         isPlayerRocket: true,
         spawnTime: performance.now() / 1000,
     });
+    markGameStateDirty();
 }
 
 /**
@@ -343,35 +350,14 @@ function spawnPlayerRocket(forwardX, forwardY) {
  * Accuracy: Exact — uses DOOM's subtractive falloff: damage = splashDamage - dist.
  */
 export function rocketExplosion(impactX, impactY) {
-    // Based on: linuxdoom-1.10/p_map.c:PIT_RadiusAttack()
-    // DOOM uses Chebyshev distance (max of abs deltas) minus target radius
-
-    // Damage the player (rockets can self-damage)
-    const playerDX = Math.abs(state.playerX - impactX);
-    const playerDY = Math.abs(state.playerY - impactY);
-    const playerDist = Math.max(0, Math.max(playerDX, playerDY) - PLAYER_RADIUS);
-    if (playerDist < ROCKET_SPLASH_DAMAGE
-        && hasLineOfSight(impactX, impactY, state.playerX, state.playerY)) {
-        damagePlayer(ROCKET_SPLASH_DAMAGE - playerDist);
-    }
-
-    // Damage nearby things
-    const allThings = state.things;
-    for (let i = 0, len = allThings.length; i < len; i++) {
-        const thing = allThings[i];
-        if (thing.collected) continue;
-        if (!SHOOTABLE.has(thing.type)) continue;
-
-        const dx = Math.abs(thing.x - impactX);
-        const dy = Math.abs(thing.y - impactY);
-        const thingRadius = thing.ai ? thing.ai.radius : BARREL_RADIUS;
-        const dist = Math.max(0, Math.max(dx, dy) - thingRadius);
-        if (dist >= ROCKET_SPLASH_DAMAGE) continue;
-
-        if (!hasLineOfSight(impactX, impactY, thing.x, thing.y)) continue;
-
-        damageEnemy(thing, ROCKET_SPLASH_DAMAGE - dist, 'player');
-    }
+    const impact = { x: impactX, y: impactY };
+    forEachRadiusDamageTarget(impact, ROCKET_SPLASH_DAMAGE, (target, damage) => {
+        if (target === player) {
+            damagePlayer(damage);
+            return;
+        }
+        damageEnemy(target, damage, player);
+    });
 }
 
 // ============================================================================
@@ -385,10 +371,10 @@ export function rocketExplosion(impactX, impactY) {
  */
 function spawnPuff(hitX, hitY, hitFloorHeight) {
     // Pull back 8 units toward the player so the puff doesn't clip into the wall
-    const toPlayerX = state.playerX - hitX;
-    const toPlayerY = state.playerY - hitY;
-    const distanceToPlayer = Math.sqrt(toPlayerX * toPlayerX + toPlayerY * toPlayerY);
+    const distanceToPlayer = getHorizontalDistance({ x: hitX, y: hitY }, player);
     if (distanceToPlayer > 1) {
+        const toPlayerX = player.x - hitX;
+        const toPlayerY = player.y - hitY;
         hitX += (toPlayerX / distanceToPlayer) * 8;
         hitY += (toPlayerY / distanceToPlayer) * 8;
     }

@@ -1,0 +1,312 @@
+{
+  "schemas": [
+    "urn:ietf:params:scim:schemas:core:2.0:Schema"
+  ],
+  "id": "urn:cssdoom:params:scim:schemas:extension:player:2.0:Player",
+  "name": "Player",
+  "description": "CSS DOOM player persistence schema.",
+  "attributes": [
+    {
+      "name": "mapName",
+      "type": "string",
+      "multiValued": false,
+      "description": "Current map identifier (for example E1M1).",
+      "required": true,
+      "caseExact": false,
+      "mutability": "readWrite",
+      "returned": "default",
+      "uniqueness": "none"
+    },
+    {
+      "name": "correlationId",
+      "type": "string",
+      "multiValued": false,
+      "description": "Shared correlation identifier linking player, game state, and session context.",
+      "required": true,
+      "caseExact": true,
+      "mutability": "readWrite",
+      "returned": "default",
+      "uniqueness": "none"
+    },
+    {
+      "name": "displayName",
+      "type": "string",
+      "multiValued": false,
+      "description": "Player display label for SGNL/SCIM views.",
+      "required": false,
+      "caseExact": false,
+      "mutability": "readWrite",
+      "returned": "default",
+      "uniqueness": "none"
+    },
+    {
+      "name": "position",
+      "type": "complex",
+      "multiValued": false,
+      "description": "Player world-space position and orientation.",
+      "required": true,
+      "mutability": "readWrite",
+      "returned": "default",
+      "uniqueness": "none",
+      "subAttributes": [
+        {
+          "name": "x",
+          "type": "decimal",
+          "multiValued": false,
+          "required": true,
+          "mutability": "readWrite",
+          "returned": "default"
+        },
+        {
+          "name": "y",
+          "type": "decimal",
+          "multiValued": false,
+          "required": true,
+          "mutability": "readWrite",
+          "returned": "default"
+        },
+        {
+          "name": "z",
+          "type": "decimal",
+          "multiValued": false,
+          "required": true,
+          "mutability": "readWrite",
+          "returned": "default"
+        },
+        {
+          "name": "angle",
+          "type": "decimal",
+          "multiValued": false,
+          "required": true,
+          "mutability": "readWrite",
+          "returned": "default"
+        }
+      ]
+    },
+    {
+      "name": "vitals",
+      "type": "complex",
+      "multiValued": false,
+      "description": "Player health/armor/death state.",
+      "required": true,
+      "mutability": "readWrite",
+      "returned": "default",
+      "uniqueness": "none",
+      "subAttributes": [
+        {
+          "name": "health",
+          "type": "integer",
+          "multiValued": false,
+          "required": true,
+          "mutability": "readWrite",
+          "returned": "default"
+        },
+        {
+          "name": "armor",
+          "type": "integer",
+          "multiValued": false,
+          "required": true,
+          "mutability": "readWrite",
+          "returned": "default"
+        },
+        {
+          "name": "armorType",
+          "type": "integer",
+          "multiValued": false,
+          "required": true,
+          "mutability": "readWrite",
+          "returned": "default"
+        },
+        {
+          "name": "isDead",
+          "type": "boolean",
+          "multiValued": false,
+          "required": true,
+          "mutability": "readWrite",
+          "returned": "default"
+        },
+        {
+          "name": "deathTime",
+          "type": "decimal",
+          "multiValued": false,
+          "required": false,
+          "mutability": "readWrite",
+          "returned": "default"
+        }
+      ]
+    },
+    {
+      "name": "ammo",
+      "type": "complex",
+      "multiValued": false,
+      "description": "Current ammo counts.",
+      "required": true,
+      "mutability": "readWrite",
+      "returned": "default",
+      "uniqueness": "none",
+      "subAttributes": [
+        {
+          "name": "bullets",
+          "type": "integer",
+          "multiValued": false,
+          "required": true,
+          "mutability": "readWrite",
+          "returned": "default"
+        },
+        {
+          "name": "shells",
+          "type": "integer",
+          "multiValued": false,
+          "required": true,
+          "mutability": "readWrite",
+          "returned": "default"
+        },
+        {
+          "name": "rockets",
+          "type": "integer",
+          "multiValued": false,
+          "required": true,
+          "mutability": "readWrite",
+          "returned": "default"
+        },
+        {
+          "name": "cells",
+          "type": "integer",
+          "multiValued": false,
+          "required": true,
+          "mutability": "readWrite",
+          "returned": "default"
+        }
+      ]
+    },
+    {
+      "name": "maxAmmo",
+      "type": "complex",
+      "multiValued": false,
+      "description": "Maximum ammo capacities.",
+      "required": true,
+      "mutability": "readWrite",
+      "returned": "default",
+      "uniqueness": "none",
+      "subAttributes": [
+        {
+          "name": "bullets",
+          "type": "integer",
+          "multiValued": false,
+          "required": true,
+          "mutability": "readWrite",
+          "returned": "default"
+        },
+        {
+          "name": "shells",
+          "type": "integer",
+          "multiValued": false,
+          "required": true,
+          "mutability": "readWrite",
+          "returned": "default"
+        },
+        {
+          "name": "rockets",
+          "type": "integer",
+          "multiValued": false,
+          "required": true,
+          "mutability": "readWrite",
+          "returned": "default"
+        },
+        {
+          "name": "cells",
+          "type": "integer",
+          "multiValued": false,
+          "required": true,
+          "mutability": "readWrite",
+          "returned": "default"
+        }
+      ]
+    },
+    {
+      "name": "inventory",
+      "type": "complex",
+      "multiValued": false,
+      "description": "Weapons, keys, and backpack state.",
+      "required": true,
+      "mutability": "readWrite",
+      "returned": "default",
+      "uniqueness": "none",
+      "subAttributes": [
+        {
+          "name": "hasBackpack",
+          "type": "boolean",
+          "multiValued": false,
+          "required": true,
+          "mutability": "readWrite",
+          "returned": "default"
+        },
+        {
+          "name": "currentWeapon",
+          "type": "integer",
+          "multiValued": false,
+          "required": true,
+          "mutability": "readWrite",
+          "returned": "default"
+        },
+        {
+          "name": "ownedWeapons",
+          "type": "integer",
+          "multiValued": true,
+          "description": "Weapon slot numbers currently owned.",
+          "required": true,
+          "mutability": "readWrite",
+          "returned": "default"
+        },
+        {
+          "name": "collectedKeys",
+          "type": "string",
+          "multiValued": true,
+          "description": "Collected key colors.",
+          "required": true,
+          "mutability": "readWrite",
+          "returned": "default"
+        }
+      ]
+    },
+    {
+      "name": "powerups",
+      "type": "complex",
+      "multiValued": true,
+      "description": "Active powerups and remaining duration in seconds.",
+      "required": false,
+      "mutability": "readWrite",
+      "returned": "default",
+      "uniqueness": "none",
+      "subAttributes": [
+        {
+          "name": "name",
+          "type": "string",
+          "multiValued": false,
+          "required": true,
+          "caseExact": false,
+          "mutability": "readWrite",
+          "returned": "default"
+        },
+        {
+          "name": "remainingSeconds",
+          "type": "decimal",
+          "multiValued": false,
+          "required": true,
+          "mutability": "readWrite",
+          "returned": "default"
+        }
+      ]
+    },
+    {
+      "name": "updatedAt",
+      "type": "dateTime",
+      "multiValued": false,
+      "description": "Last persistence update time.",
+      "required": true,
+      "mutability": "readWrite",
+      "returned": "default",
+      "uniqueness": "none"
+    }
+  ]
+}

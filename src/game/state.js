@@ -1,28 +1,38 @@
+import { MOVE_SPEED, PLAYER_HEIGHT, PLAYER_RADIUS } from './constants.js';
+
 /**
  * Mutable game state accessible by all modules.
  *
  * This is the shared data bridge between game logic and renderer.
  * Game logic writes gameplay fields (positions, health, AI).
  * Renderer reads them and updates visuals accordingly.
+ *
+ * Migration note: actor adapters in `game/actors/adapter.js` provide
+ * unified signatures across player/enemy/thing systems while this state shape
+ * remains unchanged.
+ *
+ * Future entity-model rewrite should begin only after actor-first boundary
+ * criteria are met and validated by `game/actors/regressions.js`.
  */
 
-export const state = {
+export const player = {
     // Skill level 1-5 (maps to DOOM flag bits for thing spawning)
-    skillLevel: 1,
-
-    // ── Player position & orientation ─────────────────────────────────
+    // ── Position & orientation ────────────────────────────────────────
     // World-space coordinates in DOOM units. X/Y are the horizontal plane;
     // Z is the vertical (eye height above the map origin).
-    // playerAngle is in radians: 0 = north, increasing = counter-clockwise.
-    playerX: 0,
-    playerY: 0,
-    playerZ: 0,
-    playerAngle: 0,
+    // Angle is in radians: 0 = north, increasing = counter-clockwise.
+    x: 0,
+    y: 0,
+    z: 0,
+    angle: 0,
     // The floor height of the sector the player currently stands on.
-    // playerZ is derived from this plus the eye-height offset.
+    // z is derived from this plus the eye-height offset.
     floorHeight: 0,
+    speed: MOVE_SPEED,
+    radius: PLAYER_RADIUS,
+    height: PLAYER_HEIGHT,
 
-    // ── Player stats & combat ─────────────────────────────────────────
+    // ── Stats & combat ────────────────────────────────────────────────
     // Current health, armor, and ammo counts — displayed in the HUD
     // and modified by pickups, damage, and weapon fire.
     health: 100,
@@ -50,6 +60,11 @@ export const state = {
     // Active powerups — each key is a powerup name, value is remaining duration
     // in seconds. Based on: linuxdoom-1.10/d_player.h:player_t.powers[]
     powerups: {},
+};
+
+export const state = {
+    // Skill level 1-5 (maps to DOOM flag bits for thing spawning)
+    skillLevel: 1,
 
     // ── Doors & lifts ─────────────────────────────────────────────────
     // Maps from sector index → state object tracking open/close animation

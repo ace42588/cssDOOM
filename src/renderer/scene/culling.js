@@ -11,7 +11,7 @@
  * partially overlap the view.
  */
 
-import { state } from '../../game/state.js';
+import { state, player } from '../../game/state.js';
 import { sceneState } from '../dom.js';
 import { MAX_RENDER_DISTANCE } from '../../game/constants.js';
 import { spectatorActive } from '../../ui/spectator.js';
@@ -238,7 +238,7 @@ export function debugSkyTrace(wallId) {
     const el = sceneState.wallElements.find(e => e.id === wallId);
     if (!el) { console.log(`Wall ${wallId} not found in wallElements`); return; }
 
-    const playerX = state.playerX, playerY = state.playerY;
+    const playerX = player.x, playerY = player.y;
     const x = el._midX, y = el._midY;
     const z = el._wall ? el._wall.topHeight : 0;
     const dx = x - playerX, dy = y - playerY;
@@ -301,14 +301,14 @@ export function updateCulling() {
     let frustumCulled = 0;
     let skyCulled = 0;
 
-    const playerX = state.playerX;
-    const playerY = state.playerY;
+    const playerX = player.x;
+    const playerY = player.y;
     const distSq = MAX_RENDER_DISTANCE * MAX_RENDER_DISTANCE;
     const skyPlanes = culling.sky ? sceneState.skyWallPlanes : null;
 
     // Precompute frustum parameters
-    const sinAngle = Math.sin(state.playerAngle);
-    const cosAngle = Math.cos(state.playerAngle);
+    const sinAngle = Math.sin(player.angle);
+    const cosAngle = Math.cos(player.angle);
     const halfFov = Math.atan2(window.innerWidth / 2, sceneState.perspectiveValue) + FRUSTUM_MARGIN;
 
     // Cull walls

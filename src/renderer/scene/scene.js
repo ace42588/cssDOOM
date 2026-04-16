@@ -8,10 +8,6 @@
  */
 
 import { dom, sceneState } from '../dom.js';
-import { clearSpatialGrid, buildSpatialGrid } from '../../game/spatial-grid.js';
-import { initDoors } from '../../game/mechanics/doors.js';
-import { initLifts } from '../../game/mechanics/lifts.js';
-import { initCrushers } from '../../game/mechanics/crushers.js';
 import { updateCamera } from './camera.js';
 import { buildSectorContainers } from './sectors.js';
 import { updateCulling } from './culling.js';
@@ -39,7 +35,6 @@ export function teardownScene() {
     sceneState.crusherContainers.clear();
     sceneState.thingDom.clear();
     sceneState.projectileDom.clear();
-    clearSpatialGrid();
     // Atomic DOM clear — single reflow instead of one per child removal
     dom.scene.replaceChildren();
     const oldSvg = document.getElementById('clip-svgs');
@@ -59,11 +54,6 @@ export async function buildScene() {
     buildPlayer();
 
     await preloadTextures();
-
-    initDoors();
-    initLifts();
-    initCrushers();
-    buildSpatialGrid();
     updateCamera();
 
     // Run culling synchronously before the first frame so the browser

@@ -7,7 +7,7 @@
  * so callers don't need to know about grid internals.
  */
 
-import { mapData } from '../shared/maps.js';
+import { mapData } from '../data/maps.js';
 
 const CELL_SIZE = 128;
 

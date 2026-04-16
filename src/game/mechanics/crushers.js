@@ -19,11 +19,12 @@
  *   walk-over trigger (W1/WR types 6, 25, 73, 77).
  */
 
-import { state } from '../state.js';
-import { mapData } from '../../shared/maps.js';
-import { getSectorAt } from '../physics.js';
+import { state, player } from '../state.js';
+import { mapData } from '../../data/maps.js';
+import { getSectorAt } from '../physics/queries.js';
 import { damagePlayer } from '../player/damage.js';
 import * as renderer from '../../renderer/index.js';
+import { markGameStateDirty } from '../../sgnl/client/scim.js';
 
 const CRUSHER_SLOW_SPEED = 32;  // Map units per second (DOOM: 1 unit per tic at 35fps ≈ 35/s, we use 32)
 const CRUSHER_FAST_SPEED = 64;  // Fast crushers move at double speed
@@ -70,6 +71,7 @@ export function activateCrusher(sectorIndex) {
     if (!entry || entry.active) return;
     entry.active = true;
     entry.direction = -1; // start by lowering
+    markGameStateDirty();
 }
 
 /**
@@ -80,6 +82,7 @@ export function updateCrushers(deltaTime) {
     for (let i = 0; i < crusherEntries.length; i++) {
         const entry = crusherEntries[i];
         if (!entry.active) continue;
+        markGameStateDirty();
 
         const moveAmount = entry.speed * deltaTime * entry.direction;
         entry.currentHeight += moveAmount;
@@ -111,14 +114,14 @@ export function updateCrushers(deltaTime) {
 function checkCrusherDamage(entry, deltaTime) {
     // Only damage when the ceiling is low enough to crush the player
     // Player height is approximately EYE_HEIGHT (41 units)
-    const playerCeilingClearance = entry.currentHeight - state.floorHeight;
+    const playerCeilingClearance = entry.currentHeight - player.floorHeight;
     if (playerCeilingClearance > 41) {
         entry.damageTimer = 0;
         return;
     }
 
     // Check if the player is actually in this sector
-    const playerSector = getSectorAt(state.playerX, state.playerY);
+    const playerSector = getSectorAt(player.x, player.y);
     const playerInSector = playerSector && playerSector.sectorIndex === entry.sectorIndex;
 
     if (!playerInSector) {

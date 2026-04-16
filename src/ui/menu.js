@@ -3,10 +3,10 @@
  */
 
 import { state } from '../game/state.js';
-import { currentMap } from '../shared/maps.js';
+import { currentMap } from '../data/maps.js';
 import { dom } from '../renderer/dom.js';
-import { MAPS } from '../shared/maps.js';
-import { loadMap } from '../shared/maps.js';
+import { MAPS } from '../data/maps.js';
+import { loadMap } from '../game/lifecycle.js';
 
 const menuLevelList = document.querySelector('.menu-level-list');
 

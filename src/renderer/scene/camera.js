@@ -36,7 +36,7 @@
  * --player-z) and avoids JavaScript reflow overhead.
  */
 
-import { state } from '../../game/state.js';
+import { player } from '../../game/state.js';
 import { dom } from '../dom.js';
 
 /**
@@ -48,23 +48,23 @@ export function updateCamera() {
     const viewportStyle = dom.viewport.style;
 
     // Horizontal position along the east-west axis
-    viewportStyle.setProperty('--player-x', state.playerX);
+    viewportStyle.setProperty('--player-x', player.x);
 
     // Horizontal position along the north-south axis
-    viewportStyle.setProperty('--player-y', state.playerY);
+    viewportStyle.setProperty('--player-y', player.y);
 
     // Vertical position / height
-    viewportStyle.setProperty('--player-z', state.playerZ);
+    viewportStyle.setProperty('--player-z', player.z);
 
     // Floor height at player position
-    viewportStyle.setProperty('--player-floor', state.floorHeight || 0);
+    viewportStyle.setProperty('--player-floor', player.floorHeight || 0);
 
     // Viewing angle in radians (0 = north, increasing clockwise)
-    viewportStyle.setProperty('--player-angle', state.playerAngle);
+    viewportStyle.setProperty('--player-angle', player.angle);
 
     // Toggle firing class on player marker for spectator mode visual feedback
     const marker = document.querySelector('#player > .marker');
     if (marker) {
-        marker.classList.toggle('firing', state.isFiring);
+        marker.classList.toggle('firing', player.isFiring);
     }
 }
