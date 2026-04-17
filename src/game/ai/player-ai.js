@@ -15,7 +15,6 @@ import {
     ENEMIES,
     ENEMY_RADIUS,
     LINE_OF_SIGHT_CHECK_INTERVAL,
-    MAX_RENDER_DISTANCE,
     WEAPONS,
 } from '../constants.js';
 import { state, player, debug } from '../state.js';

@@ -1,0 +1,31 @@
+{
+  "schemas": [
+    "urn:ietf:params:scim:schemas:core:2.0:Schema"
+  ],
+  "id": "urn:cssdoom:params:scim:schemas:extension:key:2.0:Key",
+  "name": "Key",
+  "description": "Runtime state for a key pickup (blue/yellow/red card or skull). `userName` is `key:<MAP>:<mapThingIndex>` matching the SGNL map adapter `id`.",
+  "attributes": [
+    {
+      "name": "pickupId",
+      "type": "string",
+      "description": "Canonical asset id (key:<MAP>:<mapThingIndex>).",
+      "required": true,
+      "caseExact": true,
+      "mutability": "readWrite",
+      "returned": "default",
+      "uniqueness": "server"
+    },
+    { "name": "mapName",       "type": "string",  "required": true, "mutability": "readWrite", "returned": "default" },
+    { "name": "thingIndex",    "type": "integer", "required": true, "mutability": "readWrite", "returned": "default" },
+    { "name": "mapThingIndex", "type": "integer", "required": true, "mutability": "readWrite", "returned": "default" },
+    { "name": "type",          "type": "integer", "required": true, "mutability": "readWrite", "returned": "default" },
+    { "name": "x",             "type": "decimal", "required": true, "mutability": "readWrite", "returned": "default" },
+    { "name": "y",             "type": "decimal", "required": true, "mutability": "readWrite", "returned": "default" },
+    { "name": "collected",     "type": "boolean", "required": true, "mutability": "readWrite", "returned": "default" },
+    { "name": "keyName",       "type": "string",  "required": true, "mutability": "readWrite", "returned": "default" },
+    { "name": "color",         "type": "string",  "required": true, "mutability": "readWrite", "returned": "default" },
+    { "name": "material",      "type": "string",  "required": true, "mutability": "readWrite", "returned": "default" },
+    { "name": "updatedAt",     "type": "dateTime", "required": true, "mutability": "readWrite", "returned": "default" }
+  ]
+}

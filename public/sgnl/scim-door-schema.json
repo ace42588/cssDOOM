@@ -1,0 +1,34 @@
+{
+  "schemas": [
+    "urn:ietf:params:scim:schemas:core:2.0:Schema"
+  ],
+  "id": "urn:cssdoom:params:scim:schemas:extension:door:2.0:Door",
+  "name": "Door",
+  "description": "Runtime door state. `userName` is `door:<MAP>:<sectorIndex>` matching the SGNL map adapter `id`.",
+  "attributes": [
+    {
+      "name": "doorId",
+      "type": "string",
+      "description": "Canonical asset id (door:<MAP>:<sectorIndex>).",
+      "required": true,
+      "caseExact": true,
+      "mutability": "readWrite",
+      "returned": "default",
+      "uniqueness": "server"
+    },
+    { "name": "mapName",         "type": "string",  "required": true,  "mutability": "readWrite", "returned": "default" },
+    { "name": "sectorIndex",     "type": "integer", "required": true,  "mutability": "readWrite", "returned": "default" },
+    { "name": "open",            "type": "boolean", "required": true,  "mutability": "readWrite", "returned": "default" },
+    { "name": "passable",        "type": "boolean", "required": true,  "mutability": "readWrite", "returned": "default" },
+    { "name": "keyRequired",     "type": "string",  "required": false, "mutability": "readWrite", "returned": "default" },
+    {
+      "name": "pendingRequests",
+      "type": "integer",
+      "description": "Number of operator-review access requests currently queued on this door.",
+      "required": true,
+      "mutability": "readWrite",
+      "returned": "default"
+    },
+    { "name": "updatedAt",       "type": "dateTime", "required": true, "mutability": "readWrite", "returned": "default" }
+  ]
+}

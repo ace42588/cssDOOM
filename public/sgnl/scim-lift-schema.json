@@ -1,0 +1,30 @@
+{
+  "schemas": [
+    "urn:ietf:params:scim:schemas:core:2.0:Schema"
+  ],
+  "id": "urn:cssdoom:params:scim:schemas:extension:lift:2.0:Lift",
+  "name": "Lift",
+  "description": "Runtime lift state. `userName` is `lift:<MAP>:<sectorIndex>` matching the SGNL map adapter `id`.",
+  "attributes": [
+    {
+      "name": "liftId",
+      "type": "string",
+      "description": "Canonical asset id (lift:<MAP>:<sectorIndex>).",
+      "required": true,
+      "caseExact": true,
+      "mutability": "readWrite",
+      "returned": "default",
+      "uniqueness": "server"
+    },
+    { "name": "mapName",       "type": "string",  "required": true,  "mutability": "readWrite", "returned": "default" },
+    { "name": "sectorIndex",   "type": "integer", "required": true,  "mutability": "readWrite", "returned": "default" },
+    { "name": "tag",           "type": "integer", "required": false, "mutability": "readWrite", "returned": "default" },
+    { "name": "currentHeight", "type": "decimal", "required": true,  "mutability": "readWrite", "returned": "default" },
+    { "name": "targetHeight",  "type": "decimal", "required": true,  "mutability": "readWrite", "returned": "default" },
+    { "name": "lowerHeight",   "type": "decimal", "required": true,  "mutability": "readWrite", "returned": "default" },
+    { "name": "upperHeight",   "type": "decimal", "required": true,  "mutability": "readWrite", "returned": "default" },
+    { "name": "moving",        "type": "boolean", "required": true,  "mutability": "readWrite", "returned": "default" },
+    { "name": "oneWay",        "type": "boolean", "required": true,  "mutability": "readWrite", "returned": "default" },
+    { "name": "updatedAt",     "type": "dateTime", "required": true, "mutability": "readWrite", "returned": "default" }
+  ]
+}

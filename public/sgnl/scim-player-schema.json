@@ -7,6 +7,17 @@
   "description": "CSS DOOM player persistence schema.",
   "attributes": [
     {
+      "name": "sessionId",
+      "type": "string",
+      "multiValued": false,
+      "description": "Session id this player resource represents. `userName` is always `player:<sessionId>` so it matches the same id SGNL access evaluations cite.",
+      "required": true,
+      "caseExact": true,
+      "mutability": "readWrite",
+      "returned": "default",
+      "uniqueness": "server"
+    },
+    {
       "name": "mapName",
       "type": "string",
       "multiValued": false,
@@ -21,7 +32,7 @@
       "name": "correlationId",
       "type": "string",
       "multiValued": false,
-      "description": "Shared correlation identifier linking player, game state, and session context.",
+      "description": "Server-instance correlation id. Useful for joining to CAEP / evaluation logs.",
       "required": true,
       "caseExact": true,
       "mutability": "readWrite",
@@ -122,14 +133,6 @@
           "type": "boolean",
           "multiValued": false,
           "required": true,
-          "mutability": "readWrite",
-          "returned": "default"
-        },
-        {
-          "name": "deathTime",
-          "type": "decimal",
-          "multiValued": false,
-          "required": false,
           "mutability": "readWrite",
           "returned": "default"
         }

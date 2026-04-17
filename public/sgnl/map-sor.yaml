@@ -1,10 +1,17 @@
 # System of Record template: cssDOOM map JSON ingested via the in-repo gRPC adapter.
 # `type` must match the custom adapter registration in your SGNL tenant.
 # `adapterConfig` is base64("{}") — global-only; do not encode a map name (maps come from MAPS_DIR / public/maps).
+#
+# The adapter returns a curated, access-decision-oriented view of each map:
+# only interactable entities (doors, switches, keys, pickups, exits, lifts,
+# teleporters, crushers) — not the raw geometry. Each row carries a stable
+# `id` of the form `<kind>:<MAP>:<key>` that matches the `assetId` the
+# engine sends to SGNL Access Evaluations, so decision requests correlate
+# directly to the SoR entity.
 
 displayName: cssDOOM maps
 icon: ""
-description: DOOM map geometry and gameplay objects from native JSON (one file per map). Map is the root entity; arrays in JSON are child entities nested under each Map during sync.
+description: Curated DOOM map interactables (doors, switches, keys, pickups, exits, lifts, teleporters, crushers). Map is the root entity; each child carries a stable `id` matching the assetId used in access evaluations.
 address: "127.0.0.1:8080"
 defaultSyncFrequency: HOURLY
 defaultSyncMinInterval: 1
@@ -20,7 +27,7 @@ entities:
   Map:
     displayName: Map
     externalId: map
-    description: Root map document (vertices, linedefs, sectors, walls, …).
+    description: Root map document (name, player start, bounds).
     syncFrequency: HOURLY
     syncMinInterval: 1
     apiCallFrequency: SECONDLY
@@ -66,365 +73,39 @@ entities:
         type: Double
         indexed: false
 
-  vertices:
-    displayName: Vertices
-    externalId: vertices
-    description: Vertex coordinates (index = array position in map JSON).
-    parent: map
-    syncFrequency: HOURLY
-    syncMinInterval: 1
-    apiCallFrequency: SECONDLY
-    apiCallMinInterval: 1
-    pageSize: 500
-    pagesOrderedById: true
-    attributes:
-      - name: index
-        externalId: index
-        type: Int64
-        indexed: true
-        uniqueId: true
-      - name: x
-        externalId: x
-        type: Int64
-        indexed: true
-      - name: y
-        externalId: y
-        type: Int64
-        indexed: true
-
-  linedefs:
-    displayName: Linedefs
-    externalId: linedefs
-    description: Linedefs between vertex indices.
-    parent: map
-    syncFrequency: HOURLY
-    syncMinInterval: 1
-    apiCallFrequency: SECONDLY
-    apiCallMinInterval: 1
-    pageSize: 500
-    pagesOrderedById: true
-    attributes:
-      - name: index
-        externalId: index
-        type: Int64
-        indexed: true
-        uniqueId: true
-      - name: startVertex
-        externalId: startVertex
-        type: Int64
-        indexed: true
-      - name: endVertex
-        externalId: endVertex
-        type: Int64
-        indexed: true
-      - name: flags
-        externalId: flags
-        type: Int64
-        indexed: false
-      - name: specialType
-        externalId: specialType
-        type: Int64
-        indexed: false
-      - name: sectorTag
-        externalId: sectorTag
-        type: Int64
-        indexed: true
-      - name: frontSidedef
-        externalId: frontSidedef
-        type: Int64
-        indexed: true
-      - name: backSidedef
-        externalId: backSidedef
-        type: Int64
-        indexed: true
-
-  sidedefs:
-    displayName: Sidedefs
-    externalId: sidedefs
-    description: Sidedef texture references and sector link.
-    parent: map
-    syncFrequency: HOURLY
-    syncMinInterval: 1
-    apiCallFrequency: SECONDLY
-    apiCallMinInterval: 1
-    pageSize: 500
-    pagesOrderedById: true
-    attributes:
-      - name: index
-        externalId: index
-        type: Int64
-        indexed: true
-        uniqueId: true
-      - name: xOffset
-        externalId: xOffset
-        type: Int64
-        indexed: false
-      - name: yOffset
-        externalId: yOffset
-        type: Int64
-        indexed: false
-      - name: upperTexture
-        externalId: upperTexture
-        type: String
-        indexed: false
-      - name: lowerTexture
-        externalId: lowerTexture
-        type: String
-        indexed: false
-      - name: middleTexture
-        externalId: middleTexture
-        type: String
-        indexed: false
-      - name: sectorIndex
-        externalId: sectorIndex
-        type: Int64
-        indexed: true
-
-  sectors:
-    displayName: Sectors
-    externalId: sectors
-    description: Sector floor/ceiling and specials.
-    parent: map
-    syncFrequency: HOURLY
-    syncMinInterval: 1
-    apiCallFrequency: SECONDLY
-    apiCallMinInterval: 1
-    pageSize: 500
-    pagesOrderedById: true
-    attributes:
-      - name: index
-        externalId: index
-        type: Int64
-        indexed: true
-        uniqueId: true
-      - name: floorHeight
-        externalId: floorHeight
-        type: Int64
-        indexed: false
-      - name: ceilingHeight
-        externalId: ceilingHeight
-        type: Int64
-        indexed: false
-      - name: floorTexture
-        externalId: floorTexture
-        type: String
-        indexed: false
-      - name: ceilingTexture
-        externalId: ceilingTexture
-        type: String
-        indexed: false
-      - name: lightLevel
-        externalId: lightLevel
-        type: Int64
-        indexed: false
-      - name: specialType
-        externalId: specialType
-        type: Int64
-        indexed: false
-      - name: tag
-        externalId: tag
-        type: Int64
-        indexed: true
-
-  things:
-    displayName: Things
-    externalId: things
-    description: Map things (spawns, pickups, actors).
-    parent: map
-    syncFrequency: HOURLY
-    syncMinInterval: 1
-    apiCallFrequency: SECONDLY
-    apiCallMinInterval: 1
-    pageSize: 500
-    pagesOrderedById: true
-    attributes:
-      - name: index
-        externalId: index
-        type: Int64
-        indexed: true
-        uniqueId: true
-      - name: x
-        externalId: x
-        type: Int64
-        indexed: true
-      - name: y
-        externalId: y
-        type: Int64
-        indexed: true
-      - name: angle
-        externalId: angle
-        type: Int64
-        indexed: false
-      - name: type
-        externalId: type
-        type: Int64
-        indexed: true
-      - name: flags
-        externalId: flags
-        type: Int64
-        indexed: false
-
-  walls:
-    displayName: Walls
-    externalId: walls
-    description: Render/collision wall segments.
-    parent: map
-    syncFrequency: HOURLY
-    syncMinInterval: 1
-    apiCallFrequency: SECONDLY
-    apiCallMinInterval: 1
-    pageSize: 500
-    pagesOrderedById: true
-    attributes:
-      - name: index
-        externalId: index
-        type: Int64
-        indexed: true
-        uniqueId: true
-      - name: startX
-        externalId: start.x
-        type: Int64
-        indexed: true
-      - name: startY
-        externalId: start.y
-        type: Int64
-        indexed: true
-      - name: endX
-        externalId: end.x
-        type: Int64
-        indexed: true
-      - name: endY
-        externalId: end.y
-        type: Int64
-        indexed: true
-      - name: bottomHeight
-        externalId: bottomHeight
-        type: Int64
-        indexed: false
-      - name: topHeight
-        externalId: topHeight
-        type: Int64
-        indexed: false
-      - name: isSolid
-        externalId: isSolid
-        type: Bool
-        indexed: false
-      - name: isDoor
-        externalId: isDoor
-        type: Bool
-        indexed: false
-      - name: isScrolling
-        externalId: isScrolling
-        type: Bool
-        indexed: false
-      - name: linedefIndex
-        externalId: linedefIndex
-        type: Int64
-        indexed: true
-      - name: wallId
-        externalId: wallId
-        type: String
-        indexed: true
-      - name: texture
-        externalId: texture
-        type: String
-        indexed: false
-      - name: xOffset
-        externalId: xOffset
-        type: Int64
-        indexed: false
-      - name: yOffset
-        externalId: yOffset
-        type: Int64
-        indexed: false
-      - name: sectorIndex
-        externalId: sectorIndex
-        type: Int64
-        indexed: true
-      - name: lightLevel
-        externalId: lightLevel
-        type: Int64
-        indexed: false
-      - name: specialType
-        externalId: specialType
-        type: Int64
-        indexed: false
-
-  sectorPolygons:
-    displayName: Sector polygons
-    externalId: sectorPolygons
-    description: Per-sector polygon rollup; boundaries stored as JSON string.
-    parent: map
-    syncFrequency: HOURLY
-    syncMinInterval: 1
-    apiCallFrequency: SECONDLY
-    apiCallMinInterval: 1
-    pageSize: 500
-    pagesOrderedById: true
-    attributes:
-      - name: index
-        externalId: index
-        type: Int64
-        indexed: true
-        uniqueId: true
-      - name: sectorIndex
-        externalId: sectorIndex
-        type: Int64
-        indexed: true
-      - name: floorHeight
-        externalId: floorHeight
-        type: Int64
-        indexed: false
-      - name: ceilingHeight
-        externalId: ceilingHeight
-        type: Int64
-        indexed: false
-      - name: lightLevel
-        externalId: lightLevel
-        type: Int64
-        indexed: false
-      - name: floorTexture
-        externalId: floorTexture
-        type: String
-        indexed: false
-      - name: ceilingTexture
-        externalId: ceilingTexture
-        type: String
-        indexed: false
-      - name: specialType
-        externalId: specialType
-        type: Int64
-        indexed: false
-      - name: boundaries
-        externalId: boundaries
-        type: String
-        indexed: false
-      - name: hasHoles
-        externalId: hasHoles
-        type: Bool
-        indexed: false
-
   doors:
     displayName: Doors
     externalId: doors
-    description: Door specials.
+    description: Door specials with centroid location and key requirement. `id` = door:<MAP>:<sectorIndex>.
     parent: map
     syncFrequency: HOURLY
     syncMinInterval: 1
     apiCallFrequency: SECONDLY
     apiCallMinInterval: 1
-    pageSize: 100
+    pageSize: 200
     pagesOrderedById: true
     attributes:
-      - name: index
-        externalId: index
-        type: Int64
+      - name: id
+        externalId: id
+        type: String
         indexed: true
         uniqueId: true
+      - name: mapName
+        externalId: mapName
+        type: String
+        indexed: true
       - name: sectorIndex
         externalId: sectorIndex
         type: Int64
         indexed: true
+      - name: x
+        externalId: x
+        type: Double
+        indexed: false
+      - name: y
+        externalId: y
+        type: Double
+        indexed: false
       - name: closedHeight
         externalId: closedHeight
         type: Int64
@@ -440,12 +121,174 @@ entities:
       - name: keyRequired
         externalId: keyRequired
         type: String
+        indexed: true
+
+  switches:
+    displayName: Switches
+    externalId: switches
+    description: Wall switches (SW1*/SW2*). `id` = switch:<MAP>:<wallId>.
+    parent: map
+    syncFrequency: HOURLY
+    syncMinInterval: 1
+    apiCallFrequency: SECONDLY
+    apiCallMinInterval: 1
+    pageSize: 200
+    pagesOrderedById: true
+    attributes:
+      - name: id
+        externalId: id
+        type: String
+        indexed: true
+        uniqueId: true
+      - name: mapName
+        externalId: mapName
+        type: String
+        indexed: true
+      - name: wallId
+        externalId: wallId
+        type: String
+        indexed: true
+      - name: linedefIndex
+        externalId: linedefIndex
+        type: Int64
+        indexed: true
+      - name: texture
+        externalId: texture
+        type: String
+        indexed: false
+      - name: sectorIndex
+        externalId: sectorIndex
+        type: Int64
+        indexed: true
+      - name: sectorTag
+        externalId: sectorTag
+        type: Int64
+        indexed: true
+      - name: specialType
+        externalId: specialType
+        type: Int64
+        indexed: true
+      - name: action
+        externalId: action
+        type: String
+        indexed: true
+      - name: x
+        externalId: x
+        type: Double
+        indexed: false
+      - name: y
+        externalId: y
+        type: Double
         indexed: false
 
-  lifts:
-    displayName: Lifts
-    externalId: lifts
-    description: Platforms / lifts; nested arrays as JSON strings.
+  keys:
+    displayName: Keys
+    externalId: keys
+    description: Key pickups (blue/yellow/red card + skull). `id` = key:<MAP>:<thingIndex>.
+    parent: map
+    syncFrequency: HOURLY
+    syncMinInterval: 1
+    apiCallFrequency: SECONDLY
+    apiCallMinInterval: 1
+    pageSize: 200
+    pagesOrderedById: true
+    attributes:
+      - name: id
+        externalId: id
+        type: String
+        indexed: true
+        uniqueId: true
+      - name: mapName
+        externalId: mapName
+        type: String
+        indexed: true
+      - name: thingIndex
+        externalId: thingIndex
+        type: Int64
+        indexed: true
+      - name: type
+        externalId: type
+        type: Int64
+        indexed: true
+      - name: keyName
+        externalId: keyName
+        type: String
+        indexed: true
+      - name: color
+        externalId: color
+        type: String
+        indexed: true
+      - name: material
+        externalId: material
+        type: String
+        indexed: true
+      - name: x
+        externalId: x
+        type: Double
+        indexed: false
+      - name: y
+        externalId: y
+        type: Double
+        indexed: false
+      - name: flags
+        externalId: flags
+        type: Int64
+        indexed: false
+
+  pickups:
+    displayName: Pickups
+    externalId: pickups
+    description: Non-key pickups (weapons, ammo, health, armor, powerups). `id` = pickup:<MAP>:<thingIndex>.
+    parent: map
+    syncFrequency: HOURLY
+    syncMinInterval: 1
+    apiCallFrequency: SECONDLY
+    apiCallMinInterval: 1
+    pageSize: 500
+    pagesOrderedById: true
+    attributes:
+      - name: id
+        externalId: id
+        type: String
+        indexed: true
+        uniqueId: true
+      - name: mapName
+        externalId: mapName
+        type: String
+        indexed: true
+      - name: thingIndex
+        externalId: thingIndex
+        type: Int64
+        indexed: true
+      - name: type
+        externalId: type
+        type: Int64
+        indexed: true
+      - name: kind
+        externalId: kind
+        type: String
+        indexed: true
+      - name: category
+        externalId: category
+        type: String
+        indexed: true
+      - name: x
+        externalId: x
+        type: Double
+        indexed: false
+      - name: y
+        externalId: y
+        type: Double
+        indexed: false
+      - name: flags
+        externalId: flags
+        type: Int64
+        indexed: false
+
+  exits:
+    displayName: Exits
+    externalId: exits
+    description: Level-exit linedefs (normal + secret). `id` = exit:<MAP>:<linedefIndex>.
     parent: map
     syncFrequency: HOURLY
     syncMinInterval: 1
@@ -454,11 +297,61 @@ entities:
     pageSize: 100
     pagesOrderedById: true
     attributes:
-      - name: index
-        externalId: index
-        type: Int64
+      - name: id
+        externalId: id
+        type: String
         indexed: true
         uniqueId: true
+      - name: mapName
+        externalId: mapName
+        type: String
+        indexed: true
+      - name: linedefIndex
+        externalId: linedefIndex
+        type: Int64
+        indexed: true
+      - name: kind
+        externalId: kind
+        type: String
+        indexed: true
+      - name: specialType
+        externalId: specialType
+        type: Int64
+        indexed: true
+      - name: sectorTag
+        externalId: sectorTag
+        type: Int64
+        indexed: true
+      - name: x
+        externalId: x
+        type: Double
+        indexed: false
+      - name: y
+        externalId: y
+        type: Double
+        indexed: false
+
+  lifts:
+    displayName: Lifts
+    externalId: lifts
+    description: Lift platforms with centroid location. `id` = lift:<MAP>:<sectorIndex>.
+    parent: map
+    syncFrequency: HOURLY
+    syncMinInterval: 1
+    apiCallFrequency: SECONDLY
+    apiCallMinInterval: 1
+    pageSize: 100
+    pagesOrderedById: true
+    attributes:
+      - name: id
+        externalId: id
+        type: String
+        indexed: true
+        uniqueId: true
+      - name: mapName
+        externalId: mapName
+        type: String
+        indexed: true
       - name: sectorIndex
         externalId: sectorIndex
         type: Int64
@@ -479,19 +372,19 @@ entities:
         externalId: oneWay
         type: Bool
         indexed: false
-      - name: shaftWalls
-        externalId: shaftWalls
-        type: String
+      - name: x
+        externalId: x
+        type: Double
         indexed: false
-      - name: collisionEdges
-        externalId: collisionEdges
-        type: String
+      - name: y
+        externalId: y
+        type: Double
         indexed: false
 
-  triggers:
-    displayName: Triggers
-    externalId: triggers
-    description: Walkover trigger segments.
+  teleporters:
+    displayName: Teleporters
+    externalId: teleporters
+    description: Teleporter source lines. `id` = teleporter:<MAP>:<index>.
     parent: map
     syncFrequency: HOURLY
     syncMinInterval: 1
@@ -500,26 +393,14 @@ entities:
     pageSize: 100
     pagesOrderedById: true
     attributes:
-      - name: index
-        externalId: index
-        type: Int64
+      - name: id
+        externalId: id
+        type: String
         indexed: true
         uniqueId: true
-      - name: startX
-        externalId: start.x
-        type: Int64
-        indexed: true
-      - name: startY
-        externalId: start.y
-        type: Int64
-        indexed: true
-      - name: endX
-        externalId: end.x
-        type: Int64
-        indexed: true
-      - name: endY
-        externalId: end.y
-        type: Int64
+      - name: mapName
+        externalId: mapName
+        type: String
         indexed: true
       - name: sectorTag
         externalId: sectorTag
@@ -528,30 +409,20 @@ entities:
       - name: specialType
         externalId: specialType
         type: Int64
-        indexed: false
-
-  teleporters:
-    displayName: Teleporters
-    externalId: teleporters
-    description: Teleporter lines (often empty).
-    parent: map
-    syncFrequency: HOURLY
-    syncMinInterval: 1
-    apiCallFrequency: SECONDLY
-    apiCallMinInterval: 1
-    pageSize: 100
-    pagesOrderedById: true
-    attributes:
-      - name: index
-        externalId: index
-        type: Int64
         indexed: true
-        uniqueId: true
+      - name: x
+        externalId: x
+        type: Double
+        indexed: false
+      - name: y
+        externalId: y
+        type: Double
+        indexed: false
 
   crushers:
     displayName: Crushers
     externalId: crushers
-    description: Crusher specials (often empty).
+    description: Ceiling crushers. `id` = crusher:<MAP>:<sectorIndex>.
     parent: map
     syncFrequency: HOURLY
     syncMinInterval: 1
@@ -560,110 +431,83 @@ entities:
     pageSize: 100
     pagesOrderedById: true
     attributes:
-      - name: index
-        externalId: index
-        type: Int64
+      - name: id
+        externalId: id
+        type: String
         indexed: true
         uniqueId: true
-
-  sightLines:
-    displayName: Sight lines
-    externalId: sightLines
-    description: Sight occlusion segments.
-    parent: map
-    syncFrequency: HOURLY
-    syncMinInterval: 1
-    apiCallFrequency: SECONDLY
-    apiCallMinInterval: 1
-    pageSize: 500
-    pagesOrderedById: true
-    attributes:
-      - name: index
-        externalId: index
+      - name: mapName
+        externalId: mapName
+        type: String
+        indexed: true
+      - name: sectorIndex
+        externalId: sectorIndex
         type: Int64
         indexed: true
-        uniqueId: true
-      - name: startX
-        externalId: start.x
+      - name: tag
+        externalId: tag
         type: Int64
         indexed: true
-      - name: startY
-        externalId: start.y
-        type: Int64
-        indexed: true
-      - name: endX
-        externalId: end.x
-        type: Int64
-        indexed: true
-      - name: endY
-        externalId: end.y
-        type: Int64
-        indexed: true
-      - name: openBottom
-        externalId: openBottom
+      - name: topHeight
+        externalId: topHeight
         type: Int64
         indexed: false
-      - name: openTop
-        externalId: openTop
+      - name: crushHeight
+        externalId: crushHeight
         type: Int64
         indexed: false
-      - name: frontSector
-        externalId: frontSector
-        type: Int64
-        indexed: true
-      - name: backSector
-        externalId: backSector
-        type: Int64
-        indexed: true
+      - name: x
+        externalId: x
+        type: Double
+        indexed: false
+      - name: y
+        externalId: y
+        type: Double
+        indexed: false
 
 relationships:
-  LinedefStartVertex:
-    name: LinedefStartVertex
-    displayName: Linedef start vertex
-    fromAttribute: linedefs.startVertex
-    toAttribute: vertices.index
-  LinedefEndVertex:
-    name: LinedefEndVertex
-    displayName: Linedef end vertex
-    fromAttribute: linedefs.endVertex
-    toAttribute: vertices.index
-  SidedefSector:
-    name: SidedefSector
-    displayName: Sidedef to sector
-    fromAttribute: sidedefs.sectorIndex
-    toAttribute: sectors.index
-  WallSector:
-    name: WallSector
-    displayName: Wall to sector
-    fromAttribute: walls.sectorIndex
-    toAttribute: sectors.index
-  WallLinedef:
-    name: WallLinedef
-    displayName: Wall to linedef
-    fromAttribute: walls.linedefIndex
-    toAttribute: linedefs.index
-  SectorPolygonSector:
-    name: SectorPolygonSector
-    displayName: Sector polygon to sector
-    fromAttribute: sectorPolygons.sectorIndex
-    toAttribute: sectors.index
-  DoorSector:
-    name: DoorSector
-    displayName: Door to sector
-    fromAttribute: doors.sectorIndex
-    toAttribute: sectors.index
-  LiftSector:
-    name: LiftSector
-    displayName: Lift to sector
-    fromAttribute: lifts.sectorIndex
-    toAttribute: sectors.index
-  SightLineFrontSector:
-    name: SightLineFrontSector
-    displayName: Sight line front sector
-    fromAttribute: sightLines.frontSector
-    toAttribute: sectors.index
-  SightLineBackSector:
-    name: SightLineBackSector
-    displayName: Sight line back sector
-    fromAttribute: sightLines.backSector
-    toAttribute: sectors.index
+  DoorMap:
+    name: DoorMap
+    displayName: Door to map
+    fromAttribute: doors.mapName
+    toAttribute: Map.name
+  SwitchMap:
+    name: SwitchMap
+    displayName: Switch to map
+    fromAttribute: switches.mapName
+    toAttribute: Map.name
+  KeyMap:
+    name: KeyMap
+    displayName: Key to map
+    fromAttribute: keys.mapName
+    toAttribute: Map.name
+  PickupMap:
+    name: PickupMap
+    displayName: Pickup to map
+    fromAttribute: pickups.mapName
+    toAttribute: Map.name
+  ExitMap:
+    name: ExitMap
+    displayName: Exit to map
+    fromAttribute: exits.mapName
+    toAttribute: Map.name
+  LiftMap:
+    name: LiftMap
+    displayName: Lift to map
+    fromAttribute: lifts.mapName
+    toAttribute: Map.name
+  TeleporterMap:
+    name: TeleporterMap
+    displayName: Teleporter to map
+    fromAttribute: teleporters.mapName
+    toAttribute: Map.name
+  CrusherMap:
+    name: CrusherMap
+    displayName: Crusher to map
+    fromAttribute: crushers.mapName
+    toAttribute: Map.name
+  DoorKey:
+    name: DoorKey
+    displayName: Door requires key
+    fromAttribute: doors.keyRequired
+    toAttribute: keys.color

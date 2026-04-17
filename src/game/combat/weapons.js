@@ -22,7 +22,7 @@ import { input } from '../../input/index.js';
 import { propagateSound } from '../sound-propagation.js';
 import { getHorizontalDistance, randomDoomSpreadAngleRadians } from '../geometry.js';
 import { distance2 } from '../actors/math.js';
-import { markGameStateDirty, markPlayerDirty } from '../services.js';
+import { markPlayerDirty } from '../services.js';
 import { getControlled, isControllingPlayer, isHumanControlled, getControlledFor, LOCAL_SESSION } from '../possession.js';
 
 // ============================================================================
@@ -346,7 +346,6 @@ function spawnPlayerRocket(forwardX, forwardY) {
         isPlayerRocket: true,
         spawnTime: performance.now() / 1000,
     });
-    markGameStateDirty();
 }
 
 /**

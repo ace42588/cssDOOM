@@ -50,7 +50,8 @@ export function spawnThings() {
         return mapThingToIndex;
     }
 
-    for (const thing of mapData.things) {
+    for (let mapThingIndex = 0; mapThingIndex < mapData.things.length; mapThingIndex++) {
+        const thing = mapData.things[mapThingIndex];
         // Bit 4 = multiplayer only — skip in single player
         if (thing.flags & 16) {
             mapThingToIndex.push(null);
@@ -89,6 +90,11 @@ export function spawnThings() {
             type: thing.type,
             collected: false,
             hp: THING_HEALTH[thing.type] || 0,
+            // Position of this thing in the raw map JSON. Used to build
+            // stable asset ids (`pickup:<MAP>:<mapThingIndex>`,
+            // `key:<MAP>:<mapThingIndex>`) that line up with the ids the
+            // SGNL gRPC adapter emits for the same entity.
+            mapThingIndex,
         };
 
         if (solidRadius && !isShootable) {

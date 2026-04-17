@@ -8,7 +8,7 @@ import { getSectorHazardAt } from '../physics/queries.js';
 import * as renderer from '../../renderer/index.js';
 import { asDamageableActor, assertDamageableActor } from '../actors/adapter.js';
 import { applyDamage } from '../combat/damage.js';
-import { flushNow, markAllDirty, markPlayerDirty } from '../services.js';
+import { flushNow, markPlayerDirty } from '../services.js';
 import { isHumanControlled, onPossessedDeath } from '../possession.js';
 
 // ============================================================================
@@ -45,7 +45,7 @@ export function damagePlayer(damageAmount) {
             player.deathTime = performance.now();
             renderer.setPlayerDead(true);
             playSound('DSPLDETH');
-            markAllDirty();
+            markPlayerDirty();
             void flushNow();
         } else {
             // Player character died while AI-controlled — don't trigger the

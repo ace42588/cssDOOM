@@ -2,8 +2,8 @@
  * Switch interaction and action triggering.
  *
  * How switch interaction works:
- * 1. When the player presses the "use" key, a forward ray is cast from the
- *    player's position along their facing direction, reaching a point at
+ * 1. When the "use" key is pressed, a forward ray is cast from the
+ *    controller's position along their facing direction, reaching a point at
  *    half the USE_RANGE distance ahead.
  * 2. Every wall element in the scene is checked. Walls whose texture name
  *    begins with the switch-on or switch-off prefix are switch candidates.
@@ -12,7 +12,11 @@
  *    If the distance is within USE_RANGE, the switch is activated.
  * 4. Activation toggles the switch's visual state (on/off) and looks up the
  *    associated linedef to determine what action to trigger:
- *      - Exit specials: load the next map (or the secret exit map).
+ *      - Exit specials: returned to the caller as a pending exit action so
+ *        the authoritative owner (server) can drive the map reload and
+ *        broadcast it. `tryUseSwitch` itself does not call `loadMap` —
+ *        that would require the browser-only level loader and would skip
+ *        the server's rebroadcast step.
  *      - Sector-tagged linedefs: toggle any doors or activate any lifts
  *        whose sector matches the linedef's sector tag.
  * 5. Only the first matching switch is activated per use attempt (early return).
@@ -28,23 +32,36 @@ import { mapData } from '../../data/maps.js';
 import { toggleDoor } from './doors.js';
 import { activateLift } from './lifts.js';
 import { activateCrusher } from './crushers.js';
-import { loadMap, getNextMap, getSecretExitMap } from '../lifecycle.js';
 import * as renderer from '../../renderer/index.js';
 
-export async function tryUseSwitch() {
-    // Cast a forward ray from the player's position along their facing direction.
-    // The check-point is placed at half USE_RANGE ahead — the actual distance
-    // threshold is USE_RANGE, so this samples the midpoint of the interaction zone.
-    const forwardX = -Math.sin(player.angle);
-    const forwardY = Math.cos(player.angle);
-    const checkPointX = player.x + forwardX * USE_RANGE / 2;
-    const checkPointY = player.y + forwardY * USE_RANGE / 2;
+/**
+ * Attempt to activate a switch in front of `requestedBy` (the body holding
+ * the "use" key). Mirrors `tryOpenDoor(requestedBy)` so possessed bodies
+ * hit switches from their own position/angle rather than the marine's.
+ *
+ * Returns one of:
+ *   - `{ kind: 'exit' }`        — caller should advance to the next map
+ *   - `{ kind: 'secretExit' }`  — caller should advance to the secret map
+ *   - `null`                    — switch triggered a sector-tagged action
+ *                                  (door/lift/crusher), or no switch was
+ *                                  within range
+ */
+export async function tryUseSwitch(requestedBy) {
+    const controller = requestedBy || player;
+    const originX = controller?.x ?? player.x;
+    const originY = controller?.y ?? player.y;
+    const originAngle = controller === player
+        ? player.angle
+        : (controller?.viewAngle ?? controller?.facing ?? player.angle);
 
-    // Iterate over map walls looking for switch textures.
+    const forwardX = -Math.sin(originAngle);
+    const forwardY = Math.cos(originAngle);
+    const checkPointX = originX + forwardX * USE_RANGE / 2;
+    const checkPointY = originY + forwardY * USE_RANGE / 2;
+
     for (const wall of mapData.walls) {
         if (!wall.texture) continue;
 
-        // Determine whether this wall's texture is a switch (on or off variant).
         const isSwitchOn = wall.texture.startsWith(SWITCH_ON_PREFIX);
         const isSwitchOff = wall.texture.startsWith(SWITCH_OFF_PREFIX);
         if (!isSwitchOn && !isSwitchOff) continue;
@@ -65,24 +82,18 @@ export async function tryUseSwitch() {
         const distance = Math.sqrt((checkPointX - closestX) ** 2 + (checkPointY - closestY) ** 2);
 
         if (distance < USE_RANGE) {
-            // Toggle the switch's visual state between on and off.
             renderer.toggleSwitchState(wall.wallId);
 
-            // Look up the linedef associated with this wall to determine what
-            // action the switch triggers (exit, door, lift, etc.).
             const linedef = mapData.linedefs[wall.linedefIndex];
             if (linedef) {
-                if (linedef.specialType === EXIT_SPECIAL || linedef.specialType === SECRET_EXIT_SPECIAL) {
-                    // Exit switches: load the next map, or the secret exit map
-                    // if the linedef has the secret exit special type.
-                    const nextMap = linedef.specialType === SECRET_EXIT_SPECIAL
-                        ? getSecretExitMap()
-                        : getNextMap();
-                    if (nextMap) setTimeout(() => loadMap(nextMap), 1000);
-                } else if (linedef.sectorTag > 0) {
-                    // Sector-tagged switches: find all doors and lifts whose
-                    // sector tag matches and activate them.
-                    for (const [sectorIndex, doorEntry] of state.doorState) {
+                if (linedef.specialType === EXIT_SPECIAL) {
+                    return { kind: 'exit' };
+                }
+                if (linedef.specialType === SECRET_EXIT_SPECIAL) {
+                    return { kind: 'secretExit' };
+                }
+                if (linedef.sectorTag > 0) {
+                    for (const [sectorIndex] of state.doorState) {
                         if (mapData.sectors[sectorIndex].tag === linedef.sectorTag) {
                             await toggleDoor(sectorIndex);
                         }
@@ -99,8 +110,8 @@ export async function tryUseSwitch() {
                     }
                 }
             }
-            // Only activate the first switch found within range, then stop.
-            return;
+            return null;
         }
     }
+    return null;
 }

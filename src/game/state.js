@@ -10,9 +10,6 @@ import { MOVE_SPEED, PLAYER_HEIGHT, PLAYER_RADIUS } from './constants.js';
  * Migration note: actor adapters in `game/actors/adapter.js` provide
  * unified signatures across player/enemy/thing systems while this state shape
  * remains unchanged.
- *
- * Future entity-model rewrite should begin only after actor-first boundary
- * criteria are met and validated by `game/actors/regressions.js`.
  */
 
 export const player = {

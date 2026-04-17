@@ -21,11 +21,17 @@
 import { USE_RANGE, DOOR_CLOSE_DELAY } from '../constants.js';
 
 import { state, player } from '../state.js';
-import { mapData } from '../../data/maps.js';
+import { mapData, currentMap } from '../../data/maps.js';
 import { getSectorAt } from '../physics/queries.js';
 import { playSound } from '../../audio/audio.js';
 import * as renderer from '../../renderer/index.js';
-import { markGameStateDirty, evaluateAccess } from '../services.js';
+import { markEntityDirty, evaluateAccess } from '../services.js';
+
+/** Canonical asset id for a door — matches the `id` emitted by the
+ *  SGNL gRPC adapter in `server/sgnl/adapter/interactables.js`. */
+export function doorAssetId(sectorIndex) {
+    return `door:${currentMap || 'unknown'}:${sectorIndex}`;
+}
 import {
     getControlled,
     isHumanControlled,
@@ -226,57 +232,63 @@ export async function toggleDoor(sectorIndex, requestedBy) {
         // Already open -- reset the auto-close timer so it stays open longer
         clearTimeout(doorEntry.timer);
         doorEntry.timer = setTimeout(() => closeDoor(sectorIndex), DOOR_CLOSE_DELAY);
-        markGameStateDirty();
+        markEntityDirty('door', doorAssetId(sectorIndex));
         return;
     }
 
     if (doorEntry.evaluating) return;
 
+    // Wrap the whole evaluation+commit in try/finally so `evaluating` is
+    // always cleared, even when the access check is short-circuited (as
+    // today while SGNL's `evaluateAccess` call is commented out) or when
+    // the operator-review path rejects the request. Without this, the
+    // flag stays true forever after the first open and the door never
+    // toggles again.
     doorEntry.evaluating = true;
-    let evaluation;
-    const controller = requestedBy || getControlled();
-    /*
     try {
+        let evaluation;
+        const controller = requestedBy || getControlled();
+        /*
         evaluation = await evaluateAccess(
             getRequestingController(controller),
-            `door:${sectorIndex}`,
+            doorAssetId(sectorIndex),
             'open',
         );
+
+        if (!evaluation.allowed) {
+            playSound('DSOOF');
+            const denyMessage = evaluation.reasons?.[0] || 'Access denied';
+            renderer.showHudMessage(denyMessage);
+            return;
+        }
+        */evaluation = { skipped: true };
+
+        // When SGNL is not wired (fail-open default), give any human operator
+        // possessing this door the chance to approve or ignore the request.
+        // If no operator is present, the door opens as before.
+        if (evaluation.skipped && isHumanControlled(doorEntry.doorEntity)) {
+            const decision = await enqueueOperatorRequest(doorEntry, controller);
+            if (decision !== 'open') {
+                playSound('DSOOF');
+                renderer.showHudMessage('Access denied');
+                return;
+            }
+        }
+
+        doorEntry.open = true;
+        doorEntry.passable = false;
+        clearTimeout(doorEntry.passableTimer);
+        doorEntry.passableTimer = setTimeout(() => {
+            doorEntry.passable = true;
+            markEntityDirty('door', doorAssetId(sectorIndex));
+        }, DOOR_PASSABLE_DELAY * 1000);
+        renderer.setDoorState(sectorIndex, 'open');
+        playSound('DSDOROPN');
+        doorEntry.timer = setTimeout(() => closeDoor(sectorIndex), DOOR_CLOSE_DELAY);
+        markEntityDirty('door', doorAssetId(sectorIndex));
     } finally {
         doorEntry.evaluating = false;
     }
-
-    if (!evaluation.allowed) {
-        playSound('DSOOF');
-        const denyMessage = evaluation.reasons?.[0] || 'Access denied';
-        renderer.showHudMessage(denyMessage);
-        return;
-    }
-    */evaluation = { skipped: true };
-
-    // When SGNL is not wired (fail-open default), give any human operator
-    // possessing this door the chance to approve or ignore the request.
-    // If no operator is present, the door opens as before.
-    if (evaluation.skipped && isHumanControlled(doorEntry.doorEntity)) {
-        const decision = await enqueueOperatorRequest(doorEntry, controller);
-        if (decision !== 'open') {
-            playSound('DSOOF');
-            renderer.showHudMessage('Access denied');
-            return;
-        }
-    }
-
-    doorEntry.open = true;
-    doorEntry.passable = false;
-    clearTimeout(doorEntry.passableTimer);
-    doorEntry.passableTimer = setTimeout(() => {
-        doorEntry.passable = true;
-        markGameStateDirty();
-    }, DOOR_PASSABLE_DELAY * 1000);
-    renderer.setDoorState(sectorIndex, 'open');
-    playSound('DSDOROPN');
-    doorEntry.timer = setTimeout(() => closeDoor(sectorIndex), DOOR_CLOSE_DELAY);
-    markGameStateDirty();
 }
 
 /**
@@ -294,7 +306,7 @@ function closeDoor(sectorIndex) {
     if (playerSector && playerSector.sectorIndex === sectorIndex) {
         // Player is in the doorway — keep open and retry closing later
         doorEntry.timer = setTimeout(() => closeDoor(sectorIndex), DOOR_CLOSE_DELAY);
-        markGameStateDirty();
+        markEntityDirty('door', doorAssetId(sectorIndex));
         return;
     }
 
@@ -304,7 +316,7 @@ function closeDoor(sectorIndex) {
     doorEntry.timer = null;
     renderer.setDoorState(sectorIndex, 'closed');
     playSound('DSDORCLS');
-    markGameStateDirty();
+    markEntityDirty('door', doorAssetId(sectorIndex));
 }
 
 /**
@@ -401,7 +413,7 @@ function enqueueOperatorRequest(doorEntry, controller) {
         }, OPERATOR_REQUEST_TIMEOUT_MS);
 
         doorEntity.pendingRequests.push(entry);
-        markGameStateDirty();
+        markEntityDirty('door', doorAssetId(doorEntity.sectorIndex));
     });
 }
 
@@ -419,7 +431,7 @@ export function resolveDoorRequest(sectorIndex, requestId, decision) {
     const [entry] = queue.splice(idx, 1);
     if (entry.timer) clearTimeout(entry.timer);
     try { entry.resolve(decision === 'open' ? 'open' : 'ignore'); } catch {}
-    markGameStateDirty();
+    markEntityDirty('door', doorAssetId(sectorIndex));
 }
 
 /**

@@ -51,7 +51,11 @@ import {
 import { equipWeapon } from '../src/game/combat/weapons.js';
 import { fireWeaponFor } from '../src/game/combat/weapons.js';
 import { tryOpenDoor, resolveDoorRequest } from '../src/game/mechanics/doors.js';
+import { tryUseSwitch } from '../src/game/mechanics/switches.js';
+import { getNextMap, getSecretExitMap } from '../src/game/lifecycle.js';
 import { possessFor } from '../src/game/possession.js';
+import { MSG } from './net.js';
+import { send } from './connections.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -158,7 +162,12 @@ function processConnectionInputs() {
         }
         if (inp.use) {
             const body = getControlledFor(conn.sessionId);
-            if (body) tryOpenDoor(body);
+            if (body) {
+                tryOpenDoor(body);
+                // Vanilla DOOM runs door and switch checks from the same
+                // `P_UseLines` traversal; whichever finds a hit wins.
+                void tryUseSwitch(body).then(handleSwitchExit);
+            }
             inp.use = false;
         }
         if (inp.bodySwap) {
@@ -182,6 +191,32 @@ function processConnectionInputs() {
         if (inp.fireHeld) {
             fireWeaponFor(conn.sessionId);
         }
+    }
+}
+
+/**
+ * Act on a pending exit returned by `tryUseSwitch`. Looks up the next
+ * map (or secret exit), reloads the world, and broadcasts the new map
+ * payload to every connection so clients can rebuild their scenes.
+ */
+let exitInFlight = false;
+async function handleSwitchExit(action) {
+    if (!action) return;
+    if (exitInFlight) return;
+    if (action.kind !== 'exit' && action.kind !== 'secretExit') return;
+    const nextMap = action.kind === 'secretExit' ? getSecretExitMap() : getNextMap();
+    if (!nextMap) return;
+    exitInFlight = true;
+    try {
+        const { name: mapName, mapData } = await loadMap(nextMap);
+        for (const conn of listConnections()) {
+            send(conn, { type: MSG.MAP_LOAD, mapName, mapData });
+        }
+    } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error('[server] switch-triggered map load failed', err);
+    } finally {
+        exitInFlight = false;
     }
 }
 

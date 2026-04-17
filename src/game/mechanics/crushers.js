@@ -20,11 +20,16 @@
  */
 
 import { state, player } from '../state.js';
-import { mapData } from '../../data/maps.js';
+import { mapData, currentMap } from '../../data/maps.js';
 import { getSectorAt } from '../physics/queries.js';
 import { damagePlayer } from '../player/damage.js';
 import * as renderer from '../../renderer/index.js';
-import { markGameStateDirty } from '../services.js';
+import { markEntityDirty } from '../services.js';
+
+/** Canonical asset id for a crusher — matches the SGNL adapter output. */
+export function crusherAssetId(sectorIndex) {
+    return `crusher:${currentMap || 'unknown'}:${sectorIndex}`;
+}
 
 const CRUSHER_SLOW_SPEED = 32;  // Map units per second (DOOM: 1 unit per tic at 35fps ≈ 35/s, we use 32)
 const CRUSHER_FAST_SPEED = 64;  // Fast crushers move at double speed
@@ -71,7 +76,7 @@ export function activateCrusher(sectorIndex) {
     if (!entry || entry.active) return;
     entry.active = true;
     entry.direction = -1; // start by lowering
-    markGameStateDirty();
+    markEntityDirty('crusher', crusherAssetId(sectorIndex));
 }
 
 /**
@@ -82,7 +87,7 @@ export function updateCrushers(deltaTime) {
     for (let i = 0; i < crusherEntries.length; i++) {
         const entry = crusherEntries[i];
         if (!entry.active) continue;
-        markGameStateDirty();
+        markEntityDirty('crusher', crusherAssetId(entry.sectorIndex));
 
         const moveAmount = entry.speed * deltaTime * entry.direction;
         entry.currentHeight += moveAmount;

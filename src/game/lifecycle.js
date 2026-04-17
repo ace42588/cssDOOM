@@ -7,7 +7,7 @@ import { MAPS, mapData, currentMap, setMapState } from '../data/maps.js';
 import { equipWeapon } from './combat/weapons.js';
 import { resetPossession } from './possession.js';
 import * as renderer from '../renderer/index.js';
-import { setMapName, flushNow, markAllDirty } from './services.js';
+import { setMapName, flushNow, markMapChanged } from './services.js';
 import { spawnThings } from './things/spawner.js';
 import { initDoors } from './mechanics/doors.js';
 import { initLifts } from './mechanics/lifts.js';
@@ -146,7 +146,7 @@ export function transitionToLevel() {
     player.collectedKeys.clear();
     renderer.clearKeys();
     equipWeapon(player.currentWeapon);
-    markAllDirty();
+    markMapChanged(currentMap);
     void flushNow();
 }
 
@@ -173,6 +173,6 @@ export function resetGameState() {
     renderer.clearKeys();
     renderer.clearWeaponSlots();
     equipWeapon(player.currentWeapon);
-    markAllDirty();
+    markMapChanged(currentMap);
     void flushNow();
 }

@@ -263,7 +263,20 @@ export function updateAllEnemies(deltaTime) {
     // Skip monsters under any human controller — those sessions drive the
     // body through movement/weapon modules instead. In single-player this
     // matches the previous "skip the one possessed body" behavior.
-    if (isHumanControlled(thing)) continue;
+    //
+    // BUT: DOOM sprite rotation is computed relative to *the local
+    // viewer*, not the monster itself. Non-possessed enemies get their
+    // rotation refreshed every tick below; if we bail here for possessed
+    // bodies the sprite stays locked on whatever frame the last net
+    // snapshot set, so it looks static (or jumps on facing deltas) as
+    // the local player walks around them. Keep the rotation refresh but
+    // skip the AI tick.
+    if (isHumanControlled(thing)) {
+      if (inRadius(thing, player, MAX_RENDER_DISTANCE)) {
+        renderer.updateEnemyRotation(getThingIndex(thing), thing);
+      }
+      continue;
+    }
 
     if (thing.collected) {
       if (thing.respawnTimer !== undefined) {
@@ -275,7 +288,7 @@ export function updateAllEnemies(deltaTime) {
       continue;
     }
 
-    if (!inRadius(thing, player, MAX_RENDER_DISTANCE)) continue;
+    //if (!inRadius(thing, player, MAX_RENDER_DISTANCE)) continue;
 
     updateSingleEnemy(thing, deltaTime, currentTime);
     renderer.updateEnemyRotation(getThingIndex(thing), thing);

@@ -46,7 +46,7 @@ Add a `.env` file at the repo root for secrets and endpoints. Only names beginni
 
 Example SCIM extensions and related YAML/JSON for treating the map or session as a system of record are in `public/sgnl/`. Product documentation: [help.sgnl.ai](https://help.sgnl.ai/) and [developer.sgnl.ai](https://developer.sgnl.ai/).
 
-On startup, the entry point can emit a CAEP *session established* event when the CAEP URL and token are configured. **Opening a door** calls Access Evaluations when the evaluation URL, token, and `VITE_CAEP_SUBJECT_EMAIL` (principal id) are all set; if anything is missing, evaluation is skipped and doors behave like vanilla DOOM. SCIM entity push is implemented in `src/sgnl/client/scim.js` but is **not** enabled in the default `index.js` (`initScimPush` is commented out) so fresh clones stay quiet until you opt in.
+On startup, the entry point can emit a CAEP *session established* event when the CAEP URL and token are configured. **Opening a door** calls Access Evaluations when the evaluation URL, token, and `VITE_CAEP_SUBJECT_EMAIL` (principal id) are all set; if anything is missing, evaluation is skipped and doors behave like vanilla DOOM. SCIM entity push is implemented on the server in `server/sgnl/scim.js` and is invoked from `server/sgnl/index.js` when SCIM env vars are configured; fresh clones stay quiet until you opt in.
 
 
 ## How it works

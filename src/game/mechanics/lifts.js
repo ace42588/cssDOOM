@@ -22,10 +22,15 @@
 import { USE_RANGE, LIFT_RAISE_DELAY, LIFT_USE_SPECIAL } from '../constants.js';
 
 import { state, player } from '../state.js';
-import { mapData } from '../../data/maps.js';
+import { mapData, currentMap } from '../../data/maps.js';
 import { playSound } from '../../audio/audio.js';
 import * as renderer from '../../renderer/index.js';
-import { markGameStateDirty } from '../services.js';
+import { markEntityDirty } from '../services.js';
+
+/** Canonical asset id for a lift — matches the SGNL adapter output. */
+export function liftAssetId(sectorIndex) {
+    return `lift:${currentMap || 'unknown'}:${sectorIndex}`;
+}
 
 const LIFT_MOVE_DURATION = 1.0; // seconds — must match renderer animation duration
 
@@ -108,7 +113,7 @@ export function activateLift(sectorIndex) {
     liftState.moveFrom = liftState.currentHeight;
     renderer.setLiftState(sectorIndex, 'lowered');
     playSound('DSPSTART');
-    markGameStateDirty();
+    markEntityDirty('lift', liftAssetId(sectorIndex));
 
     // One-way lifts (e.g. type 36) stay lowered permanently
     if (!liftState.oneWay) {
@@ -128,7 +133,7 @@ function raiseLift(sectorIndex) {
     liftState.moveFrom = liftState.currentHeight;
     renderer.setLiftState(sectorIndex, 'raised');
     playSound('DSPSTOP');
-    markGameStateDirty();
+    markEntityDirty('lift', liftAssetId(sectorIndex));
     liftState.timer = null;
 }
 
@@ -140,9 +145,9 @@ function raiseLift(sectorIndex) {
 export function updatePlayerFromLift(timestamp) {
     const currentTimeSeconds = timestamp / 1000;
     for (let index = 0, count = liftEntries.length; index < count; index++) {
-        const liftState = liftEntries[index].entry;
+        const { sectorIndex, entry: liftState } = liftEntries[index];
         if (!liftState.moving) continue;
-        markGameStateDirty();
+        markEntityDirty('lift', liftAssetId(sectorIndex));
 
         const elapsedSeconds = currentTimeSeconds - liftState.moveStart;
         const interpolation = Math.min(1, elapsedSeconds / LIFT_MOVE_DURATION);

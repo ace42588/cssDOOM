@@ -21,10 +21,29 @@ import {
 } from '../constants.js';
 
 import { state, player } from '../state.js';
+import { currentMap } from '../../data/maps.js';
 import { equipWeapon } from '../combat/weapons.js';
 import { playSound } from '../../audio/audio.js';
 import * as renderer from '../../renderer/index.js';
-import { markGameStateDirty, markPlayerDirty } from '../services.js';
+import { markEntityDirty, markPlayerDirty } from '../services.js';
+
+/** Canonical asset id for a key pickup — matches the SGNL adapter output. */
+function keyAssetId(mapThingIndex) {
+    return `key:${currentMap || 'unknown'}:${mapThingIndex}`;
+}
+
+/** Canonical asset id for a non-key pickup — matches the SGNL adapter output. */
+function pickupAssetId(mapThingIndex) {
+    return `pickup:${currentMap || 'unknown'}:${mapThingIndex}`;
+}
+
+function markPickupDirty(thing) {
+    const idx = thing.mapThingIndex;
+    if (!Number.isFinite(idx)) return;
+    const kind = KEY_TYPES[thing.type] ? 'key' : 'pickup';
+    const id = kind === 'key' ? keyAssetId(idx) : pickupAssetId(idx);
+    markEntityDirty(kind, id);
+}
 
 export function checkPickups() {
     if (player.isDead) return;
@@ -47,7 +66,7 @@ export function checkPickups() {
                 renderer.collectItem(index);
                 triggerPickupFlash();
                 markPlayerDirty();
-                markGameStateDirty();
+                markPickupDirty(thing);
                 continue;
             }
 
@@ -88,7 +107,7 @@ export function checkPickups() {
                 renderer.collectItem(index);
                 triggerPickupFlash();
                 markPlayerDirty();
-                markGameStateDirty();
+                markPickupDirty(thing);
                 continue;
             }
 
@@ -126,7 +145,7 @@ export function checkPickups() {
                 renderer.collectItem(index);
                 triggerPickupFlash();
                 markPlayerDirty();
-                markGameStateDirty();
+                markPickupDirty(thing);
             }
         }
     }

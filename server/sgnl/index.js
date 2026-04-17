@@ -22,13 +22,16 @@ import { evaluateAccess as sgnlEvaluateAccess } from './evaluation.js';
 import { emitCaepSessionEstablished } from './caep.js';
 import {
     initScimPush,
+    markEntityDirty,
     markPlayerDirty,
-    markGameStateDirty,
-    markAllScimDirty,
+    markMapChanged,
     flushScimNow,
     tickScimHeartbeat,
     setScimMapName,
+    registerScimPlayer,
+    unregisterScimPlayer,
 } from './scim.js';
+import { startSgnlAdapter } from './adapter/index.js';
 
 const sessions = new Map();
 
@@ -42,10 +45,14 @@ export function registerSession(sessionId, meta = {}) {
         email: meta.email || process.env.CAEP_SUBJECT_EMAIL?.trim() || null,
         opaqueId: meta.opaqueId || randomUUID(),
     });
+    registerScimPlayer(sessionId, {
+        displayName: meta.displayName || meta.email || `session:${sessionId}`,
+    });
 }
 
 export function unregisterSession(sessionId) {
     sessions.delete(sessionId);
+    unregisterScimPlayer(sessionId);
 }
 
 function resolvePrincipalId(controllerId) {
@@ -67,9 +74,16 @@ export function emitSessionEstablished(sessionId) {
     });
 }
 
-/** Bootstrap SCIM push. Idempotent; no-op when env is missing. */
+/** Bootstrap SCIM push and the SGNL gRPC map adapter. Idempotent; each
+ * side is a no-op when its env is missing. */
 export async function initSgnl(initialMapName = 'E1M1') {
     await initScimPush(initialMapName);
+    try {
+        await startSgnlAdapter();
+    } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error('[sgnl] adapter failed to start', err);
+    }
 }
 
 /**
@@ -84,9 +98,9 @@ export function createSgnlServices() {
             if (!principalId) return { allowed: true, skipped: true };
             return sgnlEvaluateAccess(principalId, assetId, action);
         },
+        markEntityDirty,
         markPlayerDirty,
-        markGameStateDirty,
-        markAllDirty: markAllScimDirty,
+        markMapChanged,
         flushNow: flushScimNow,
         tickHeartbeat: tickScimHeartbeat,
         setMapName: setScimMapName,
