@@ -1,12 +1,21 @@
 /**
- * Entry point — initialization and main game loop.
+ * Browser entry point — installs the DOM renderer + Web Audio hosts,
+ * opens a WebSocket to the authoritative game server, and drives the
+ * per-frame input/render loop.
+ *
+ * All gameplay simulation runs on the server; this file only
+ *   1. connects and authenticates the session
+ *   2. streams local input upstream each frame
+ *   3. applies world snapshots into shared `state.js`
+ *   4. renders the scene (camera + HUD + transient events)
  */
 
 import { state, player } from './src/game/state.js';
-import { mapData, currentMap } from './src/data/maps.js';
-import { updateGame } from './src/game/index.js';
-import { loadMap } from './src/game/lifecycle.js';
-import { updateCamera, startCullingLoop, updateHud } from './src/renderer/index.js';
+import { mapData, setMapState } from './src/data/maps.js';
+import { updateCamera, startCullingLoop, updateHud, setRendererHost } from './src/renderer/index.js';
+import { setAudioHost } from './src/audio/audio.js';
+import { createDomRendererHost } from './src/renderer/dom/host.js';
+import { createWebAudioHost } from './src/audio/web-audio.js';
 import { updateMenuSelection } from './src/ui/menu.js';
 import { isBodySwapOpen } from './src/ui/body-swap.js';
 import { hideInitialOverlay } from './src/ui/overlay.js';
@@ -17,11 +26,22 @@ import { initGamepadInput } from './src/input/gamepad.js';
 import { initDebugMenu, updateDebugStats } from './src/ui/debug.js';
 import './src/ui/spectator.js';
 import './src/ui/body-swap.js';
-import { emitCaepSessionEstablished } from './src/sgnl/client/caep.js';
-import { initScimPush } from './src/sgnl/client/scim.js';
-import { runActorRegressionChecks } from './src/game/actors/regressions.js';
+import { updateDoorOperator } from './src/ui/door-operator.js';
+import {
+    connect as connectToServer,
+    sendInputFrame,
+    getSession,
+} from './src/net/client.js';
+import { spawnThings } from './src/game/things/spawner.js';
+import { initMcpInterface } from './src/mcp/index.js';
+import {
+    beginLevelTransition,
+    rebuildLevelScene,
+    endLevelTransition,
+} from './src/app/level-loader.js';
 
 let debugEnabled = false;
+let ready = false;
 
 window.debug = function() {
     if (!debugEnabled) {
@@ -32,72 +52,75 @@ window.debug = function() {
 };
 
 /**
- * Game Loop
+ * Render loop. The server owns simulation — we just forward input,
+ * draw the latest state, and update the HUD/camera for the session's
+ * controlled body (or follow target when spectating).
  */
-function gameLoop(timestamp) {
-    if (!mapData) {
-        requestAnimationFrame(gameLoop);
+function frame() {
+    if (!ready || !mapData) {
+        requestAnimationFrame(frame);
         return;
     }
 
-    if (player.isDead) {
-        updateCamera();
-        requestAnimationFrame(gameLoop);
-        return;
-    }
+    sendInputFrame();
 
-    // Body-swap picker pauses simulation (AI, movement, projectiles) while
-    // the user decides which body to inhabit. The camera keeps rendering so
-    // the world behind the overlay animates visually.
-    if (isBodySwapOpen()) {
+    if (!player.isDead && !isBodySwapOpen()) {
         updateHud();
-        updateCamera();
-        requestAnimationFrame(gameLoop);
-        return;
+    } else if (isBodySwapOpen()) {
+        updateHud();
     }
-
-    updateGame(timestamp);
-    updateHud();
     updateCamera();
+    updateDoorOperator();
 
     if (import.meta.env.DEV || debugEnabled) updateDebugStats();
 
-    requestAnimationFrame(gameLoop);
+    requestAnimationFrame(frame);
 }
 
+async function applyServerMap(name, _mapData) {
+    // Server pushed the authoritative map. Build the scene and any
+    // gameplay bookkeeping the renderer depends on (spatial grid,
+    // door/lift/crusher containers, sector adjacency). Things are
+    // respawned locally so the renderer can attach sprites to the
+    // same thingIndex positions the server is broadcasting against.
+    const isInitialLoad = !ready;
+    await beginLevelTransition(isInitialLoad);
+    spawnThings();
+    await rebuildLevelScene(isInitialLoad);
+    endLevelTransition(isInitialLoad);
 
-/**
- * Initialization
- */
+    if (!ready) {
+        startCullingLoop();
+        updateMenuSelection();
+        updateHud();
+        updateCamera();
+        await new Promise(resolve => setTimeout(resolve, 600));
+        hideInitialOverlay();
+        ready = true;
+    }
+}
+
 async function init() {
-    void emitCaepSessionEstablished().catch((err) => {
-        if (import.meta.env.DEV) console.warn('[caep] Session established push error', err);
-    });
+    setRendererHost(createDomRendererHost());
+    setAudioHost(createWebAudioHost());
 
     if (import.meta.env.DEV) { debugEnabled = true; initDebugMenu(); }
-    runActorRegressionChecks();
+
     initKeyboardInput();
     initMouseInput();
     initTouchInput();
     initGamepadInput();
+    initMcpInterface();
 
-    await loadMap('E1M1');
-    //void initScimPush(currentMap || 'E1M1').catch((err) => {
-    //    if (import.meta.env.DEV) console.warn('[scim] Init push error', err);
-    //});
-    startCullingLoop();
-    
-    updateMenuSelection();
-    updateHud();
-    updateCamera();
+    connectToServer({
+        onMapLoad: applyServerMap,
+    });
 
-    await new Promise(resolve => setTimeout(resolve, 600));
-
-    hideInitialOverlay();
-
-    /* Start game loop */
-    requestAnimationFrame(gameLoop);
+    requestAnimationFrame(frame);
     window.focus();
 }
 
 init();
+
+// expose for the debug console / spectator UI
+window.__cssdoom = { state, player, session: getSession() };

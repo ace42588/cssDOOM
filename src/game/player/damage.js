@@ -8,8 +8,8 @@ import { getSectorHazardAt } from '../physics/queries.js';
 import * as renderer from '../../renderer/index.js';
 import { asDamageableActor, assertDamageableActor } from '../actors/adapter.js';
 import { applyDamage } from '../combat/damage.js';
-import { flushScimNow, markAllScimDirty, markPlayerDirty } from '../../sgnl/client/scim.js';
-import { getControlled, onPossessedDeath } from '../possession.js';
+import { flushNow, markAllDirty, markPlayerDirty } from '../services.js';
+import { isHumanControlled, onPossessedDeath } from '../possession.js';
 
 // ============================================================================
 // Player Damage
@@ -20,7 +20,7 @@ import { getControlled, onPossessedDeath } from '../possession.js';
  * Accuracy: Exact — same integer division, same absorption ratios, same armor depletion logic.
  */
 export function damagePlayer(damageAmount) {
-    const playerIsControlled = getControlled() === player;
+    const playerIsControlled = isHumanControlled(player);
     const targetActor = asDamageableActor(player);
     assertDamageableActor(targetActor, 'damagePlayer');
     const damageResult = applyDamage(targetActor, damageAmount, null, {
@@ -45,8 +45,8 @@ export function damagePlayer(damageAmount) {
             player.deathTime = performance.now();
             renderer.setPlayerDead(true);
             playSound('DSPLDETH');
-            markAllScimDirty();
-            void flushScimNow();
+            markAllDirty();
+            void flushNow();
         } else {
             // Player character died while AI-controlled — don't trigger the
             // normal game-over flow; instead mark the body as un-possessable

@@ -66,12 +66,29 @@ function evalProxyRules(evalTarget) {
     };
 }
 
+/**
+ * Proxy `/ws` WebSocket traffic to the multiplayer server (default :8787).
+ * Lets the browser speak to the server through Vite's origin in dev so
+ * nothing special has to be wired on the client side.
+ */
+function gameServerProxyRules(target) {
+    const url = target?.trim() || 'http://localhost:8787';
+    return {
+        '/ws': {
+            target: url,
+            ws: true,
+            changeOrigin: true,
+        },
+    };
+}
+
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, process.cwd(), '');
     const proxy = {
         ...caepProxyRules(env.VITE_CAEP_RECEIVER_URL),
         ...scimProxyRules(env.VITE_SCIM_PUSH_URL),
         ...evalProxyRules(env.VITE_SGNL_EVAL_URL),
+        ...gameServerProxyRules(env.VITE_GAME_SERVER_URL),
     };
 
     return {

@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "server": "node server/index.js",
+    "dev:all": "concurrently -n server,vite -c blue,magenta \"npm:server\" \"npm:dev\""
   },
   "keywords": [
     "doom",
@@ -18,9 +20,12 @@
   "author": "Niels Leenheer",
   "license": "GPL-2.0",
   "devDependencies": {
+    "concurrently": "^9.2.1",
     "vite": "^8.0.0"
   },
   "dependencies": {
-    "gamecontroller.js": "^1.5.0"
+    "@mcp-b/webmcp-polyfill": "^2.2.0",
+    "gamecontroller.js": "^1.5.0",
+    "ws": "^8.20.0"
   }
 }

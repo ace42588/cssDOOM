@@ -25,7 +25,7 @@ import { state, player } from '../state.js';
 import { mapData } from '../../data/maps.js';
 import { playSound } from '../../audio/audio.js';
 import * as renderer from '../../renderer/index.js';
-import { markGameStateDirty } from '../../sgnl/client/scim.js';
+import { markGameStateDirty } from '../services.js';
 
 const LIFT_MOVE_DURATION = 1.0; // seconds — must match renderer animation duration
 
@@ -63,7 +63,8 @@ export function initLifts() {
         liftEntries.push({ sectorIndex, entry });
     });
 
-    // Debug console commands
+    // Debug console commands (browser only — skip when running on the server)
+    if (typeof window === 'undefined') return;
     window.listTriggers = () => {
         const triggers = mapData.triggers || [];
         triggers.forEach((t, i) => {

@@ -6,6 +6,12 @@
  * user possesses a monster (via body-swap), the same path drives that
  * monster instead — reading the monster's position/facing, applying its AI
  * speed, and syncing its renderer position when it moves.
+ *
+ * Multiplayer: `updateMovementFor(sessionId, inputSnapshot, dt, timestamp)`
+ * runs the movement for a specific session with a specific input snapshot.
+ * The server ticks it once per connected controller; the browser single
+ * player path still calls `updateMovement(dt, timestamp)` which wraps the
+ * per-session call with the local session + global `input` object.
  */
 
 import { EYE_HEIGHT, RUN_MULTIPLIER, TURN_SPEED } from '../constants.js';
@@ -18,8 +24,8 @@ import { input, collectInput } from '../../input/index.js';
 import { asMovementActor } from '../actors/adapter.js';
 import { integratePlanarMove } from './system.js';
 import {
-    getControlled,
-    isControllingPlayer,
+    LOCAL_SESSION,
+    getControlledFor,
     getControlledEyeHeight,
     getControlledSpeed,
 } from '../possession.js';
@@ -27,12 +33,39 @@ import { getThingIndex } from '../things/registry.js';
 
 let wasMoving = false;
 
+/** Browser single-player entry point — uses the local session + global input. */
 export function updateMovement(deltaTime, timestamp) {
     collectInput();
-    updateLocation(deltaTime);
-    if (isControllingPlayer()) updatePlayerFromLift(timestamp);
-    updateHeight();
-    updateMovingState();
+    updateMovementFor(LOCAL_SESSION, input, deltaTime, timestamp);
+}
+
+/**
+ * Apply an input snapshot to the body controlled by `sessionId`. Called by
+ * both the browser (indirectly, via `updateMovement`) and the server (once
+ * per connected session per tick).
+ */
+export function updateMovementFor(sessionId, inputSnapshot, deltaTime, timestamp) {
+    const entity = getControlledFor(sessionId);
+    if (!entity) return;
+    if (entity.__isDoorEntity) {
+        // Doors are security cameras: yaw only, no translation/physics.
+        updateDoorViewAngle(entity, inputSnapshot, deltaTime);
+        if (sessionId === LOCAL_SESSION) updateMovingState({ moveX: 0, moveY: 0 });
+        return;
+    }
+    updateLocation(entity, inputSnapshot, deltaTime);
+    if (entity === player) updatePlayerFromLift(timestamp);
+    updateHeight(entity);
+    if (sessionId === LOCAL_SESSION) updateMovingState(inputSnapshot);
+}
+
+function updateDoorViewAngle(doorEntity, inputSnapshot, deltaTime) {
+    const turnSpeed = inputSnapshot.run ? TURN_SPEED * RUN_MULTIPLIER : TURN_SPEED;
+    const angle = (doorEntity.viewAngle ?? 0)
+        + (inputSnapshot.turn || 0) * turnSpeed * deltaTime
+        + (inputSnapshot.turnDelta || 0);
+    doorEntity.viewAngle = angle;
+    doorEntity.facing = angle + Math.PI / 2;
 }
 
 /**
@@ -44,7 +77,6 @@ export function updateMovement(deltaTime, timestamp) {
 function getViewAngle(entity) {
     if (entity === player) return player.angle;
     if (typeof entity.viewAngle !== 'number') {
-        // Seed from the monster's sprite facing (0 = east, CCW).
         entity.viewAngle = (entity.facing ?? 0) - Math.PI / 2;
     }
     return entity.viewAngle;
@@ -56,21 +88,21 @@ function setViewAngle(entity, angle) {
         return;
     }
     entity.viewAngle = angle;
-    // Keep the monster's sprite `facing` roughly aligned so the culling/
-    // infighting code that reads `facing` sees a sensible orientation.
     entity.facing = angle + Math.PI / 2;
 }
 
-function updateLocation(deltaTime) {
-    const entity = getControlled();
-    const baseSpeed = getControlledSpeed();
-    const speed = input.run ? baseSpeed * RUN_MULTIPLIER : baseSpeed;
-    const turnSpeed = input.run ? TURN_SPEED * RUN_MULTIPLIER : TURN_SPEED;
+function updateLocation(entity, inputSnapshot, deltaTime) {
+    const sessionId = entity.__sessionId || LOCAL_SESSION;
+    const baseSpeed = getControlledSpeed(sessionId);
+    const speed = inputSnapshot.run ? baseSpeed * RUN_MULTIPLIER : baseSpeed;
+    const turnSpeed = inputSnapshot.run ? TURN_SPEED * RUN_MULTIPLIER : TURN_SPEED;
 
-    const angle = getViewAngle(entity) + input.turn * turnSpeed * deltaTime + input.turnDelta;
+    const angle = getViewAngle(entity)
+        + (inputSnapshot.turn || 0) * turnSpeed * deltaTime
+        + (inputSnapshot.turnDelta || 0);
     setViewAngle(entity, angle);
 
-    if (input.moveX === 0 && input.moveY === 0) return;
+    if (!inputSnapshot.moveX && !inputSnapshot.moveY) return;
 
     const forwardX = -Math.sin(angle);
     const forwardY = Math.cos(angle);
@@ -82,15 +114,13 @@ function updateLocation(deltaTime) {
     integratePlanarMove(
         movementActor,
         {
-            x: forwardX * speed * input.moveY + strafeX * speed * input.moveX,
-            y: forwardY * speed * input.moveY + strafeY * speed * input.moveX,
+            x: forwardX * speed * (inputSnapshot.moveY || 0) + strafeX * speed * (inputSnapshot.moveX || 0),
+            y: forwardY * speed * (inputSnapshot.moveY || 0) + strafeY * speed * (inputSnapshot.moveX || 0),
         },
         deltaTime,
     );
 
     if (entity !== player) {
-        // Sync the monster's DOM position and sector attachment so lighting
-        // and culling stay in step while the user drives it.
         const idx = getThingIndex(entity);
         entity.floorHeight = getFloorHeightAt(entity.x, entity.y);
         renderer.updateThingPosition(idx, {
@@ -105,16 +135,15 @@ function updateLocation(deltaTime) {
     }
 }
 
-function updateMovingState() {
-    const isMoving = input.moveX !== 0 || input.moveY !== 0;
+function updateMovingState(inputSnapshot) {
+    const isMoving = (inputSnapshot.moveX || 0) !== 0 || (inputSnapshot.moveY || 0) !== 0;
     if (isMoving !== wasMoving) {
         wasMoving = isMoving;
         renderer.setPlayerMoving(isMoving);
     }
 }
 
-function updateHeight() {
-    const entity = getControlled();
+function updateHeight(entity) {
     if (entity === player) {
         const prevFloorHeight = player.floorHeight;
         player.floorHeight = getFloorHeightAt(player.x, player.y);
@@ -124,8 +153,6 @@ function updateHeight() {
             playSound('DSOOF');
         }
     } else {
-        // Possessed monster: derive eye-height from its floor + offset.
-        // No "DSOOF" here — monsters don't grunt when they drop.
         entity.floorHeight = getFloorHeightAt(entity.x, entity.y);
     }
 }

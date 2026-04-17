@@ -22,14 +22,9 @@
 import 'gamecontroller.js';
 import { input } from './index.js';
 import { player } from '../game/state.js';
-import { currentMap } from '../data/maps.js';
 import { isMenuOpen, toggleMenu } from '../ui/menu.js';
-import { tryOpenDoor } from '../game/mechanics/doors.js';
-import { tryUseSwitch } from '../game/mechanics/switches.js';
-import { tryUseLift } from '../game/mechanics/lifts.js';
-import { fireWeapon, equipWeapon, stopAutoFire } from '../game/combat/weapons.js';
-import { loadMap } from '../game/lifecycle.js';
 import { registerInputProvider } from './index.js';
+import { pressUse, requestWeaponSwitch } from '../net/client.js';
 
 const STICK_DEADZONE = 0.15;
 const TURN_SENSITIVITY = 0.04;
@@ -86,9 +81,7 @@ function setupGamepad(gamepad) {
     gamepad.before('button0', () => {
         if (handleDeadRestart()) return;
         if (isMenuOpen()) return;
-        void tryOpenDoor();
-        void tryUseSwitch();
-        tryUseLift();
+        pressUse();
     });
 
     // --- Right trigger (R2 / button7): Fire ---
@@ -96,11 +89,9 @@ function setupGamepad(gamepad) {
         if (handleDeadRestart()) return;
         if (isMenuOpen()) return;
         input.fireHeld = true;
-        fireWeapon();
     });
     gamepad.after('r2', () => {
         input.fireHeld = false;
-        stopAutoFire();
     });
 
     // --- Left bumper (L1 / button4): Previous weapon ---
@@ -157,13 +148,13 @@ function cycleWeapon(direction) {
     const owned = [...player.ownedWeapons].sort((a, b) => a - b);
     const currentIndex = owned.indexOf(player.currentWeapon);
     const nextIndex = (currentIndex + direction + owned.length) % owned.length;
-    equipWeapon(owned[nextIndex]);
+    requestWeaponSwitch(owned[nextIndex]);
 }
 
 function handleDeadRestart() {
     if (!player.isDead) return false;
     if (performance.now() - player.deathTime > 4000) {
-        loadMap(currentMap);
+        location.reload();
     }
     return true;
 }

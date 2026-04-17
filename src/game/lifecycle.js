@@ -7,13 +7,14 @@ import { MAPS, mapData, currentMap, setMapState } from '../data/maps.js';
 import { equipWeapon } from './combat/weapons.js';
 import { resetPossession } from './possession.js';
 import * as renderer from '../renderer/index.js';
-import {
-    beginLevelTransition,
-    rebuildLevelScene,
-    scheduleIntroCameraDrop,
-    endLevelTransition,
-} from '../app/level-loader.js';
-import { setScimMapName, flushScimNow, markAllScimDirty } from '../sgnl/client/scim.js';
+import { setMapName, flushNow, markAllDirty } from './services.js';
+import { spawnThings } from './things/spawner.js';
+import { initDoors } from './mechanics/doors.js';
+import { initLifts } from './mechanics/lifts.js';
+import { initCrushers } from './mechanics/crushers.js';
+import { buildSpatialGrid, clearSpatialGrid } from './spatial-grid.js';
+import { buildSectorAdjacency } from './sound-propagation.js';
+import { getFloorHeightAt } from './physics/queries.js';
 
 // ============================================================================
 // Map load orchestration
@@ -25,12 +26,21 @@ import { setScimMapName, flushScimNow, markAllScimDirty } from '../sgnl/client/s
  */
 export async function loadMap(name) {
     const isInitialLoad = !currentMap;
+    // Pull in the DOM-heavy level loader lazily so this module can run
+    // on the server without touching a `document`.
+    const {
+        beginLevelTransition,
+        rebuildLevelScene,
+        scheduleIntroCameraDrop,
+        endLevelTransition,
+    } = await import('../app/level-loader.js');
+
     await beginLevelTransition(isInitialLoad);
 
     const response = await fetch(`maps/${name}.json`);
     const json = await response.json();
     setMapState(name, json);
-    setScimMapName(name);
+    setMapName(name);
     applyPlayerStart();
 
     if (isInitialLoad || player.isDead) {
@@ -39,9 +49,54 @@ export async function loadMap(name) {
         transitionToLevel();
     }
 
+    // Spawn game entities first so the DOM builder can match against them.
+    spawnThings();
     await rebuildLevelScene(isInitialLoad);
     scheduleIntroCameraDrop();
     endLevelTransition(isInitialLoad);
+}
+
+/**
+ * Headless map load — for the server (or any environment without a DOM).
+ * Performs the pure-data portion of `loadMap`: read JSON, apply player start,
+ * reset game state, spawn things, initialize doors/lifts/crushers, build
+ * spatial queries, and wire sound adjacency. Does not touch the renderer or
+ * UI; callers install a renderer host (no-op or recording) beforehand.
+ *
+ * @param {string} name Map identifier (e.g. 'E1M1')
+ * @param {(name: string) => Promise<object>} readMapJson Async loader that
+ *   returns parsed map JSON. The server reads from the filesystem; a browser
+ *   caller could pass `(n) => fetch('maps/'+n+'.json').then(r => r.json())`.
+ */
+export async function loadMapHeadless(name, readMapJson) {
+    const json = await readMapJson(name);
+    setMapState(name, json);
+    setMapName(name);
+    applyPlayerStart();
+    // Always do a full reset on a headless map load. The server owns the
+    // authoritative state and starts with fresh inventory/health for the
+    // marine on each level.
+    resetGameState();
+    spawnThings();
+    clearSpatialGrid();
+    initDoors();
+    initLifts();
+    initCrushers();
+    buildSpatialGrid();
+    buildSectorAdjacency();
+    // Sample the floor under each spawned thing now that the spatial grid
+    // is ready. AI entities re-sample every tick during movement, but static
+    // pickups / barrels / decorations need this baseline so the snapshot
+    // carries a real `floorHeight` — otherwise the client renders them
+    // floating at world-origin zero.
+    for (const thing of state.things) {
+        if (typeof thing.floorHeight !== 'number') {
+            thing.floorHeight = getFloorHeightAt(thing.x, thing.y);
+        }
+    }
+    // Player eye height uses the real constant; applyPlayerStart parked the
+    // view at +80, which matches the intro-drop final position.
+    player.z = player.floorHeight + 80;
 }
 
 function applyPlayerStart() {
@@ -91,8 +146,8 @@ export function transitionToLevel() {
     player.collectedKeys.clear();
     renderer.clearKeys();
     equipWeapon(player.currentWeapon);
-    markAllScimDirty();
-    void flushScimNow();
+    markAllDirty();
+    void flushNow();
 }
 
 /** Full reset — new game or respawn after death. */
@@ -118,6 +173,6 @@ export function resetGameState() {
     renderer.clearKeys();
     renderer.clearWeaponSlots();
     equipWeapon(player.currentWeapon);
-    markAllScimDirty();
-    void flushScimNow();
+    markAllDirty();
+    void flushNow();
 }

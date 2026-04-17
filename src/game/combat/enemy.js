@@ -28,7 +28,7 @@ import {
   normalizeDamageSource,
   resolveDamageTarget,
 } from './damage.js';
-import { getControlled, onPossessedDeath } from '../possession.js';
+import { isHumanControlled, onPossessedDeath } from '../possession.js';
 import * as renderer from "../../renderer/index.js";
 import {
   getHorizontalDistance,
@@ -205,7 +205,7 @@ export function damageEnemy(target, damage, source) {
 
     // Body-swap: if the user was possessing this monster, auto-cycle to
     // the next living body (or trigger game-over if nothing's left).
-    if (normalizedTarget === getControlled()) {
+    if (isHumanControlled(normalizedTarget)) {
       onPossessedDeath(normalizedTarget);
     }
 

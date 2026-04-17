@@ -70,7 +70,9 @@ function checkAdapterInvariants() {
 }
 
 export function runActorRegressionChecks() {
-    if (!import.meta.env.DEV) return;
+    let dev = false;
+    try { dev = Boolean(import.meta.env?.DEV); } catch {}
+    if (!dev) return;
     checkArmorAbsorption();
     checkPainChanceDeterminism();
     checkAdapterInvariants();

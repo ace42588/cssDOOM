@@ -24,7 +24,7 @@ import { state, player } from '../state.js';
 import { equipWeapon } from '../combat/weapons.js';
 import { playSound } from '../../audio/audio.js';
 import * as renderer from '../../renderer/index.js';
-import { markGameStateDirty, markPlayerDirty } from '../../sgnl/client/scim.js';
+import { markGameStateDirty, markPlayerDirty } from '../services.js';
 
 export function checkPickups() {
     if (player.isDead) return;

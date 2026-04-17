@@ -9,7 +9,6 @@
  */
 
 import { input } from './index.js';
-import { fireWeapon, stopAutoFire } from '../game/combat/weapons.js';
 import { spectatorActive } from '../ui/spectator.js';
 import { registerInputProvider } from './index.js';
 
@@ -28,13 +27,12 @@ export function initMouseInput() {
 
     // Fire weapon on left click (outside UI elements)
     document.addEventListener('mousedown', event => {
-        if (event.button === 0 && !spectatorActive && !isTouchDevice && !event.target.closest('#debug-menu, #menu, #hud, #spectator, #touch-controls, #help-overlay, #help-button, #fullscreen-button')) {
+        if (event.button === 0 && !spectatorActive && !isTouchDevice && !event.target.closest('#debug-menu, #menu, #hud, #spectator, #touch-controls, #help-overlay, #help-button, #fullscreen-button, #body-swap-overlay, #door-operator-overlay')) {
             input.fireHeld = true;
-            fireWeapon();
         }
     });
     document.addEventListener('mouseup', event => {
-        if (event.button === 0) { input.fireHeld = false; stopAutoFire(); }
+        if (event.button === 0) { input.fireHeld = false; }
     });
 
     // Request pointer lock when entering fullscreen

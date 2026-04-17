@@ -22,8 +22,8 @@ import { input } from '../../input/index.js';
 import { propagateSound } from '../sound-propagation.js';
 import { getHorizontalDistance, randomDoomSpreadAngleRadians } from '../geometry.js';
 import { distance2 } from '../actors/math.js';
-import { markGameStateDirty, markPlayerDirty } from '../../sgnl/client/scim.js';
-import { getControlled, isControllingPlayer } from '../possession.js';
+import { markGameStateDirty, markPlayerDirty } from '../services.js';
+import { getControlled, isControllingPlayer, isHumanControlled, getControlledFor, LOCAL_SESSION } from '../possession.js';
 
 // ============================================================================
 // Weapon Loading & Equipping
@@ -412,8 +412,23 @@ function spawnPuff(hitX, hitY, hitFloorHeight) {
  *   - hitscan: Zombieman/Shotgun Guy — picks the closest shootable within
  *     the firing cone and rolls pellet damage.
  */
-function fireMonsterAttack() {
-    const monster = getControlled();
+/**
+ * Server entry point: fire the weapon of whichever body session `sessionId`
+ * controls. Routes to the marine weapon path if the session holds the
+ * marine, or to the possessed-monster attack otherwise.
+ */
+export function fireWeaponFor(sessionId) {
+    const entity = getControlledFor(sessionId);
+    if (!entity) return;
+    if (entity === player) {
+        fireWeapon();
+    } else {
+        fireMonsterAttack(entity);
+    }
+}
+
+function fireMonsterAttack(explicitMonster) {
+    const monster = explicitMonster || getControlled();
     if (!monster || !monster.ai) return;
 
     const cooldownMs = (monster.ai.cooldown || 1) * 1000;
@@ -424,7 +439,7 @@ function fireMonsterAttack() {
     // Briefly flash the monster into its attack sprite.
     setEnemyState(monster, 'attacking');
     setTimeout(() => {
-        if (getControlled() === monster) {
+        if (isHumanControlled(monster)) {
             setEnemyState(monster, 'chasing');
         }
         player.isFiring = false;

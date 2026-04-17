@@ -14,14 +14,9 @@
 
 import { input } from './index.js';
 import { player } from '../game/state.js';
-import { currentMap } from '../data/maps.js';
 import { isMenuOpen } from '../ui/menu.js';
-import { tryOpenDoor } from '../game/mechanics/doors.js';
-import { tryUseSwitch } from '../game/mechanics/switches.js';
-import { tryUseLift } from '../game/mechanics/lifts.js';
-import { fireWeapon, equipWeapon, stopAutoFire } from '../game/combat/weapons.js';
-import { loadMap } from '../game/lifecycle.js';
 import { registerInputProvider } from './index.js';
+import { pressUse, requestWeaponSwitch } from '../net/client.js';
 
 const JOYSTICK_MAX_RADIUS = 50;
 const JOYSTICK_DEADZONE = 0.15;
@@ -195,7 +190,6 @@ function setupPointerHandlers() {
         fireOverlay.setPointerCapture(e.pointerId);
         activePointers.set(e.pointerId, { type: 'fire' });
         input.fireHeld = true;
-        fireWeapon();
     });
 
     const releaseFire = e => {
@@ -204,7 +198,6 @@ function setupPointerHandlers() {
 
         activePointers.delete(e.pointerId);
         input.fireHeld = false;
-        stopAutoFire();
     };
     fireOverlay.addEventListener('pointerup', releaseFire);
     fireOverlay.addEventListener('pointercancel', releaseFire);
@@ -215,9 +208,7 @@ function setupPointerHandlers() {
         if (handleDeadRestart()) return;
 
         e.preventDefault();
-        void tryOpenDoor();
-        void tryUseSwitch();
-        tryUseLift();
+        pressUse();
     });
 
     // --- Weapon cycling by tapping the ARMS panel ---
@@ -249,13 +240,13 @@ function cycleWeapon(direction) {
     const owned = [...player.ownedWeapons].sort((a, b) => a - b);
     const currentIndex = owned.indexOf(player.currentWeapon);
     const nextIndex = (currentIndex + direction + owned.length) % owned.length;
-    equipWeapon(owned[nextIndex]);
+    requestWeaponSwitch(owned[nextIndex]);
 }
 
 function handleDeadRestart() {
     if (!player.isDead) return false;
     if (performance.now() - player.deathTime > 4000) {
-        loadMap(currentMap);
+        location.reload();
     }
     return true;
 }

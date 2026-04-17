@@ -7,7 +7,10 @@
  * monster. Clicking a card hands control to that body.
  */
 
-import { listAvailableBodies, possess, onPossessionChange } from '../game/possession.js';
+import { listAvailableBodies, onPossessionChange } from '../game/possession.js';
+import { requestBodySwap } from '../net/client.js';
+import { player } from '../game/state.js';
+import { getThingIndex } from '../game/things/registry.js';
 
 const overlay = document.createElement('div');
 overlay.id = 'body-swap-overlay';
@@ -65,33 +68,52 @@ function renderBodies() {
         card.className = 'body-swap-card';
         if (body.isControlled) card.classList.add('active');
         card.dataset.kind = body.kind;
-        if (body.type !== null) card.dataset.type = body.type;
+        if (body.type !== null && body.type !== undefined) card.dataset.type = body.type;
 
         const label = document.createElement('div');
         label.className = 'body-swap-label';
         label.textContent = body.label;
         card.appendChild(label);
 
-        const hp = document.createElement('div');
-        hp.className = 'body-swap-hp';
-        hp.textContent = body.maxHp && body.maxHp !== body.hp
-            ? `${body.hp} / ${body.maxHp} HP`
-            : `${body.hp} HP`;
-        card.appendChild(hp);
+        if (body.kind === 'door') {
+            const meta = document.createElement('div');
+            meta.className = 'body-swap-hp';
+            meta.textContent = body.keyRequired
+                ? `Needs ${body.keyRequired} key`
+                : 'Security camera';
+            card.appendChild(meta);
+        } else {
+            const hp = document.createElement('div');
+            hp.className = 'body-swap-hp';
+            hp.textContent = body.maxHp && body.maxHp !== body.hp
+                ? `${body.hp} / ${body.maxHp} HP`
+                : `${body.hp} HP`;
+            card.appendChild(hp);
+        }
 
         const badge = document.createElement('div');
         badge.className = 'body-swap-badge';
-        badge.textContent = body.isControlled ? 'Controlling' : 'Possess';
+        badge.textContent = body.isControlled
+            ? 'Controlling'
+            : (body.kind === 'door' ? 'Operate' : 'Possess');
         card.appendChild(badge);
 
         card.addEventListener('click', () => {
-            if (possess(body.entity)) {
-                toggleBodySwap(false);
-            }
+            const targetId = targetIdForBody(body);
+            if (!targetId) return;
+            requestBodySwap(targetId);
+            toggleBodySwap(false);
         });
 
         list.appendChild(card);
     }
+}
+
+function targetIdForBody(body) {
+    if (body.kind === 'door') return `door:${body.sectorIndex}`;
+    if (body.entity === player) return 'player';
+    const idx = getThingIndex(body.entity);
+    return idx >= 0 ? `thing:${idx}` : null;
 }
 
 // Re-render if the underlying set changes while the overlay is open

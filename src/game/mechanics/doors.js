@@ -25,14 +25,41 @@ import { mapData } from '../../data/maps.js';
 import { getSectorAt } from '../physics/queries.js';
 import { playSound } from '../../audio/audio.js';
 import * as renderer from '../../renderer/index.js';
-import { markGameStateDirty } from '../../sgnl/client/scim.js';
-import { evaluateAccess } from '../../sgnl/client/evaluation.js';
+import { markGameStateDirty, evaluateAccess } from '../services.js';
+import {
+    getControlled,
+    isHumanControlled,
+    describeInteractor,
+    onPossessionChange,
+} from '../possession.js';
+
+const OPERATOR_REQUEST_TIMEOUT_MS = 15_000;
+let nextRequestId = 1;
+
+// When a door loses its operator (release, disconnect, swap away), drain
+// any queued use-attempts so interactors don't hang waiting for a decision.
+onPossessionChange(() => {
+    if (!state.doorState) return;
+    for (const doorEntry of state.doorState.values()) {
+        const doorEntity = doorEntry.doorEntity;
+        if (!doorEntity) continue;
+        if (doorEntity.pendingRequests.length === 0) continue;
+        if (!isHumanControlled(doorEntity)) {
+            drainDoorRequestsFor(doorEntity);
+        }
+    }
+});
 
 const DOOR_PASSABLE_DELAY = 0.8; // seconds — slightly before fully open to allow ducking under
 
-function getPrincipalId() {
-    const principalId = import.meta.env.VITE_CAEP_SUBJECT_EMAIL;
-    return typeof principalId === 'string' ? principalId.trim() : '';
+/**
+ * Identify the controller requesting the open, so the services host can map
+ * it to a principal. `ai` bodies carry no session id; we tag them as such so
+ * the server skips evaluation.
+ */
+function getRequestingController(controller) {
+    if (!controller) return null;
+    return controller.__sessionId || 'local';
 }
 
 /**
@@ -87,6 +114,7 @@ export function initDoors() {
         // Build the visual representation via the renderer
         renderer.buildDoor(door, trackWalls);
 
+        const doorEntity = buildDoorEntity(door);
         state.doorState.set(door.sectorIndex, {
             open: false,
             sectorIndex: door.sectorIndex,
@@ -94,20 +122,98 @@ export function initDoors() {
             timer: null,
             passableTimer: null,
             evaluating: false,
-            keyRequired: door.keyRequired || null
+            keyRequired: door.keyRequired || null,
+            doorEntity,
         });
     }
+}
+
+/**
+ * Build a possessable "entity" stub for a door. The entity has no `ai`
+ * and no sprite, but looks enough like a thing that the possession /
+ * camera code can treat it uniformly (see `src/game/possession.js`).
+ *
+ * Camera placement: centroid of the door sector's wall endpoints, at
+ * the ceiling height of an adjacent corridor (the door sector's own
+ * ceiling is the animated one and is of no use to a fixed camera).
+ */
+function buildDoorEntity(door) {
+    const { centerX, centerY, cameraZ, adjacentSectorIndex } = computeDoorCamera(door);
+    return {
+        __isDoorEntity: true,
+        sectorIndex: door.sectorIndex,
+        adjacentSectorIndex,
+        kind: 'door',
+        x: centerX,
+        y: centerY,
+        z: cameraZ,
+        floorHeight: cameraZ,
+        viewAngle: 0,
+        facing: Math.PI / 2,
+        radius: 0,
+        pendingRequests: [],
+        keyRequired: door.keyRequired || null,
+    };
+}
+
+/**
+ * Compute a security-camera pose for a door. Falls back to the door's
+ * own floor/closed height if no adjacent sector can be found (pathological
+ * map data).
+ */
+function computeDoorCamera(door) {
+    const sectorIndex = door.sectorIndex;
+    let sumX = 0;
+    let sumY = 0;
+    let points = 0;
+    let adjacentSectorIndex = -1;
+
+    for (const wall of mapData.walls) {
+        const touches =
+            wall.sectorIndex === sectorIndex ||
+            wall.frontSectorIndex === sectorIndex ||
+            wall.backSectorIndex === sectorIndex;
+        if (!touches) continue;
+
+        sumX += wall.start.x + wall.end.x;
+        sumY += wall.start.y + wall.end.y;
+        points += 2;
+
+        if (adjacentSectorIndex < 0) {
+            if (wall.frontSectorIndex !== undefined && wall.frontSectorIndex !== sectorIndex) {
+                adjacentSectorIndex = wall.frontSectorIndex;
+            } else if (wall.backSectorIndex !== undefined && wall.backSectorIndex !== sectorIndex) {
+                adjacentSectorIndex = wall.backSectorIndex;
+            }
+        }
+    }
+
+    const centerX = points > 0 ? sumX / points : 0;
+    const centerY = points > 0 ? sumY / points : 0;
+
+    const sectors = mapData.sectors || [];
+    const adj = adjacentSectorIndex >= 0 ? sectors[adjacentSectorIndex] : null;
+    const ceilingZ = adj?.ceilingHeight ?? door.openHeight ?? door.closedHeight ?? 0;
+    // Park the camera just below the adjacent ceiling so it doesn't
+    // clip through it. If ceiling is very low, fall back to a modest
+    // height above the door top.
+    const minZ = (door.openHeight ?? door.closedHeight ?? 0) + 16;
+    const cameraZ = Math.max(minZ, ceilingZ - 4);
+
+    return { centerX, centerY, cameraZ, adjacentSectorIndex };
 }
 
 /**
  * Toggle a door open. If already open, reset the auto-close timer.
  * The renderer handles the open/close animation.
  */
-export async function toggleDoor(sectorIndex) {
+export async function toggleDoor(sectorIndex, requestedBy) {
     const doorEntry = state.doorState.get(sectorIndex);
     if (!doorEntry) return;
 
-    // Check key requirement — block if player doesn't have the required key
+    // Check key requirement — block if the requester doesn't have the required key.
+    // In multiplayer, the requester may be a possessed monster; we still gate on
+    // the marine's collected keys since the key inventory lives on `player`.
     // Based on: linuxdoom-1.10/p_doors.c:EV_VerticalDoor()
     if (doorEntry.keyRequired && !doorEntry.open) {
         if (!player.collectedKeys.has(doorEntry.keyRequired)) {
@@ -128,8 +234,14 @@ export async function toggleDoor(sectorIndex) {
 
     doorEntry.evaluating = true;
     let evaluation;
+    const controller = requestedBy || getControlled();
+    /*
     try {
-        evaluation = await evaluateAccess(getPrincipalId(), `door:${sectorIndex}`, 'open');
+        evaluation = await evaluateAccess(
+            getRequestingController(controller),
+            `door:${sectorIndex}`,
+            'open',
+        );
     } finally {
         doorEntry.evaluating = false;
     }
@@ -139,6 +251,19 @@ export async function toggleDoor(sectorIndex) {
         const denyMessage = evaluation.reasons?.[0] || 'Access denied';
         renderer.showHudMessage(denyMessage);
         return;
+    }
+    */evaluation = { skipped: true };
+
+    // When SGNL is not wired (fail-open default), give any human operator
+    // possessing this door the chance to approve or ignore the request.
+    // If no operator is present, the door opens as before.
+    if (evaluation.skipped && isHumanControlled(doorEntry.doorEntity)) {
+        const decision = await enqueueOperatorRequest(doorEntry, controller);
+        if (decision !== 'open') {
+            playSound('DSOOF');
+            renderer.showHudMessage('Access denied');
+            return;
+        }
     }
 
     doorEntry.open = true;
@@ -190,14 +315,21 @@ function closeDoor(sectorIndex) {
  * not just walls whose linedef has a door special type.
  * Based on: linuxdoom-1.10/p_map.c:PTR_UseTraverse()
  */
-export async function tryOpenDoor() {
+export async function tryOpenDoor(requestedBy) {
     if (!state.doorState.size) return;
 
-    // Calculate a check point in front of the player (halfway to USE_RANGE)
-    const forwardX = -Math.sin(player.angle);
-    const forwardY = Math.cos(player.angle);
-    const checkPointX = player.x + forwardX * USE_RANGE / 2;
-    const checkPointY = player.y + forwardY * USE_RANGE / 2;
+    const controller = requestedBy || getControlled();
+    const originX = controller?.x ?? player.x;
+    const originY = controller?.y ?? player.y;
+    const originAngle = controller === player
+        ? player.angle
+        : (controller?.viewAngle ?? controller?.facing ?? player.angle);
+
+    // Calculate a check point in front of the controller (halfway to USE_RANGE)
+    const forwardX = -Math.sin(originAngle);
+    const forwardY = Math.cos(originAngle);
+    const checkPointX = originX + forwardX * USE_RANGE / 2;
+    const checkPointY = originY + forwardY * USE_RANGE / 2;
 
     for (const wall of mapData.walls) {
         if (!wall.isUpperWall) continue;
@@ -227,8 +359,93 @@ export async function tryOpenDoor() {
         const distanceToWall = Math.sqrt((checkPointX - closestPointX) ** 2 + (checkPointY - closestPointY) ** 2);
 
         if (distanceToWall < USE_RANGE) {
-            await toggleDoor(doorSectorIndex);
+            await toggleDoor(doorSectorIndex, controller);
             return;
         }
     }
+}
+
+/**
+ * Queue a use-attempt for human review. The promise returned here resolves
+ * when the operator's decision arrives via `resolveDoorRequest`, or when
+ * the operator releases the door, or a safety timeout fires.
+ *
+ * The request summary is visible to the operator client via the snapshot
+ * (see `server/world.js#serializeDoor`) and is also consumed directly by
+ * the single-player modal (which runs in-process).
+ */
+function enqueueOperatorRequest(doorEntry, controller) {
+    const doorEntity = doorEntry.doorEntity;
+    const requestId = nextRequestId++;
+    const { approachSide, approachAngle } = computeApproachSide(doorEntity, controller);
+    const summary = describeInteractor(controller);
+
+    if (doorEntity.pendingRequests.length === 0 && typeof approachAngle === 'number') {
+        doorEntity.viewAngle = approachAngle;
+        doorEntity.facing = approachAngle + Math.PI / 2;
+    }
+
+    return new Promise((resolve) => {
+        const entry = {
+            id: requestId,
+            interactorId: summary.id,
+            interactorLabel: summary.label,
+            interactorDetails: summary.details,
+            approachSide,
+            approachAngle,
+            resolve,
+            timer: null,
+        };
+        entry.timer = setTimeout(() => {
+            resolveDoorRequest(doorEntity.sectorIndex, requestId, 'ignore');
+        }, OPERATOR_REQUEST_TIMEOUT_MS);
+
+        doorEntity.pendingRequests.push(entry);
+        markGameStateDirty();
+    });
+}
+
+/**
+ * Resolve the operator's pending request with 'open' or 'ignore'. Safe to
+ * call with a stale id (no-op). Called from the in-process modal (SP) and
+ * from the server after a `doorDecision` input arrives (MP).
+ */
+export function resolveDoorRequest(sectorIndex, requestId, decision) {
+    const doorEntry = state.doorState.get(sectorIndex);
+    if (!doorEntry) return;
+    const queue = doorEntry.doorEntity.pendingRequests;
+    const idx = queue.findIndex((r) => r.id === requestId);
+    if (idx < 0) return;
+    const [entry] = queue.splice(idx, 1);
+    if (entry.timer) clearTimeout(entry.timer);
+    try { entry.resolve(decision === 'open' ? 'open' : 'ignore'); } catch {}
+    markGameStateDirty();
+}
+
+/**
+ * Called when the operator releases a door — pending requests auto-deny so
+ * the interactor doesn't hang forever.
+ */
+export function drainDoorRequestsFor(doorEntity) {
+    if (!doorEntity) return;
+    const queue = doorEntity.pendingRequests;
+    while (queue.length) {
+        const entry = queue.shift();
+        if (entry.timer) clearTimeout(entry.timer);
+        try { entry.resolve('ignore'); } catch {}
+    }
+}
+
+function computeApproachSide(doorEntity, controller) {
+    if (!controller) return { approachSide: 'unknown', approachAngle: null };
+    const originX = controller.x ?? 0;
+    const originY = controller.y ?? 0;
+    const dx = originX - doorEntity.x;
+    const dy = originY - doorEntity.y;
+    if (dx === 0 && dy === 0) return { approachSide: 'same-sector', approachAngle: null };
+    const heading = Math.atan2(-dx, dy); // DOOM convention: 0 = north, CCW+
+    const compass = (Math.abs(dx) > Math.abs(dy))
+        ? (dx > 0 ? 'east' : 'west')
+        : (dy > 0 ? 'north' : 'south');
+    return { approachSide: compass, approachAngle: heading };
 }

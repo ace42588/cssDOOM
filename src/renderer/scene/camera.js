@@ -37,7 +37,7 @@
  */
 
 import { player } from '../../game/state.js';
-import { getControlledEye } from '../../game/possession.js';
+import { getControlled, getControlledEye } from '../../game/possession.js';
 import { dom } from '../dom.js';
 
 /**
@@ -47,6 +47,11 @@ import { dom } from '../dom.js';
  *
  * With body-swap, the "view" tracks whichever actor is currently under
  * user control — the normal player character or a possessed monster.
+ *
+ * Multiplayer: the marine (`player`) has its own world position/angle
+ * independent of the viewer's eye. We expose `--marine-*` vars so the
+ * third-person `#player` sprite can be drawn at the marine's real world
+ * location whenever the local viewer isn't the marine themselves.
  */
 export function updateCamera() {
     const viewportStyle = dom.viewport.style;
@@ -58,8 +63,58 @@ export function updateCamera() {
     viewportStyle.setProperty('--player-floor', eye.floorHeight || 0);
     viewportStyle.setProperty('--player-angle', eye.angle);
 
+    viewportStyle.setProperty('--marine-x', player.x);
+    viewportStyle.setProperty('--marine-y', player.y);
+    viewportStyle.setProperty('--marine-floor', player.floorHeight || 0);
+    viewportStyle.setProperty('--marine-angle', player.angle);
+
+    const showMarine = getControlled() !== player && !player.isDead;
+    document.body.classList.toggle('show-marine', showMarine);
+
     const marker = document.querySelector('#player > .marker');
     if (marker) {
         marker.classList.toggle('firing', player.isFiring);
+    }
+
+    if (showMarine) {
+        updateMarineSpriteHeading(eye);
+    }
+}
+
+/**
+ * Pick the DOOM rotation row (0..4 + mirror) for the marine sprite based
+ * on where the viewer's eye sits relative to the marine's facing. Mirrors
+ * the enemy-rotation formula in `src/renderer/scene/entities/sprites.js`
+ * so the marine looks consistent with every other actor in the world.
+ */
+let lastMarineHeading = -1;
+let lastMarineMirror = -1;
+
+function updateMarineSpriteHeading(eye) {
+    const sprite = document.querySelector('#player > .sprite');
+    if (!sprite) return;
+
+    const angleToViewer = Math.atan2(eye.y - player.y, eye.x - player.x);
+    // Enemy convention: `facing = viewAngle + PI/2`. Apply the same offset
+    // so the marine's sheet indexing matches the enemy renderer.
+    const marineFacing = player.angle + Math.PI / 2;
+    let rel = angleToViewer - marineFacing;
+    rel = ((rel % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+    const rotationIndex = (Math.floor((rel + Math.PI / 8) / (Math.PI / 4)) % 8) + 1;
+
+    let sheetRow, mirrorScale;
+    if (rotationIndex <= 5) {
+        sheetRow = rotationIndex - 1;
+        mirrorScale = 1;
+    } else {
+        sheetRow = 9 - rotationIndex;
+        mirrorScale = -1;
+    }
+
+    if (sheetRow !== lastMarineHeading || mirrorScale !== lastMarineMirror) {
+        lastMarineHeading = sheetRow;
+        lastMarineMirror = mirrorScale;
+        sprite.style.setProperty('--heading', sheetRow);
+        sprite.style.setProperty('--mirror', mirrorScale);
     }
 }

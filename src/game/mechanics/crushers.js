@@ -24,7 +24,7 @@ import { mapData } from '../../data/maps.js';
 import { getSectorAt } from '../physics/queries.js';
 import { damagePlayer } from '../player/damage.js';
 import * as renderer from '../../renderer/index.js';
-import { markGameStateDirty } from '../../sgnl/client/scim.js';
+import { markGameStateDirty } from '../services.js';
 
 const CRUSHER_SLOW_SPEED = 32;  // Map units per second (DOOM: 1 unit per tic at 35fps ≈ 35/s, we use 32)
 const CRUSHER_FAST_SPEED = 64;  // Fast crushers move at double speed

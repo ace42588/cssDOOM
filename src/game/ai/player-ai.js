@@ -25,7 +25,8 @@ import { moveEnemyToward } from './chase.js';
 import { getHorizontalDistance, randomDoomSpreadAngleRadians } from '../geometry.js';
 import { damageEnemy } from '../combat/enemy.js';
 import { playSound } from '../../audio/audio.js';
-import { getControlled, ensurePlayerAi } from '../possession.js';
+import { isHumanControlled, ensurePlayerAi } from '../possession.js';
+import { distance2 } from '../actors/math.js';
 
 /**
  * Find the closest living monster (preferring whoever triggered
@@ -55,7 +56,7 @@ function pickTarget() {
         if (thing.collected) continue;
         if ((thing.hp ?? 0) <= 0) continue;
         // Skip the possessed body (we are that actor).
-        if (thing === getControlled()) continue;
+        if (isHumanControlled(thing)) continue;
         const dx = thing.x - player.x;
         const dy = thing.y - player.y;
         const d2 = dx * dx + dy * dy;
@@ -145,11 +146,7 @@ export function updatePlayerAi(deltaTime) {
     }
     ai.target = target;
 
-    // Beyond the render distance we don't tick at all (matches enemy AI).
-    const dx = target.x - player.x;
-    const dy = target.y - player.y;
-    const distSq = dx * dx + dy * dy;
-    if (distSq > MAX_RENDER_DISTANCE * MAX_RENDER_DISTANCE) return;
+    const distSq = distance2(player, target);
 
     switch (ai.state) {
         case 'idle':

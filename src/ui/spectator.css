@@ -38,6 +38,16 @@
     initial-value: 0;
 }
 
+/* Marine world state — set by camera.js so the #player element can render
+   at the marine's real world position regardless of who's controlling the
+   local viewer's camera. In single-player these mirror --player-*; in
+   multiplayer they diverge when the local viewer possesses an enemy or is
+   spectating. */
+@property --marine-x     { syntax: "<number>"; inherits: true; initial-value: 0; }
+@property --marine-y     { syntax: "<number>"; inherits: true; initial-value: 0; }
+@property --marine-floor { syntax: "<number>"; inherits: true; initial-value: 0; }
+@property --marine-angle { syntax: "<number>"; inherits: true; initial-value: 0; }
+
 /* Top-down spectator mode: camera looks down at the map */
 body.spectator:not(.follow-mode) #scene {
     translate: 0 0 var(--perspective);
@@ -98,20 +108,28 @@ body.spectator #weapon {
     top: 0; left: 0; width: 0; height: 0;
     backface-visibility: visible !important;
 
-    /* Position from raw DOOM coordinates (DOOM→CSS: X=X, Y=−Z, height=−Y) */
+    /* Position from the marine's own world coordinates (DOOM→CSS: X=X,
+       Y=−Z, height=−Y). In multiplayer --marine-* tracks the real marine
+       position regardless of what body the local viewer is controlling. */
     transform:
         translate3d(
-            calc(var(--player-x) * 1px),
-            calc(var(--player-floor) * -1px),
-            calc(var(--player-y) * -1px)
+            calc(var(--marine-x) * 1px),
+            calc(var(--marine-floor) * -1px),
+            calc(var(--marine-y) * -1px)
         );
 }
 
-body.spectator #player {
+/* Show the marine body when the local viewer isn't the marine (another
+   client controls the marine, or the local viewer is a spectator /
+   possessing an enemy). Spectator mode keeps its existing behaviour: it
+   shows #player unconditionally so the follow/top cameras can frame it. */
+body.spectator #player,
+body.show-marine #player {
     display: block;
 }
 
-body.spectator #player > .sprite {
+body.spectator #player > .sprite,
+body.show-marine #player > .sprite {
     animation: sprite-cycle calc(var(--frames) * 150ms) steps(var(--frames)) infinite paused;
     opacity: 1;
     transition: opacity 1s ease 0.5s;
@@ -119,6 +137,25 @@ body.spectator #player > .sprite {
     @starting-style {
         opacity: 0;
     }
+}
+
+/* Outside of spectator mode, the marine sprite billboards toward the
+   local camera using the viewer's own yaw (--player-angle is the inverse
+   camera angle applied to #scene, so rotating the sprite by +player-angle
+   cancels out and keeps it face-on). The existing follow-mode billboard
+   rule already uses this same transform inside spectator mode. */
+body.show-marine:not(.spectator) #player > .sprite {
+    transform:
+        translateX(-50%)
+        rotateY(calc(var(--player-angle) * 1rad))
+        scaleX(var(--mirror, 1));
+}
+
+/* Keep the walk-cycle animation running when another client is driving
+   the marine — we don't have a remote "moving" flag wired up yet, but
+   looping the walk is a better default than a frozen pose. */
+body.show-marine:not(.spectator) #player > .sprite {
+    animation-play-state: running;
 }
 
 body.spectator #player > .marker {
@@ -144,7 +181,7 @@ body.spectator #player > .marker {
     transform:
         translateY(-10px)
         rotateX(90deg)
-        rotateZ(calc(var(--player-angle) * -1rad));
+        rotateZ(calc(var(--marine-angle) * -1rad));
 
     /* 90° arc centered at top (player facing direction) */
     background: conic-gradient(

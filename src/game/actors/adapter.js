@@ -78,8 +78,12 @@ export function resolveTargetEntity(target, playerEntity = player) {
     return isPlayerActorLike(target) ? playerEntity : target;
 }
 
+function isDevBuild() {
+    try { return Boolean(import.meta.env?.DEV); } catch { return false; }
+}
+
 export function assertMovementActor(actor, context = 'movement') {
-    if (!import.meta.env.DEV) return;
+    if (!isDevBuild()) return;
     if (!actor || typeof actor.x !== 'number' || typeof actor.y !== 'number') {
         throw new Error(`[adapter] Invalid movement actor in ${context}`);
     }
@@ -89,7 +93,7 @@ export function assertMovementActor(actor, context = 'movement') {
 }
 
 export function assertDamageableActor(actor, context = 'damage') {
-    if (!import.meta.env.DEV) return;
+    if (!isDevBuild()) return;
     if (!actor || !actor.entity || typeof actor.kind !== 'string') {
         throw new Error(`[adapter] Invalid damage actor in ${context}`);
     }

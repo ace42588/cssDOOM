@@ -22,16 +22,12 @@
 
 import { input } from './index.js';
 import { player } from '../game/state.js';
-import { currentMap } from '../data/maps.js';
 import { WEAPONS } from '../game/constants.js';
-import { tryOpenDoor } from '../game/mechanics/doors.js';
-import { tryUseSwitch } from '../game/mechanics/switches.js';
-import { tryUseLift } from '../game/mechanics/lifts.js';
-import { fireWeapon, equipWeapon, stopAutoFire } from '../game/combat/weapons.js';
-import { loadMap } from '../game/lifecycle.js';
 import { isMenuOpen, toggleMenu } from '../ui/menu.js';
 import { isBodySwapOpen, toggleBodySwap } from '../ui/body-swap.js';
+import { isDoorOperatorOpen } from '../ui/door-operator.js';
 import { registerInputProvider } from './index.js';
+import { pressUse, requestWeaponSwitch } from '../net/client.js';
 
 // Internal key state — not exposed to the game layer
 const keys = {
@@ -80,9 +76,10 @@ export function initKeyboardInput() {
         // Block game input while menu is open
         if (isMenuOpen()) return;
 
-        // When dead, any key restarts after a 4-second cooldown
+        // When dead, any key reloads the page (server-authoritative restart
+        // is triggered by a fresh connection).
         if (player.isDead) {
-            if (performance.now() - player.deathTime > 4000) loadMap(currentMap);
+            if (performance.now() - player.deathTime > 4000) location.reload();
             return;
         }
 
@@ -106,16 +103,17 @@ export function initKeyboardInput() {
             case 'ShiftLeft': case 'ShiftRight': keys.run = true; break;
             // Strafe modifier: Z (arrows strafe instead of turn)
             case 'KeyZ': keys.strafe = true; break;
-            // Use action: open doors and activate switches
-            case 'Space': void tryOpenDoor(); void tryUseSwitch(); tryUseLift(); break;
-            // Fire weapon: Alt or X
-            case 'AltLeft': case 'AltRight': case 'KeyX': input.fireHeld = true; fireWeapon(); break;
+            // Use action: open doors and activate switches (server-side)
+            case 'Space': pressUse(); break;
+            // Fire weapon: Alt or X (server reads fireHeld each tick)
+            case 'AltLeft': case 'AltRight': case 'KeyX': input.fireHeld = true; break;
             // Weapon selection: number keys 1-7
             case 'Digit1': case 'Digit2': case 'Digit3':
-            case 'Digit4': case 'Digit5': case 'Digit6': case 'Digit7':
+            case 'Digit4': case 'Digit5': case 'Digit6': case 'Digit7': {
                 const weaponSlot = parseInt(event.code[5]);
-                if (WEAPONS[weaponSlot]) equipWeapon(weaponSlot);
+                if (WEAPONS[weaponSlot]) requestWeaponSwitch(weaponSlot);
                 break;
+            }
             // Unrecognized key — return early without calling preventDefault
             default: return;
         }
@@ -136,7 +134,7 @@ export function initKeyboardInput() {
             case 'KeyD': case 'Period': keys.strafeRight = false; break;
             case 'ShiftLeft': case 'ShiftRight': keys.run = false; break;
             case 'KeyZ': keys.strafe = false; break;
-            case 'AltLeft': case 'AltRight': case 'KeyX': input.fireHeld = false; stopAutoFire(); break;
+            case 'AltLeft': case 'AltRight': case 'KeyX': input.fireHeld = false; break;
 
             // Meta key release: clear all movement to avoid stuck keys on macOS
             case 'MetaLeft': case 'MetaRight':
@@ -163,9 +161,10 @@ export function initKeyboardInput() {
  * Converts boolean key flags into analog-style moveX/moveY/turn values.
  */
 function getInput() {
-    // Suppress gameplay input while the body-swap picker or menu is open so
-    // the game pauses rather than leaking held keys under the overlay.
-    if (isBodySwapOpen() || isMenuOpen()) {
+    // Suppress gameplay input while the body-swap picker, operator modal,
+    // or menu is open so the game pauses rather than leaking held keys
+    // under the overlay.
+    if (isBodySwapOpen() || isDoorOperatorOpen() || isMenuOpen()) {
         return { moveX: 0, moveY: 0, turn: 0, run: false };
     }
 

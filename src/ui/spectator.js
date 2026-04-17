@@ -16,6 +16,8 @@
 
 import { player } from '../game/state.js';
 import { dom } from '../renderer/dom.js';
+import { getControlled, onPossessionChange } from '../game/possession.js';
+import { getSession } from '../net/client.js';
 
 export let spectatorActive = false;
 let spectatorLoopRunning = false;
@@ -58,7 +60,7 @@ function spectatorLoop() {
         if (spectator.keys.f) spectator.height += spectator.height * 0.02;
 
         dom.viewport.style.setProperty('--follow-height', spectator.height);
-        updatePlayerSprite(-player.angle, true);
+        updatePlayerSprite(-getFollowAngle(), true);
     }
     requestAnimationFrame(spectatorLoop);
 }
@@ -74,6 +76,12 @@ if (spectatorButton) {
 let lastPlayerHeading = -1;
 let lastPlayerMirror = -1;
 
+function getFollowAngle() {
+    const body = getControlled() || player;
+    if (body === player) return player.angle;
+    return typeof body.viewAngle === 'number' ? body.viewAngle : (body.facing ?? 0) - Math.PI / 2;
+}
+
 function updatePlayerSprite(cameraAngle, forceBack = false) {
     const sprite = document.querySelector('#player > .sprite');
     if (!sprite) return;
@@ -84,7 +92,7 @@ function updatePlayerSprite(cameraAngle, forceBack = false) {
         sheetRow = 4;
         mirrorScale = 1;
     } else {
-        let relAngle = cameraAngle - player.angle + Math.PI;
+        let relAngle = cameraAngle - getFollowAngle() + Math.PI;
         relAngle = ((relAngle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
         const rotationIndex = (Math.floor((relAngle + Math.PI / 8) / (Math.PI / 4)) % 8) + 1;
 
@@ -184,7 +192,7 @@ window.spectate = function() {
         // Start interactive loop after transition completes
         setTimeout(() => {
             if (spectatorActive) {
-                updatePlayerSprite(-player.angle, true);
+                updatePlayerSprite(-getFollowAngle(), true);
                 spectatorLoopRunning = true;
                 spectatorLoop();
             }
@@ -302,7 +310,7 @@ function switchSpectatorMode(newMode) {
     // transition doesn't spin back through accumulated rotations.
     const fullTurn = Math.PI * 2;
     spectator.angle = newMode === 'top'
-        ? -Math.round(player.angle / fullTurn) * fullTurn
+        ? -Math.round(getFollowAngle() / fullTurn) * fullTurn
         : 0;
 
     updateSpectatorProperties();
@@ -343,3 +351,28 @@ if (spectatorControls) {
         btn.addEventListener('touchcancel', release);
     }
 }
+
+// ── Auto-enable when the server assigns the 'spectator' role ────────────
+// The server's assignment policy promotes late joiners and death-survivors
+// to spectator. We hook into possession change notifications (fired by the
+// net client whenever it re-binds the local session to the server's
+// `followTargetId`) and flip the third-person follow camera on/off.
+let autoSpectating = false;
+
+onPossessionChange(() => {
+    const session = getSession();
+    const wantsSpectator = session?.role === 'spectator';
+
+    if (wantsSpectator && !autoSpectating && !spectatorActive) {
+        autoSpectating = true;
+        if (typeof window.spectate === 'function') window.spectate();
+    } else if (!wantsSpectator && autoSpectating && spectatorActive) {
+        autoSpectating = false;
+        if (typeof window.spectate === 'function') window.spectate();
+    }
+
+    // Re-snap the follow sprite so the new target's back faces the camera
+    if (spectatorActive && spectator.mode === 'follow') {
+        updatePlayerSprite(-getFollowAngle(), true);
+    }
+});

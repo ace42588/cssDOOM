@@ -34,7 +34,7 @@ import {
   resolveTargetActor,
 } from '../actors/math.js';
 import { isPlayerActorLike } from '../actors/adapter.js';
-import { getControlled, isControllingPlayer } from '../possession.js';
+import { isHumanControlled } from '../possession.js';
 import { updatePlayerAi } from './player-ai.js';
 
 /** Throttle overlapping alert cries when many enemies wake at once. */
@@ -254,16 +254,16 @@ function updateSingleEnemy(enemy, deltaTime, currentTime) {
 export function updateAllEnemies(deltaTime) {
   if (player.isDead) return;
   const currentTime = performance.now();
-  const controlled = getControlled();
   const allThings = state.things;
   for (let i = 0, length = allThings.length; i < length; i++) {
     const thing = allThings[i];
     if (!thing.ai) continue;
     if (!ENEMIES.has(thing.type)) continue;
 
-    // Skip the monster currently under user control — the player is driving
-    // it through movement/weapon modules instead.
-    if (thing === controlled) continue;
+    // Skip monsters under any human controller — those sessions drive the
+    // body through movement/weapon modules instead. In single-player this
+    // matches the previous "skip the one possessed body" behavior.
+    if (isHumanControlled(thing)) continue;
 
     if (thing.collected) {
       if (thing.respawnTimer !== undefined) {
@@ -281,9 +281,9 @@ export function updateAllEnemies(deltaTime) {
     renderer.updateEnemyRotation(getThingIndex(thing), thing);
   }
 
-  // When the user isn't driving the player character, run a lightweight
+  // When no human is driving the player character, run a lightweight
   // enemy-style AI on it so the ex-body keeps fighting and roaming.
-  if (!isControllingPlayer() && !player.isAiDead && !player.isDead) {
+  if (!isHumanControlled(player) && !player.isAiDead && !player.isDead) {
     updatePlayerAi(deltaTime);
   }
 }
