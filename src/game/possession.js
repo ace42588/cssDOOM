@@ -40,6 +40,19 @@ function isDoorEntity(entity) {
 
 export const LOCAL_SESSION = 'local';
 
+// Optional render-side interpolation hooks. The browser net client wires
+// these in at startup so `getControlledEye()` can return the lerped pose
+// for the local marine and any possessed/spectated thing without forcing
+// `possession.js` to import browser-only modules. Both default to no-ops
+// so server / headless paths see the snapshot-truth fields directly.
+let renderedPlayerPoseFn = null;
+let renderedThingPoseFn = null;
+
+export function setRenderInterp({ getRenderedPlayerPose, getRenderedThingPose } = {}) {
+    renderedPlayerPoseFn = typeof getRenderedPlayerPose === 'function' ? getRenderedPlayerPose : null;
+    renderedThingPoseFn = typeof getRenderedThingPose === 'function' ? getRenderedThingPose : null;
+}
+
 /**
  * sessionId → entity. Empty at startup: in the multiplayer world the
  * server owns every binding, and the first joining client is what
@@ -490,6 +503,18 @@ export function resetPossession() {
 export function getControlledEye(sessionId = LOCAL_SESSION) {
     const controlled = controllers.get(sessionId) || player;
     if (controlled === player) {
+        const rendered = renderedPlayerPoseFn?.();
+        if (rendered) {
+            return {
+                x: rendered.x,
+                y: rendered.y,
+                // z and floor lerp on the same dt as x/y so the eye
+                // height stays glued to horizontal motion on stairs/lifts.
+                z: rendered.z,
+                angle: rendered.angle,
+                floorHeight: rendered.floor,
+            };
+        }
         return {
             x: player.x,
             y: player.y,
@@ -509,14 +534,23 @@ export function getControlledEye(sessionId = LOCAL_SESSION) {
         };
     }
     const thing = controlled;
-    const floor = getFloorHeightAt(thing.x, thing.y);
-    thing.floorHeight = floor;
+    const rendered = renderedThingPoseFn?.(thing.thingIndex);
+    const sx = rendered ? rendered.x : thing.x;
+    const sy = rendered ? rendered.y : thing.y;
+    // Use the lerped floor when available; the un-lerped fallback comes
+    // from `getFloorHeightAt` so we never write back into `thing` from
+    // this renderer-facing read. Mutating `thing.floorHeight` here would
+    // smear the snapshot truth with sub-tick interpolated values, which
+    // any non-render reader (HUD overlays, debug panels, sound panners)
+    // would then see as a jittery height instead of the authoritative
+    // server value.
+    const floor = rendered ? rendered.floor : getFloorHeightAt(thing.x, thing.y);
     const eyeAngle = typeof thing.viewAngle === 'number'
         ? thing.viewAngle
         : (thing.facing ?? 0);
     return {
-        x: thing.x,
-        y: thing.y,
+        x: sx,
+        y: sy,
         z: floor + getControlledEyeHeight(),
         angle: eyeAngle,
         floorHeight: floor,
@@ -537,9 +571,19 @@ export function getControlledHeight(sessionId = LOCAL_SESSION) {
     return PLAYER_HEIGHT;
 }
 
+/**
+ * Floor for the effective move speed of a human-controlled monster, as a
+ * fraction of MOVE_SPEED. AI chase speeds (70–175 u/s) feel sluggish under
+ * direct control compared to the marine's 300 u/s, so we lift slow bodies
+ * up to "almost marine" without slowing intrinsically fast ones (Demon at
+ * 175 still rides its native value if it exceeds the floor).
+ */
+const POSSESSED_SPEED_FLOOR_RATIO = 0.85;
+
 export function getControlledSpeed(sessionId = LOCAL_SESSION) {
     const controlled = controllers.get(sessionId) || player;
     if (controlled === player) return player.speed;
     if (isDoorEntity(controlled)) return 0;
-    return controlled.ai?.speed ?? MOVE_SPEED;
+    const aiSpeed = controlled.ai?.speed ?? MOVE_SPEED;
+    return Math.max(aiSpeed, MOVE_SPEED * POSSESSED_SPEED_FLOOR_RATIO);
 }

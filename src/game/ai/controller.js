@@ -6,7 +6,6 @@ import {
   ENEMIES,
   ENEMY_PROJECTILES,
   LINE_OF_SIGHT_CHECK_INTERVAL,
-  MAX_RENDER_DISTANCE,
 } from "../constants.js";
 
 import { state, player, debug } from "../state.js";
@@ -30,7 +29,6 @@ import {
 import { moveEnemyToward } from './chase.js';
 import {
   distance2,
-  inRadius,
   resolveTargetActor,
 } from '../actors/math.js';
 import { isPlayerActorLike } from '../actors/adapter.js';
@@ -250,9 +248,15 @@ function updateSingleEnemy(enemy, deltaTime, currentTime) {
 /**
  * All enemies: nightmare respawn, distance cull, AI tick, sprite rotation.
  * Based on: linuxdoom-1.10/p_mobj.c:P_NightmareRespawn()
+ *
+ * NOTE: in single-player DOOM the world stops thinking once the marine
+ * dies. Multiplayer can't do that — there may be other sessions
+ * possessing monsters who still want a live simulation. AI keeps running
+ * regardless of `player.isDead`; downstream damage helpers (`damagePlayer`)
+ * already guard against attacking a corpse, and infighting / wandering
+ * remain valid for everybody else.
  */
 export function updateAllEnemies(deltaTime) {
-  if (player.isDead) return;
   const currentTime = performance.now();
   const allThings = state.things;
   for (let i = 0, length = allThings.length; i < length; i++) {
@@ -272,9 +276,7 @@ export function updateAllEnemies(deltaTime) {
     // the local player walks around them. Keep the rotation refresh but
     // skip the AI tick.
     if (isHumanControlled(thing)) {
-      if (inRadius(thing, player, MAX_RENDER_DISTANCE)) {
-        renderer.updateEnemyRotation(getThingIndex(thing), thing);
-      }
+      renderer.updateEnemyRotation(getThingIndex(thing), thing);
       continue;
     }
 
@@ -287,8 +289,6 @@ export function updateAllEnemies(deltaTime) {
       }
       continue;
     }
-
-    //if (!inRadius(thing, player, MAX_RENDER_DISTANCE)) continue;
 
     updateSingleEnemy(thing, deltaTime, currentTime);
     renderer.updateEnemyRotation(getThingIndex(thing), thing);

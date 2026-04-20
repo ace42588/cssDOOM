@@ -38,6 +38,7 @@
 
 import { player } from '../../game/state.js';
 import { getControlled, getControlledEye } from '../../game/possession.js';
+import { getRenderedPlayerPose } from '../../net/client.js';
 import { dom } from '../dom.js';
 
 /**
@@ -53,23 +54,54 @@ import { dom } from '../dom.js';
  * third-person `#player` sprite can be drawn at the marine's real world
  * location whenever the local viewer isn't the marine themselves.
  */
+// Cache the last value pushed for each CSS custom property so identical
+// frame-to-frame writes (camera held still, marine offscreen, etc.) become
+// no-ops instead of forcing the browser to recompute style on `#viewport`.
+const lastCameraVar = {
+    px: NaN, py: NaN, pz: NaN, pf: NaN, pa: NaN,
+    mx: NaN, my: NaN, mf: NaN, ma: NaN,
+    sa: NaN, ca: NaN, cfx: NaN, cfy: NaN,
+};
+let lastShowMarine = null;
+
+function setVarIfChanged(style, name, value, key) {
+    if (lastCameraVar[key] !== value) {
+        lastCameraVar[key] = value;
+        style.setProperty(name, value);
+    }
+}
+
 export function updateCamera() {
     const viewportStyle = dom.viewport.style;
     const eye = getControlledEye();
 
-    viewportStyle.setProperty('--player-x', eye.x);
-    viewportStyle.setProperty('--player-y', eye.y);
-    viewportStyle.setProperty('--player-z', eye.z);
-    viewportStyle.setProperty('--player-floor', eye.floorHeight || 0);
-    viewportStyle.setProperty('--player-angle', eye.angle);
+    setVarIfChanged(viewportStyle, '--player-x', eye.x, 'px');
+    setVarIfChanged(viewportStyle, '--player-y', eye.y, 'py');
+    setVarIfChanged(viewportStyle, '--player-z', eye.z, 'pz');
+    setVarIfChanged(viewportStyle, '--player-floor', eye.floorHeight || 0, 'pf');
+    setVarIfChanged(viewportStyle, '--player-angle', eye.angle, 'pa');
 
-    viewportStyle.setProperty('--marine-x', player.x);
-    viewportStyle.setProperty('--marine-y', player.y);
-    viewportStyle.setProperty('--marine-floor', player.floorHeight || 0);
-    viewportStyle.setProperty('--marine-angle', player.angle);
+    // Precompute camera trig once per frame so CSS consumers (lighting,
+    // frustum culling, spectator follow cam) and every culled element can
+    // read scalar dot-product inputs instead of re-evaluating sin/cos.
+    const sa = Math.sin(eye.angle);
+    const ca = Math.cos(eye.angle);
+    setVarIfChanged(viewportStyle, '--sin-angle', sa, 'sa');
+    setVarIfChanged(viewportStyle, '--cos-angle', ca, 'ca');
+    setVarIfChanged(viewportStyle, '--camera-forward-x', -sa, 'cfx');
+    setVarIfChanged(viewportStyle, '--camera-forward-y', ca, 'cfy');
+
+    const marine = getRenderedPlayerPose();
+    setVarIfChanged(viewportStyle, '--marine-x', marine.x, 'mx');
+    setVarIfChanged(viewportStyle, '--marine-y', marine.y, 'my');
+    setVarIfChanged(viewportStyle, '--marine-floor', marine.floor || 0, 'mf');
+    setVarIfChanged(viewportStyle, '--marine-angle', marine.angle, 'ma');
 
     const showMarine = getControlled() !== player && !player.isDead;
-    document.body.classList.toggle('show-marine', showMarine);
+    if (showMarine !== lastShowMarine) {
+        lastShowMarine = showMarine;
+        document.body.classList.toggle('show-marine', showMarine);
+    }
 
     const marker = document.querySelector('#player > .marker');
     if (marker) {
@@ -94,10 +126,11 @@ function updateMarineSpriteHeading(eye) {
     const sprite = document.querySelector('#player > .sprite');
     if (!sprite) return;
 
-    const angleToViewer = Math.atan2(eye.y - player.y, eye.x - player.x);
+    const marine = getRenderedPlayerPose();
+    const angleToViewer = Math.atan2(eye.y - marine.y, eye.x - marine.x);
     // Enemy convention: `facing = viewAngle + PI/2`. Apply the same offset
     // so the marine's sheet indexing matches the enemy renderer.
-    const marineFacing = player.angle + Math.PI / 2;
+    const marineFacing = marine.angle + Math.PI / 2;
     let rel = angleToViewer - marineFacing;
     rel = ((rel % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
     const rotationIndex = (Math.floor((rel + Math.PI / 8) / (Math.PI / 4)) % 8) + 1;

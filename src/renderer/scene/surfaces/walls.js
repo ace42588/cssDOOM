@@ -38,10 +38,16 @@ export function createWallElement(wall, floorZ, ceilZ) {
     el.classList.add('unpegged');
 
     el._wall = wall;
-    el._angle = Math.atan2(deltaY, deltaX);
     el._length = wallLength;
+    // Unit normal (right-hand side of direction = front in DOOM):
+    //   normal = (sin(wallAngle), -cos(wallAngle))
+    //         = (deltaY / len,   -deltaX / len)
+    el._normalX = deltaY / wallLength;
+    el._normalY = -deltaX / wallLength;
     el._midX = (wall.start.x + wall.end.x) / 2;
     el._midY = (wall.start.y + wall.end.y) / 2;
+
+    el.appendChild(document.createElement('div')).className = 'tint';
 
     return el;
 }
@@ -87,17 +93,20 @@ export function buildWalls() {
         wallElement.style.setProperty('--texture-offset-x', wall.xOffset);
         wallElement.style.setProperty('--texture-offset-y', wall.yOffset);
 
-        const wallAngle = Math.atan2(deltaY, deltaX);
         const centerX = (wall.start.x + wall.end.x) / 2;
         const centerY = (wall.start.y + wall.end.y) / 2;
         wallElement._midX = centerX;
         wallElement._midY = centerY;
         wallElement._wall = wall;
-        wallElement._angle = wallAngle;
         wallElement._length = wallLength;
+        // Unit normal (right-hand side = front in DOOM).
+        wallElement._normalX = deltaY / wallLength;
+        wallElement._normalY = -deltaX / wallLength;
         wallElement._sectorIndex = wall.sectorIndex;
 
-        wallElement.hidden = true;
+        wallElement.appendChild(document.createElement('div')).className = 'tint';
+
+        wallElement.classList.add('culled');
         appendToSector(wallElement, wall.sectorIndex);
         sceneState.wallElements.push(wallElement);
     }
@@ -106,15 +115,9 @@ export function buildWalls() {
 }
 
 /**
- * Builds "sky walls" — tall occluder surfaces on the perimeter of sky-ceiling
- * sectors. These extend from the wall top far upward to block the view of
- * distant level geometry through open sky areas.
- *
- * In DOOM's software renderer, sky fills all pixels above wall edges, acting
- * as an opaque backdrop. In CSS 3D, we approximate this by generating tall
- * opaque walls around sky sector boundaries.
- *
- * Hidden by default; shown via the debug-sky-walls toggle.
+ * Populates `sceneState.skyWallPlanes` — 2D occluder segments on the perimeter
+ * of sky-ceiling sectors. The culler (behindSkyWall) uses these to hide scene
+ * elements behind sky boundaries, approximating DOOM's sky-as-opaque-backdrop.
  */
 function buildSkyWalls() {
     const sectors = mapData.sectors;
@@ -127,10 +130,6 @@ function buildSkyWalls() {
     if (skyIndices.size === 0) return;
 
     sceneState.skySectors = skyIndices;
-
-    // Extend sky walls above the ceiling to occlude distant geometry.
-    // Height must cover the sky texture without exposing the fill color.
-    const SKY_TOP = 1000;
 
     // Build a lookup: linedef index → [frontSector, backSector]
     const linedefSectors = new Map();
@@ -186,33 +185,16 @@ function buildSkyWalls() {
         const otherSector = ld.front === wall.sectorIndex ? ld.back : ld.front;
         if (otherSector !== null && skyIndices.has(otherSector)) continue;
 
-        // For boundary walls (two-sided, sky/non-sky), the upper wall extends
-        // from the non-sky ceiling up to the sky sector's ceiling. Start the
-        // sky wall at the sky sector's ceiling height (top of the upper wall).
+        // Occluder floor height. For boundary walls (two-sided sky/non-sky),
+        // elements below the sky sector's ceiling height could be visible
+        // through the upper-wall opening, so the occluder starts there.
         // For perimeter walls (one-sided), start at the wall top.
-        let skyFloor;
-        if (otherSector !== null) {
-            skyFloor = sectors[wall.sectorIndex].ceilingHeight;
-        } else {
-            skyFloor = wall.topHeight;
-        }
-        if (SKY_TOP - skyFloor < 1) continue;
+        const skyFloor = otherSector !== null
+            ? sectors[wall.sectorIndex].ceilingHeight
+            : wall.topHeight;
 
         const dx = wall.end.x - wall.start.x;
         const dy = wall.end.y - wall.start.y;
-
-        const el = document.createElement('div');
-        el.className = 'wall sky-wall';
-        el.style.setProperty('--start-x', wall.start.x);
-        el.style.setProperty('--start-y', wall.start.y);
-        el.style.setProperty('--end-x', wall.end.x);
-        el.style.setProperty('--end-y', wall.end.y);
-        el.style.setProperty('--floor-z', skyFloor);
-        el.style.setProperty('--ceiling-z', SKY_TOP);
-
-        appendToSector(el, wall.sectorIndex);
-
-        // Store sky wall plane for culling — every sky wall acts as an occluder.
         const wallAngle = Math.atan2(dy, dx);
         const nx = Math.sin(wallAngle);
         const ny = -Math.cos(wallAngle);

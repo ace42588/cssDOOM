@@ -64,7 +64,7 @@ function loadBuffer(name) {
     return promise;
 }
 
-function playSoundImpl(name) {
+function playSoundImpl(name, _forSessionId) {
     if (!ctx || !unlocked) return;
     loadBuffer(name).then(buffer => {
         if (!buffer) return;

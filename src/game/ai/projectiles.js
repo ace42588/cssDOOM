@@ -182,20 +182,15 @@ export function spawnProjectile(enemy, projectileDefinition) {
     const directionY = (targetY - enemy.y) * inv;
     const directionZ = deltaHeight * inv;
 
-    // Create the visual projectile via the renderer
     const speed = state.skillLevel === 5 ? projectileDefinition.speed * 2 : projectileDefinition.speed;
     const lifetime = 5;
-    const endX = enemy.x + directionX * speed * lifetime;
-    const endY = enemy.y + directionY * speed * lifetime;
-    const endZ = spawnHeight + directionZ * speed * lifetime;
 
     const projectileId = state.nextProjectileId++;
     renderer.createProjectile(projectileId, {
         type: 'enemy',
         width: projectileDefinition.size, height: projectileDefinition.size,
         sprite: projectileDefinition.sprite,
-        startX: enemy.x, startY: enemy.y, startZ: spawnHeight,
-        endX, endY, endZ, duration: lifetime,
+        x: enemy.x, y: enemy.y, z: spawnHeight,
     });
 
     const projectile = {

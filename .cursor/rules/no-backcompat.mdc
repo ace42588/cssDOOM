@@ -1,0 +1,44 @@
+---
+description: Backwards compatibility is not required for this project
+alwaysApply: true
+---
+
+# No Backwards Compatibility
+
+This project does not require backwards compatibility. Prefer clean, direct changes over compatibility shims.
+
+## Guidelines
+
+- **Rename freely**: Update call sites instead of keeping old aliases.
+- **Delete deprecated code**: Remove unused functions, fields, and code paths instead of marking them deprecated.
+- **Break APIs when warranted**: Change function signatures, payload shapes, config keys, and storage formats without keeping legacy fallbacks.
+- **No migration shims**: Don't add adapters, version flags, or "if old format" branches just to support prior behavior.
+- **No deprecation warnings**: Just remove the thing.
+
+## Examples
+
+```js
+// BAD: keeping a legacy alias "for backwards compatibility"
+export function loadMap(name) { /* new impl */ }
+export const load_map = loadMap; // legacy
+
+// GOOD: rename and update callers
+export function loadMap(name) { /* new impl */ }
+```
+
+```js
+// BAD: dual-path to support old payload shape
+function handle(msg) {
+  if (msg.v === 1) return handleV1(msg);
+  return handleV2(msg);
+}
+
+// GOOD: migrate the format and delete v1
+function handle(msg) {
+  return handleV2(msg);
+}
+```
+
+## No Exceptions
+
+There are no carve-outs. There is no save functionality, and SGNL schemas/contracts are owned by this repo and managed by the dedicated SGNL skill — not by backwards-compatibility shims here.

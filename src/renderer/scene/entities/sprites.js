@@ -138,19 +138,34 @@ export function resetEnemy(thingIndex, thingType, x, y, floorHeight) {
     domData.element.style.setProperty('--x', x);
     domData.element.style.setProperty('--y', y);
     domData.element.style.setProperty('--floor-z', floorHeight);
+    domData._lastX = x;
+    domData._lastY = y;
+    domData._lastFloor = floorHeight;
 }
 
 // ============================================================================
 // Thing position and lighting
 // ============================================================================
 
-/** Update a thing's position and floor height CSS custom properties. */
+/** Update a thing's position and floor height CSS custom properties.
+ *  Cached so a stationary thing (or a per-frame interpolation that has
+ *  landed) becomes a no-op instead of dirtying style on every rAF. */
 export function updateThingPosition(thingIndex, {x, y, floorHeight}) {
     const domData = sceneState.thingDom.get(thingIndex);
     if (!domData) return;
-    domData.element.style.setProperty('--x', x);
-    domData.element.style.setProperty('--y', y);
-    domData.element.style.setProperty('--floor-z', floorHeight);
+    const style = domData.element.style;
+    if (domData._lastX !== x) {
+        domData._lastX = x;
+        style.setProperty('--x', x);
+    }
+    if (domData._lastY !== y) {
+        domData._lastY = y;
+        style.setProperty('--y', y);
+    }
+    if (domData._lastFloor !== floorHeight) {
+        domData._lastFloor = floorHeight;
+        style.setProperty('--floor-z', floorHeight);
+    }
 }
 
 /**
@@ -163,7 +178,11 @@ export function reparentThingToSector(thingIndex, sectorIndex) {
     const domData = sceneState.thingDom.get(thingIndex);
     if (!domData) return;
     const target = sceneState.sectorContainers[sectorIndex];
-    if (!target || domData.element.parentNode === target) return;
+    if (!target) return;
+    // Keep the cached sector in sync even if the DOM parent is already
+    // correct — the PVS pass reads from here every cull tick.
+    domData.element._sectorIndex = sectorIndex;
+    if (domData.element.parentNode === target) return;
     if (target.moveBefore) {
         target.moveBefore(domData.element, null);
     } else {
@@ -175,6 +194,24 @@ export function reparentThingToSector(thingIndex, sectorIndex) {
 export function collectItem(thingIndex) {
     const domData = sceneState.thingDom.get(thingIndex);
     if (domData) domData.element.classList.add('collected');
+}
+
+/**
+ * Remove a thing's DOM element entirely and drop all renderer bookkeeping
+ * for it. Called when a delta despawns a thing id — typically across map
+ * transitions, or when a runtime-spawned entity is destroyed. `collectItem`
+ * is the softer variant for pickups (CSS-hidden, still addressable).
+ */
+export function removeThing(thingIndex) {
+    const domData = sceneState.thingDom.get(thingIndex);
+    if (!domData) return;
+    domData.element.remove();
+    sceneState.thingDom.delete(thingIndex);
+    for (let i = sceneState.thingContainers.length - 1; i >= 0; i--) {
+        if (sceneState.thingContainers[i].gameId === thingIndex) {
+            sceneState.thingContainers.splice(i, 1);
+        }
+    }
 }
 
 /**
@@ -223,29 +260,46 @@ export function createTeleportFog(x, z, y) {
 
 /**
  * Create a projectile DOM element, append it to the scene, and store it
- * in sceneState.projectileDom keyed by the given ID.
+ * in sceneState.projectileDom keyed by the given ID. Position is driven
+ * per-frame from `--x/--y/--z` written by the rAF interpolator in
+ * `src/net/client.js` (mirrors the thing pipeline) — no CSS keyframe
+ * trajectory is baked here.
  */
 const PROJECTILE_CLASS = {
     'enemy':         'projectile',
     'player-rocket': 'projectile player-rocket',
 };
 
-export function createProjectile(projectileId, { type, width, height, sprite, startX, startY, startZ, endX, endY, endZ, duration }) {
+export function createProjectile(projectileId, { type, width, height, sprite, x, y, z }) {
     const el = document.createElement('div');
     el.className = PROJECTILE_CLASS[type] || 'projectile';
     el.style.width = `${width}px`;
     el.style.height = `${height}px`;
     el.style.backgroundImage = `url('/assets/sprites/${sprite}.png')`;
     el.style.backgroundSize = `${width}px ${height}px`;
-    el.style.setProperty('--start-x', startX);
-    el.style.setProperty('--start-y', startY);
-    el.style.setProperty('--start-z', startZ);
-    el.style.setProperty('--end-x', endX);
-    el.style.setProperty('--end-y', endY);
-    el.style.setProperty('--end-z', endZ);
-    el.style.setProperty('--duration', `${duration}s`);
+    el.style.setProperty('--x', x);
+    el.style.setProperty('--y', y);
+    el.style.setProperty('--z', z);
     dom.scene.appendChild(el);
     sceneState.projectileDom.set(projectileId, el);
+}
+
+/** Update a projectile's position vars; cached so static frames are no-ops. */
+export function updateProjectilePosition(projectileId, { x, y, z }) {
+    const el = sceneState.projectileDom.get(projectileId);
+    if (!el) return;
+    if (el._lastX !== x) {
+        el._lastX = x;
+        el.style.setProperty('--x', x);
+    }
+    if (el._lastY !== y) {
+        el._lastY = y;
+        el.style.setProperty('--y', y);
+    }
+    if (el._lastZ !== z) {
+        el._lastZ = z;
+        el.style.setProperty('--z', z);
+    }
 }
 
 /** Remove a projectile's DOM element by its ID. */

@@ -29,6 +29,9 @@ function applyLightEffect(element, specialType) {
     const className = LIGHT_EFFECT_CLASS[specialType];
     if (!className) return;
     element.classList.add(className);
+    // Only animated-light sectors mutate their filter layer; promote them so
+    // the compositor keeps a dedicated layer ready for the filter changes.
+    element.style.willChange = 'filter';
 }
 
 /**

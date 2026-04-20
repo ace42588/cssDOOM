@@ -1,19 +1,22 @@
 /**
  * SGNL services bridge — server-side.
  *
- * Wires the three SGNL channels (Access Evaluations, CAEP, SCIM) into the
- * engine's `services` facade so every game module runs unchanged on the
- * server. The facade only knows an abstract `controllerId` for access
- * queries; we map it to a principal id here via an internal session
- * registry (populated by `registerSession` on WS connect).
+ * Wires four SGNL channels into the engine's `services` facade so every
+ * game module runs unchanged on the server:
  *
- * Exposes:
- *   - createSgnlServices(): services impl for setGameServices()
- *   - registerSession(sessionId, meta): associate a session id with a
- *     principalId / email (used by CAEP + evaluations)
- *   - unregisterSession(sessionId)
- *   - emitSessionEstablished(sessionId): push a CAEP SET for a session
- *   - initSgnl(initialMapName): bootstrap SCIM push (fire-and-forget)
+ *   - Access Evaluations (`evaluation.js`) — synchronous decision calls.
+ *   - CAEP / SSF (`caep.js`) — session-established SETs.
+ *   - SCIM 2.0 Entity Push (`scim.js`) — one SCIM User per connected
+ *     player session. SGNL's SCIM adapter only accepts /Users and
+ *     /Groups, so anything else stays out of this channel.
+ *   - Event Push (`events.js`) — discrete state-change events for
+ *     every non-player entity (doors, lifts, crushers, pickups, keys,
+ *     AI actors). SGNL issues the endpoint URL at SoR creation.
+ *
+ * `createSgnlServices()` exposes a flat contract (markEntityDirty,
+ * markPlayerDirty, markMapChanged, flushNow, tickHeartbeat,
+ * setMapName) that `src/game/services.js` re-exports; individual
+ * engine modules don't know which underlying channel handles them.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -22,15 +25,20 @@ import { evaluateAccess as sgnlEvaluateAccess } from './evaluation.js';
 import { emitCaepSessionEstablished } from './caep.js';
 import {
     initScimPush,
-    markEntityDirty,
     markPlayerDirty,
-    markMapChanged,
+    markMapChanged as markScimMapChanged,
     flushScimNow,
     tickScimHeartbeat,
-    setScimMapName,
     registerScimPlayer,
     unregisterScimPlayer,
 } from './scim.js';
+import {
+    initEventsPush,
+    markEntityDirty,
+    markMapChanged as markEventsMapChanged,
+    flushEventsNow,
+    tickEventsHeartbeat,
+} from './events.js';
 import { startSgnlAdapter } from './adapter/index.js';
 
 const sessions = new Map();
@@ -74,10 +82,13 @@ export function emitSessionEstablished(sessionId) {
     });
 }
 
-/** Bootstrap SCIM push and the SGNL gRPC map adapter. Idempotent; each
- * side is a no-op when its env is missing. */
+/** Bootstrap SCIM + Event Push + the SGNL gRPC map adapter. Idempotent;
+ * each channel is a no-op when its env is missing. */
 export async function initSgnl(initialMapName = 'E1M1') {
-    await initScimPush(initialMapName);
+    await Promise.all([
+        initScimPush(initialMapName),
+        initEventsPush(initialMapName),
+    ]);
     try {
         await startSgnlAdapter();
     } catch (err) {
@@ -86,10 +97,29 @@ export async function initSgnl(initialMapName = 'E1M1') {
     }
 }
 
+function markMapChanged(mapName) {
+    markScimMapChanged(mapName);
+    markEventsMapChanged(mapName);
+}
+
+async function flushNow() {
+    await Promise.all([flushScimNow(), flushEventsNow()]);
+}
+
+function tickHeartbeat(deltaTime) {
+    tickScimHeartbeat(deltaTime);
+    tickEventsHeartbeat(deltaTime);
+}
+
 /**
- * Build the services implementation to pass to `setGameServices()` so the
- * engine modules (doors, lifecycle, pickups, crushers, lifts, …) can talk
- * to SGNL without importing it directly.
+ * Build the services implementation passed to `setGameServices()` so
+ * engine modules (doors, lifecycle, pickups, crushers, lifts, …) can
+ * reach SGNL without importing any channel directly.
+ *
+ * Routing:
+ *   - `markPlayerDirty` → SCIM Users push.
+ *   - `markEntityDirty` → Event Push (non-player entities).
+ *   - map / flush / tick fan out to both channels.
  */
 export function createSgnlServices() {
     return {
@@ -101,8 +131,8 @@ export function createSgnlServices() {
         markEntityDirty,
         markPlayerDirty,
         markMapChanged,
-        flushNow: flushScimNow,
-        tickHeartbeat: tickScimHeartbeat,
-        setMapName: setScimMapName,
+        flushNow,
+        tickHeartbeat,
+        setMapName: markMapChanged,
     };
 }

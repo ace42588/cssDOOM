@@ -1,6 +1,6 @@
 /**
  * Recording renderer host — buffers every renderer call into a list of
- * `{fn, args}` events. Used by the server to ship transient visuals
+ * `{ fn, args, forSessionId? }` events (`forSessionId` limits replay to one client). Used by the server to ship transient visuals
  * (puffs, explosions, hud messages, door/lift/crusher state changes,
  * weapon switches, sprite state transitions) alongside each snapshot.
  *
@@ -112,12 +112,30 @@ export function createRecordingRendererHost() {
         host[fn] = record(fn);
     }
 
+    // First-person marine feedback — only the session driving `player` should
+    // replay these (see `src/net/client.js` snapshot replay filtering).
+    host.triggerViewerFlash = (className, forSessionId, duration = 300) => {
+        buffer.push({
+            fn: 'triggerFlash',
+            args: [sanitizeArg(className), sanitizeArg(duration)],
+            forSessionId: typeof forSessionId === 'string' ? forSessionId : undefined,
+        });
+    };
+    host.setViewerPlayerDead = (dead, forSessionId) => {
+        buffer.push({
+            fn: 'setPlayerDead',
+            args: [sanitizeArg(dead)],
+            forSessionId: typeof forSessionId === 'string' ? forSessionId : undefined,
+        });
+    };
+
     // Accept-and-drop the per-frame client-local facade calls. We don't
     // record them (snapshots already carry the necessary state) but we do
     // want the host to satisfy the facade shape so nothing throws.
     const dropped = [
         'updateCamera', 'updateHud', 'startCullingLoop', 'updateCulling',
         'updateEnemyRotation', 'updateThingPosition', 'reparentThingToSector',
+        'updateProjectilePosition',
         'buildDoor', 'buildLift', 'buildCrusher',
         // Sprite visibility is a per-viewer decision (each client hides the
         // body it personally controls so the camera isn't inside its own

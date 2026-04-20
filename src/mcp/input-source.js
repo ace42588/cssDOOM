@@ -10,7 +10,7 @@
  * Two layers:
  *   1. Low-level intent: tools set `moveX/moveY/turn/run` with an optional
  *      auto-expiry so a pulse of movement clears itself even if the agent
- *      forgets to call `marine.stop`.
+ *      forgets to call `actor.stop` (WebMCP) / `actor-stop` (HTTP MCP).
  *   2. High-level steering: `turnTo` / `moveTo` drive the low-level state
  *      across successive animation frames until the goal is reached or a
  *      timeout elapses.

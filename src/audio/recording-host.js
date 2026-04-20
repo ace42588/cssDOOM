@@ -5,12 +5,17 @@
  */
 
 export function createRecordingAudioHost() {
-    /** @type {string[]} */
+    /** @type {Array<string | { sound: string, forSessionId?: string }>} */
     let buffer = [];
 
     return {
-        playSound(name) {
-            if (typeof name === 'string' && name.length > 0) buffer.push(name);
+        playSound(name, forSessionId) {
+            if (typeof name !== 'string' || !name.length) return;
+            if (typeof forSessionId === 'string' && forSessionId.length) {
+                buffer.push({ sound: name, forSessionId });
+            } else {
+                buffer.push(name);
+            }
         },
         drainSounds() {
             if (buffer.length === 0) return [];

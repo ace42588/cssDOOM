@@ -59,24 +59,31 @@ export async function loadMap(name) {
 /**
  * Headless map load — for the server (or any environment without a DOM).
  * Performs the pure-data portion of `loadMap`: read JSON, apply player start,
- * reset game state, spawn things, initialize doors/lifts/crushers, build
- * spatial queries, and wire sound adjacency. Does not touch the renderer or
- * UI; callers install a renderer host (no-op or recording) beforehand.
+ * reset/transition game state, spawn things, initialize doors/lifts/crushers,
+ * build spatial queries, and wire sound adjacency. Does not touch the renderer
+ * or UI; callers install a renderer host (no-op or recording) beforehand.
  *
  * @param {string} name Map identifier (e.g. 'E1M1')
  * @param {(name: string) => Promise<object>} readMapJson Async loader that
  *   returns parsed map JSON. The server reads from the filesystem; a browser
  *   caller could pass `(n) => fetch('maps/'+n+'.json').then(r => r.json())`.
+ * @param {{ fullReset?: boolean }} [options]
+ *   `fullReset: true` (default) wipes inventory/health back to start values —
+ *   correct for a fresh server boot or after marine death. `fullReset: false`
+ *   preserves health/ammo/weapons and only clears per-level state — the right
+ *   choice when transitioning between levels via an exit switch.
  */
-export async function loadMapHeadless(name, readMapJson) {
+export async function loadMapHeadless(name, readMapJson, options = {}) {
+    const { fullReset = true } = options;
     const json = await readMapJson(name);
     setMapState(name, json);
     setMapName(name);
     applyPlayerStart();
-    // Always do a full reset on a headless map load. The server owns the
-    // authoritative state and starts with fresh inventory/health for the
-    // marine on each level.
-    resetGameState();
+    if (fullReset) {
+        resetGameState();
+    } else {
+        transitionToLevel();
+    }
     spawnThings();
     clearSpatialGrid();
     initDoors();
@@ -122,6 +129,7 @@ export function getSecretExitMap() {
 
 function clearSceneState() {
     player.isDead = false;
+    player.isAiDead = false;
     player.isFiring = false;
     player.sectorDamageTimer = 0;
     state.things = [];

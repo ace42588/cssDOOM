@@ -316,15 +316,12 @@ function spawnPlayerRocket(forwardX, forwardY) {
     const spawnZ = player.floorHeight + EYE_HEIGHT * 0.8;
 
     const lifetime = 5;
-    const endX = spawnX + forwardX * PLAYER_ROCKET_SPEED * lifetime;
-    const endY = spawnY + forwardY * PLAYER_ROCKET_SPEED * lifetime;
 
     const projectileId = state.nextProjectileId++;
     renderer.createProjectile(projectileId, {
         type: 'player-rocket',
         width: 11, height: 11, sprite: 'MISLA1',
-        startX: spawnX, startY: spawnY, startZ: spawnZ,
-        endX, endY, endZ: spawnZ, duration: lifetime,
+        x: spawnX, y: spawnY, z: spawnZ,
     });
 
     state.projectiles.push({
@@ -434,14 +431,20 @@ function fireMonsterAttack(explicitMonster) {
     const now = performance.now();
     if (now - (monster.ai.lastAttack || 0) < cooldownMs) return;
     monster.ai.lastAttack = now;
-    player.isFiring = true;
-    // Briefly flash the monster into its attack sprite.
+    // Briefly flash the monster into its attack sprite. We deliberately
+    // do NOT touch `player.isFiring` here — that flag is the marine's UI
+    // state and is broadcast to every client via snapshots; mutating it
+    // from a possessed-monster attack would flicker the marine HUD and
+    // (when a stale setTimeout fires after the monster has died or been
+    // released) clobber a real fire-in-progress on the marine.
     setEnemyState(monster, 'attacking');
     setTimeout(() => {
-        if (isHumanControlled(monster)) {
-            setEnemyState(monster, 'chasing');
-        }
-        player.isFiring = false;
+        // Guard against the monster having been killed, collected, or
+        // released between scheduling and firing — `setEnemyState` would
+        // otherwise rewrite a freed AI block.
+        if (!monster.ai || monster.collected || (monster.hp ?? 0) <= 0) return;
+        if (!isHumanControlled(monster)) return;
+        setEnemyState(monster, 'chasing');
     }, Math.min(cooldownMs, 350));
 
     const viewAngle = typeof monster.viewAngle === 'number'
@@ -508,17 +511,13 @@ function spawnPossessedProjectile(monster, projectileDef, forwardX, forwardY) {
 
     const speed = state.skillLevel === 5 ? projectileDef.speed * 2 : projectileDef.speed;
     const lifetime = 5;
-    const endX = monster.x + forwardX * speed * lifetime;
-    const endY = monster.y + forwardY * speed * lifetime;
-    const endZ = spawnHeight;
 
     const projectileId = state.nextProjectileId++;
     renderer.createProjectile(projectileId, {
         type: 'enemy',
         width: projectileDef.size, height: projectileDef.size,
         sprite: projectileDef.sprite,
-        startX: monster.x, startY: monster.y, startZ: spawnHeight,
-        endX, endY, endZ, duration: lifetime,
+        x: monster.x, y: monster.y, z: spawnHeight,
     });
 
     state.projectiles.push({

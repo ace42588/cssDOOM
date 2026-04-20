@@ -1,16 +1,13 @@
 /**
- * WebMCP tools for driving the marine (or whichever body the local session
- * currently controls). Each tool either:
- *   - reads server-replicated state (`player`, possession pose), or
- *   - feeds the client's input pipeline (the MCP input provider in
- *     `../input-source.js`, or the same helpers used by keyboard/mouse).
- *
- * No tool directly mutates game state; the authoritative server sees these
- * inputs on the normal WebSocket channel at the next `sendInputFrame()`.
+ * WebMCP tools for driving whatever body the local session controls. Each tool
+ * either reads server-replicated state (`player`, possession pose), or feeds
+ * the client's input pipeline (`../input-source.js`). No tool directly mutates
+ * authoritative game state; the server sees inputs on the next `sendInputFrame()`.
  */
 
-import { player } from '../../game/state.js';
-import { pressUse, requestWeaponSwitch } from '../../net/client.js';
+import { player, state } from '../../game/state.js';
+import { ENEMIES } from '../../game/constants.js';
+import { pressUse, requestWeaponSwitch, requestBodySwap } from '../../net/client.js';
 import {
     setIntent,
     stopIntent,
@@ -30,9 +27,29 @@ function ok(extra = {}) {
     return textContent({ ok: true, ...extra });
 }
 
-export function registerMarineTools() {
+function isLiveEnemy(thing) {
+    if (!thing) return false;
+    if (thing.collected) return false;
+    if ((thing.hp ?? 0) <= 0) return false;
+    return Boolean(thing.ai) && ENEMIES.has(thing.type);
+}
+
+function normalizePossessTargetId(raw) {
+    if (raw == null) return null;
+    const s = String(raw).trim();
+    if (!s) return null;
+    const lower = s.toLowerCase();
+    if (lower === 'marine' || lower === 'player') return 'player';
+    const thingM = /^thing:(\d+)$/i.exec(s);
+    if (thingM) return `thing:${thingM[1]}`;
+    const doorM = /^door:(\d+)$/i.exec(s);
+    if (doorM) return `door:${doorM[1]}`;
+    return null;
+}
+
+export function registerActorTools() {
     navigator.modelContext.registerTool({
-        name: 'marine.get-state',
+        name: 'actor.get-state',
         description:
             'Return the current pose and stats of the marine plus the pose of whichever body the local session is currently driving (marine or possessed monster/door).',
         inputSchema: { type: 'object', properties: {} },
@@ -67,7 +84,7 @@ export function registerMarineTools() {
     });
 
     navigator.modelContext.registerTool({
-        name: 'marine.set-move',
+        name: 'actor.set-move',
         description:
             'Set the per-frame movement intent for the controlled body. Fields are clamped to [-1, 1]. Pass holdMs > 0 to auto-clear after that duration (max 5000 ms) so short pulses do not stick.',
         inputSchema: {
@@ -87,7 +104,7 @@ export function registerMarineTools() {
     });
 
     navigator.modelContext.registerTool({
-        name: 'marine.stop',
+        name: 'actor.stop',
         description: 'Zero all rate-based movement and turn intent. Does not release fire.',
         inputSchema: { type: 'object', properties: {} },
         async execute() {
@@ -97,7 +114,7 @@ export function registerMarineTools() {
     });
 
     navigator.modelContext.registerTool({
-        name: 'marine.turn-by',
+        name: 'actor.turn-by',
         description:
             'Apply an absolute yaw delta (radians) on the next frame. Positive = counter-clockwise (left). Angle convention: 0 = north.',
         inputSchema: {
@@ -118,7 +135,7 @@ export function registerMarineTools() {
     });
 
     navigator.modelContext.registerTool({
-        name: 'marine.turn-to',
+        name: 'actor.turn-to',
         description:
             'Rotate the controlled body to face the given absolute angle (radians, 0 = north) OR to look at the given (x, y) point. Returns when aligned within tolerance or after timeoutMs.',
         inputSchema: {
@@ -138,7 +155,7 @@ export function registerMarineTools() {
     });
 
     navigator.modelContext.registerTool({
-        name: 'marine.move-to',
+        name: 'actor.move-to',
         description:
             'Walk the controlled body in a straight line toward (x, y). Turns toward the target and walks forward each frame; no pathfinding, so walls cause a stuck/timeout return.',
         inputSchema: {
@@ -159,9 +176,9 @@ export function registerMarineTools() {
     });
 
     navigator.modelContext.registerTool({
-        name: 'marine.fire',
+        name: 'actor.fire',
         description:
-            'Press and hold the fire button. If durationMs > 0 is given, fire auto-releases after that duration (max 10000 ms); otherwise call marine.stop-fire.',
+            'Press and hold the fire button. If durationMs > 0 is given, fire auto-releases after that duration (max 10000 ms); otherwise call actor.stop-fire.',
         inputSchema: {
             type: 'object',
             properties: {
@@ -175,7 +192,7 @@ export function registerMarineTools() {
     });
 
     navigator.modelContext.registerTool({
-        name: 'marine.stop-fire',
+        name: 'actor.stop-fire',
         description: 'Release the fire button.',
         inputSchema: { type: 'object', properties: {} },
         async execute() {
@@ -185,7 +202,7 @@ export function registerMarineTools() {
     });
 
     navigator.modelContext.registerTool({
-        name: 'marine.switch-weapon',
+        name: 'actor.switch-weapon',
         description:
             'Request that the server switch the marine to the given weapon slot (1=Fist, 2=Pistol, 3=Shotgun, 4=Chaingun, 5=Rocket, 6=Plasma, 7=BFG). Server only honors slots the marine owns.',
         inputSchema: {
@@ -206,13 +223,57 @@ export function registerMarineTools() {
     });
 
     navigator.modelContext.registerTool({
-        name: 'marine.use',
+        name: 'actor.use',
         description:
-            "Press 'use' (spacebar). Opens the door the marine is facing, activates switches, and triggers linedef specials at short range.",
+            "Press 'use' (spacebar). Opens the door the controlled body is facing, activates switches, and triggers linedef specials at short range.",
         inputSchema: { type: 'object', properties: {} },
         async execute() {
             pressUse();
             return ok();
+        },
+    });
+
+    navigator.modelContext.registerTool({
+        name: 'actor.possess',
+        description:
+            'Queue a body-swap for the next frame. targetId: thing:N (enemy id from enemies.list), door:N (sectorIndex from doors.list), or marine / player for the marine. Server validates on the tick.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                targetId: { type: 'string', description: 'thing:N | door:N | marine | player' },
+            },
+            required: ['targetId'],
+        },
+        async execute(args) {
+            const tid = normalizePossessTargetId(args?.targetId);
+            if (!tid) return textContent({ ok: false, reason: 'invalid targetId' });
+            if (tid === 'player') {
+                requestBodySwap('player');
+                return ok({ requested: 'player' });
+            }
+            if (tid.startsWith('thing:')) {
+                const id = Number(tid.slice('thing:'.length));
+                if (!Number.isInteger(id) || id < 0) {
+                    return textContent({ ok: false, reason: 'invalid thing index' });
+                }
+                const thing = state.things[id];
+                if (!thing) return textContent({ ok: false, reason: 'not found' });
+                if (!isLiveEnemy(thing)) {
+                    return textContent({ ok: false, reason: 'enemy not live/possessable from client view' });
+                }
+                requestBodySwap(tid);
+                return ok({ requested: tid });
+            }
+            const sectorIndex = Number(tid.slice('door:'.length));
+            if (!Number.isInteger(sectorIndex)) {
+                return textContent({ ok: false, reason: 'invalid door sector index' });
+            }
+            const entry = state.doorState.get(sectorIndex);
+            if (!entry || !entry.doorEntity) {
+                return textContent({ ok: false, reason: 'door not found' });
+            }
+            requestBodySwap(tid);
+            return ok({ requested: tid });
         },
     });
 }

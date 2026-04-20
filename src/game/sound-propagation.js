@@ -71,22 +71,49 @@ function getLineOpening(linedefIndex) {
     const ld = mapData.linedefs[linedefIndex];
     const frontSectorIdx = mapData.sidedefs[ld.frontSidedef].sectorIndex;
     const backSectorIdx = mapData.sidedefs[ld.backSidedef].sectorIndex;
+    return getSectorOpening(frontSectorIdx, backSectorIdx);
+}
+
+/**
+ * Computes the vertical opening between two adjacent sectors, accounting
+ * for door state. Same math as P_LineOpening but indexed directly by the
+ * two sectors on either side of the portal — used by the renderer's
+ * portal flood (PVS) where portals are derived from sector-polygon edges
+ * and no linedef index is available.
+ *
+ * Returns a height in DOOM units. A value <= 0 means the portal is closed
+ * (fully raised lift, closed door, crushing ceiling). If the door-data
+ * map hasn't been populated yet (first cull pass of a fresh load), falls
+ * back to raw sector heights.
+ *
+ * `includeVisualClosing: true` keeps a recently-closing door "open" until
+ * its close animation finishes, so renderer PVS does not hide sectors while
+ * the doorway is still visibly open.
+ */
+export function getSectorOpening(frontSectorIdx, backSectorIdx, options = {}) {
+    const { includeVisualClosing = false } = options;
     const fs = mapData.sectors[frontSectorIdx];
     const bs = mapData.sectors[backSectorIdx];
+    if (!fs || !bs) return 0;
 
     let frontCeil = fs.ceilingHeight;
     let backCeil = bs.ceilingHeight;
 
     // If either sector is a door, use its open height when open, closed height when closed
-    const frontDoor = doorDataMap.get(frontSectorIdx);
-    if (frontDoor) {
-        const doorState = state.doorState.get(frontSectorIdx);
-        frontCeil = doorState?.open ? frontDoor.openHeight : frontDoor.closedHeight;
-    }
-    const backDoor = doorDataMap.get(backSectorIdx);
-    if (backDoor) {
-        const doorState = state.doorState.get(backSectorIdx);
-        backCeil = doorState?.open ? backDoor.openHeight : backDoor.closedHeight;
+    if (doorDataMap) {
+        const now = includeVisualClosing ? Date.now() : 0;
+        const frontDoor = doorDataMap.get(frontSectorIdx);
+        if (frontDoor) {
+            const doorState = state.doorState.get(frontSectorIdx);
+            const visuallyOpen = doorState?.open || (includeVisualClosing && doorState?.closingUntil > now);
+            frontCeil = visuallyOpen ? frontDoor.openHeight : frontDoor.closedHeight;
+        }
+        const backDoor = doorDataMap.get(backSectorIdx);
+        if (backDoor) {
+            const doorState = state.doorState.get(backSectorIdx);
+            const visuallyOpen = doorState?.open || (includeVisualClosing && doorState?.closingUntil > now);
+            backCeil = visuallyOpen ? backDoor.openHeight : backDoor.closedHeight;
+        }
     }
 
     const openTop = Math.min(frontCeil, backCeil);

@@ -41,6 +41,8 @@ import {
 
 const OPERATOR_REQUEST_TIMEOUT_MS = 15_000;
 let nextRequestId = 1;
+// Keep in sync with `src/renderer/scene/mechanics/doors.css` transition duration.
+const DOOR_CLOSE_TRAVEL_MS = 1000;
 
 // When a door loses its operator (release, disconnect, swap away), drain
 // any queued use-attempts so interactors don't hang waiting for a decision.
@@ -125,6 +127,7 @@ export function initDoors() {
             open: false,
             sectorIndex: door.sectorIndex,
             passable: false,
+            closingUntil: 0,
             timer: null,
             passableTimer: null,
             evaluating: false,
@@ -277,6 +280,7 @@ export async function toggleDoor(sectorIndex, requestedBy) {
 
         doorEntry.open = true;
         doorEntry.passable = false;
+        doorEntry.closingUntil = 0;
         clearTimeout(doorEntry.passableTimer);
         doorEntry.passableTimer = setTimeout(() => {
             doorEntry.passable = true;
@@ -312,6 +316,7 @@ function closeDoor(sectorIndex) {
 
     doorEntry.open = false;
     doorEntry.passable = false;
+    doorEntry.closingUntil = Date.now() + DOOR_CLOSE_TRAVEL_MS;
     clearTimeout(doorEntry.passableTimer);
     doorEntry.timer = null;
     renderer.setDoorState(sectorIndex, 'closed');
@@ -383,7 +388,7 @@ export async function tryOpenDoor(requestedBy) {
  * the operator releases the door, or a safety timeout fires.
  *
  * The request summary is visible to the operator client via the snapshot
- * (see `server/world.js#serializeDoor`) and is also consumed directly by
+ * (see `server/world.js#fillDoorRecord`) and is also consumed directly by
  * the single-player modal (which runs in-process).
  */
 function enqueueOperatorRequest(doorEntry, controller) {

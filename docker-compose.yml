@@ -1,0 +1,81 @@
+# cssDOOM — Docker Compose deployment.
+#
+# Two services, intended to sit behind an external reverse proxy
+# (Caddy / nginx / Traefik / Cloudflare Tunnel / etc.) that handles TLS
+# and routing:
+#
+#   /ws      -> game:8787   (WebSocket, requires Upgrade headers)
+#   /healthz -> game:8787   (liveness probe for the multiplayer server)
+#   /*       -> web:80      (static client built by Vite)
+#
+# Optional gRPC ingress for SGNL adapter:
+#   :8081    -> game:8081   (h2; SGNL connects with the bearer token in
+#                            metadata.token, see SGNL_ADAPTER_VALID_TOKENS)
+#
+# Quick start:
+#   cp .env.example .env   # populate SGNL_* / CAEP_* / SCIM_* if desired
+#   docker compose up --build -d
+#
+# For PingAccess or another single-hostname reverse proxy, point it at
+# `edge` (default host port 8090) instead of separate web + game ports.
+
+services:
+  # Single HTTP port for external reverse proxies (PingAccess, etc.):
+  # /ws + /healthz -> game; everything else -> static web.
+  edge:
+    image: nginx:1.27-alpine
+    container_name: cssdoom-edge
+    restart: unless-stopped
+    volumes:
+      - ./docker/edge.conf:/etc/nginx/conf.d/default.conf:ro
+    # Default 0.0.0.0 so PingAccess (or any off-host reverse proxy) can reach
+    # this port; use EDGE_BIND=127.0.0.1 when PA shares the same host only.
+    ports:
+      - "${EDGE_BIND:-0.0.0.0}:${EDGE_PORT:-8090}:80"
+    depends_on:
+      - web
+      - game
+    networks:
+      - cssdoom
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: web
+    image: cssdoom-web:latest
+    container_name: cssdoom-web
+    restart: unless-stopped
+    # External reverse proxy talks to this port; bind to loopback by
+    # default so the container is not directly exposed on the host.
+    ports:
+      - "${WEB_BIND:-127.0.0.1}:${WEB_PORT:-8080}:80"
+    networks:
+      - cssdoom
+
+  game:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: server
+    image: cssdoom-server:latest
+    container_name: cssdoom-game
+    restart: unless-stopped
+    # `.env` is read by the SGNL helpers (CAEP / SCIM / Access Evals,
+    # adapter tokens). Any value left blank simply disables that
+    # channel — the engine still runs.
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      PORT: "8787"
+      SGNL_ADAPTER_PORT: "8081"
+    ports:
+      - "${GAME_BIND:-127.0.0.1}:${GAME_PORT:-8787}:8787"
+      - "${ADAPTER_BIND:-127.0.0.1}:${ADAPTER_PORT:-8081}:8081"
+    networks:
+      - cssdoom
+
+networks:
+  cssdoom:
+    driver: bridge

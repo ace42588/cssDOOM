@@ -2,18 +2,16 @@
  * WebMCP tools for enemies.
  *
  * The client is read-only with respect to server-authoritative enemy state:
- * `state.things` is mirrored from each snapshot. Tools here either inspect
- * that mirror or ask the server (via the body-swap input flag) to hand the
- * local session a different body to pilot.
+ * `state.things` is mirrored from each snapshot. Tools here inspect that
+ * mirror. To possess an enemy, use `actor.possess` with `targetId: 'thing:N'`.
  *
- * Once possession switches to an enemy, all `marine.*` movement/fire tools
- * naturally drive that body because the server-side `updateMovementFor`
- * and `fireWeaponFor` already branch on the session's controlled entity.
+ * Once possession switches to an enemy, all `actor.*` movement/fire tools
+ * drive that body because the server-side `updateMovementFor` and
+ * `fireWeaponFor` branch on the session's controlled entity.
  */
 
 import { state, player } from '../../game/state.js';
 import { ENEMIES } from '../../game/constants.js';
-import { requestBodySwap } from '../../net/client.js';
 
 const ENEMY_LABELS = {
     3004: 'Zombieman',
@@ -63,7 +61,7 @@ export function registerEnemyTools() {
     navigator.modelContext.registerTool({
         name: 'enemies.list',
         description:
-            "List currently-alive enemies mirrored from the latest server snapshot. Each entry has a stable `id` (use with enemies.get-state / enemies.possess). Sorted by distance to the marine. Optional maxDistance filter in map units.",
+            "List currently-alive enemies mirrored from the latest server snapshot. Each entry has a stable `id` (use with enemies.get-state and actor.possess). Sorted by distance to the marine. Optional maxDistance filter in map units.",
         inputSchema: {
             type: 'object',
             properties: {
@@ -110,43 +108,6 @@ export function registerEnemyTools() {
                 enemy: snapshotEnemy(thing),
                 alive: isLiveEnemy(thing),
             });
-        },
-    });
-
-    navigator.modelContext.registerTool({
-        name: 'enemies.possess',
-        description:
-            'Ask the server to hand the local session control of the given enemy (body-swap). On success, subsequent marine.* movement/fire tools will drive the possessed body. The server validates: target must be alive, uncollected, not controlled by another session.',
-        inputSchema: {
-            type: 'object',
-            properties: {
-                id: { type: 'integer', description: 'thingIndex of the enemy to possess.' },
-            },
-            required: ['id'],
-        },
-        async execute(args) {
-            const id = Number(args?.id);
-            if (!Number.isInteger(id) || id < 0) {
-                return textContent({ ok: false, reason: 'invalid id' });
-            }
-            const thing = state.things[id];
-            if (!thing) return textContent({ ok: false, reason: 'not found' });
-            if (!isLiveEnemy(thing)) {
-                return textContent({ ok: false, reason: 'enemy not live/possessable from client view' });
-            }
-            requestBodySwap(`thing:${id}`);
-            return textContent({ ok: true, requested: `thing:${id}` });
-        },
-    });
-
-    navigator.modelContext.registerTool({
-        name: 'enemies.release',
-        description:
-            'Ask the server to return the local session to the marine body (the inverse of enemies.possess).',
-        inputSchema: { type: 'object', properties: {} },
-        async execute() {
-            requestBodySwap('player');
-            return textContent({ ok: true, requested: 'player' });
         },
     });
 }

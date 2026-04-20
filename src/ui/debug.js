@@ -5,7 +5,6 @@
  */
 
 import { culling, cullingStats, debugSkyTrace } from '../renderer/scene/culling.js';
-import { sceneState } from '../renderer/dom.js';
 import { state, player, debug } from '../game/state.js';
 import { EYE_HEIGHT } from '../game/constants.js';
 import { THING_NAMES } from '../renderer/scene/constants.js';
@@ -152,10 +151,12 @@ window.nearby = function (radius = 512) {
         });
     }
 
-    // Things
+    // Things — state.things is sparse (despawn leaves holes), guard the
+    // iteration so a despawn between ticks doesn't blow up the inspector.
     const things = [];
     for (let i = 0; i < state.things.length; i++) {
         const t = state.things[i];
+        if (!t) continue;
         const dist = Math.sqrt((t.x - px) ** 2 + (t.y - py) ** 2);
         if (dist > r) continue;
         things.push({
@@ -209,22 +210,17 @@ for (const toggle of TOGGLES) {
 
 const DEBUG_TOGGLES = [
     { name: 'all-enemies-shadow', label: 'All enemies shadow', defaultOn: false },
-    { name: 'show-sky-walls', label: 'Show sky walls', defaultOn: false },
     { name: 'show-wall-ids', label: 'Show wall IDs', defaultOn: false },
     { name: 'show-sector-ids', label: 'Show sector IDs', defaultOn: false },
 ];
 
 // Ordered to match processing order in updateCulling()
 const CULLING_TOGGLES = [
+    { key: 'pvs', label: 'Sector PVS', statKey: 'afterPvs' },
     { key: 'distance', label: 'Distance culling', statKey: 'afterDistance' },
     { key: 'backface', label: 'Backface culling', statKey: 'afterBackface' },
     { key: 'frustum', label: 'Frustum culling', statKey: 'afterFrustum' },
     { key: 'sky', label: 'Sky culling', statKey: 'afterSky' },
-];
-
-const CSS_CULLING_TOGGLES = [
-    { name: 'css-distance-culling', label: 'CSS distance culling', defaultOn: false },
-    { name: 'css-frustum-culling', label: 'CSS frustum culling', defaultOn: false },
 ];
 
 const cullingStatElements = {};
@@ -277,24 +273,6 @@ export function initDebugMenu() {
         stat.style.cssText = 'font-size:11px;color:#888;padding-left:20px';
         details.appendChild(stat);
         cullingStatElements[toggle.statKey] = stat;
-    }
-
-    // CSS culling experiments
-    for (const toggle of CSS_CULLING_TOGGLES) {
-        const label = document.createElement('label');
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.checked = toggle.defaultOn;
-
-        if (toggle.defaultOn) document.body.classList.add(toggle.name);
-
-        checkbox.addEventListener('change', () => {
-            document.body.classList.toggle(toggle.name, checkbox.checked);
-        });
-
-        label.appendChild(checkbox);
-        label.appendChild(document.createTextNode(` ${toggle.label}`));
-        details.appendChild(label);
     }
 
     // Separator
@@ -352,11 +330,6 @@ export function initDebugMenu() {
 
         checkbox.addEventListener('change', () => {
             document.body.classList.toggle(toggle.name, checkbox.checked);
-            if (toggle.name === 'show-wall-ids') {
-                for (const el of sceneState.wallElements) {
-                    el.textContent = checkbox.checked ? (el.id || '') : '';
-                }
-            }
         });
 
         label.appendChild(checkbox);
@@ -369,8 +342,8 @@ export function initDebugMenu() {
 
 /** Update the stats text. Called each frame from the game loop. */
 export function updateDebugStats() {
-    const { total } = cullingStats;
-    const anyCulling = culling.frustum || culling.distance || culling.backface;
+    const { total, visibleSectors, totalSectors } = cullingStats;
+    const anyCulling = culling.pvs || culling.frustum || culling.distance || culling.backface;
 
     // Per-step stats: show "input → output" for each enabled step
     let prev = total;
@@ -379,7 +352,11 @@ export function updateDebugStats() {
         if (!el) continue;
         if (anyCulling && culling[toggle.key]) {
             const after = cullingStats[toggle.statKey];
-            el.textContent = `${prev} → ${after}`;
+            if (toggle.key === 'pvs') {
+                el.textContent = `${prev} → ${after}  (${visibleSectors}/${totalSectors} sectors)`;
+            } else {
+                el.textContent = `${prev} → ${after}`;
+            }
             prev = after;
         } else {
             el.textContent = '';

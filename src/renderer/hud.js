@@ -8,19 +8,23 @@
  * CSS — JavaScript only touches one DOM element per frame.
  */
 
-import { player } from '../game/state.js';
+import { player, subscribeAmmo, AMMO_TYPES } from '../game/state.js';
 import { getControlled, isControllingPlayer } from '../game/possession.js';
 import { dom } from './dom.js';
 import { WEAPONS } from '../game/constants.js';
 
-const AMMO_TYPES = ['bullets', 'shells', 'rockets', 'cells'];
-
 // Previous values — only touch the DOM when something changes
 let prev = {
     ammo: -1, health: -1, armor: -1, faceRow: -1,
-    bullets: -1, shells: -1, rockets: -1, cells: -1,
-    maxBullets: -1, maxShells: -1, maxRockets: -1, maxCells: -1,
 };
+
+// Per-type ammo dirty queue. Seeded with every type so the first frame
+// flushes a complete set of CSS variables for the inventory panel.
+// `subscribeAmmo` adds entries on every mutation thereafter, replacing the
+// per-frame walk that used to read `player.ammo` / `player.maxAmmo` for
+// every type whether or not anything changed.
+const ammoDirty = new Set(AMMO_TYPES);
+subscribeAmmo((type) => { ammoDirty.add(type); });
 
 // Pre-built class name strings to avoid per-frame template literal allocation
 const WEAPON_CLASSES = { 2: 'has-weapon-2', 3: 'has-weapon-3', 4: 'has-weapon-4', 5: 'has-weapon-5', 6: 'has-weapon-6', 7: 'has-weapon-7' };
@@ -48,7 +52,12 @@ export function updateHud() {
     const currentHealth = possessing
         ? Math.round(controlled.hp ?? 0)
         : Math.round(player.health);
-    const currentArmor = Math.round(player.armor);
+    // Armor lives only on the marine `player` object. Snapshots always carry
+    // marine stats in `snap.player`, so when the camera/body is a monster
+    // (possession or spectator follow) we must not show that inventory here.
+    const currentArmor = possessing
+        ? 0
+        : Math.round(player.armor);
 
     if (currentAmmo !== prev.ammo) {
         prev.ammo = currentAmmo;
@@ -76,19 +85,12 @@ export function updateHud() {
         style.setProperty('--armor', currentArmor);
     }
 
-    for (const type of AMMO_TYPES) {
-        const cur = Math.round(player.ammo[type]);
-        if (cur !== prev[type]) {
-            prev[type] = cur;
-            style.setProperty(`--ammo-${type}`, cur);
+    if (ammoDirty.size) {
+        for (const type of ammoDirty) {
+            style.setProperty(`--ammo-${type}`, Math.round(player.ammo[type]));
+            style.setProperty(`--max-${type}`, player.maxAmmo[type]);
         }
-
-        const max = player.maxAmmo[type];
-        const maxKey = `max${type[0].toUpperCase()}${type.slice(1)}`;
-        if (max !== prev[maxKey]) {
-            prev[maxKey] = max;
-            style.setProperty(`--max-${type}`, max);
-        }
+        ammoDirty.clear();
     }
 
     // Weapon ownership — hide all slots while possessing (monsters don't

@@ -11,8 +11,11 @@
             calc(var(--player-y) * 1px)
         );
 
-    /* Transition player Z for falling effect */
-    transition: --player-z 0.25s ease-out;
+    /* All four pose vars (--player-x, --player-y, --player-z,
+       --player-angle) are JS-lerped on the same dt by playerInterp in
+       src/net/client.js. A CSS transition on any of them would fight
+       that lerp and desync the eye from horizontal motion on
+       stairs/lifts — keep this rule transition-free. */
 }
 
 

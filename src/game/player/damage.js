@@ -9,7 +9,11 @@ import * as renderer from '../../renderer/index.js';
 import { asDamageableActor, assertDamageableActor } from '../actors/adapter.js';
 import { applyDamage } from '../combat/damage.js';
 import { flushNow, markPlayerDirty } from '../services.js';
-import { isHumanControlled, onPossessedDeath } from '../possession.js';
+import {
+    getSessionIdControlling,
+    isHumanControlled,
+    onPossessedDeath,
+} from '../possession.js';
 
 // ============================================================================
 // Player Damage
@@ -20,7 +24,15 @@ import { isHumanControlled, onPossessedDeath } from '../possession.js';
  * Accuracy: Exact — same integer division, same absorption ratios, same armor depletion logic.
  */
 export function damagePlayer(damageAmount) {
+    // A corpse can't be damaged again. Without this guard, AI ticks that
+    // keep running after a multiplayer marine death (see
+    // `updateAllEnemies`) would re-enter the death code path repeatedly,
+    // re-broadcasting hurt sounds and re-firing `onPossessedDeath` on a
+    // marine that's already been resolved.
+    if (player.isDead || player.isAiDead) return;
+
     const playerIsControlled = isHumanControlled(player);
+    const controllingSession = getSessionIdControlling(player);
     const targetActor = asDamageableActor(player);
     assertDamageableActor(targetActor, 'damagePlayer');
     const damageResult = applyDamage(targetActor, damageAmount, null, {
@@ -29,10 +41,13 @@ export function damagePlayer(damageAmount) {
     if (!damageResult.processed) return;
     markPlayerDirty();
 
-    // Only flash the viewport / play the hurt grunt when the user is
-    // actually the one being hit — otherwise we're just an AI enemy taking
-    // damage off-camera.
-    if (playerIsControlled) {
+    // First-person hurt feedback only for whoever controls the marine.
+    // `isHumanControlled` is true if *any* session owns the body; without
+    // scoping by session, every client would replay the same flash/sounds.
+    if (playerIsControlled && controllingSession) {
+        renderer.triggerViewerFlash('hurt', controllingSession);
+        playSound('DSPLPAIN', controllingSession);
+    } else if (playerIsControlled) {
         renderer.triggerFlash('hurt');
         playSound('DSPLPAIN');
     } else {
@@ -43,8 +58,13 @@ export function damagePlayer(damageAmount) {
         if (playerIsControlled) {
             player.isDead = true;
             player.deathTime = performance.now();
-            renderer.setPlayerDead(true);
-            playSound('DSPLDETH');
+            if (controllingSession) {
+                renderer.setViewerPlayerDead(true, controllingSession);
+                playSound('DSPLDETH', controllingSession);
+            } else {
+                renderer.setPlayerDead(true);
+                playSound('DSPLDETH');
+            }
             markPlayerDirty();
             void flushNow();
         } else {

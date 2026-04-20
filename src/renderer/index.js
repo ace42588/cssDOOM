@@ -47,6 +47,11 @@ export function updateCulling(...args) { return host.updateCulling?.(...args); }
 
 // ── Effects ──────────────────────────────────────────────────────────
 export function triggerFlash(...args) { return host.triggerFlash?.(...args); }
+/** Hurt / death overlays for the marine — scoped to one viewer in multiplayer. */
+export function triggerViewerFlash(className, forSessionId, duration = 300) {
+    return host.triggerViewerFlash?.(className, forSessionId, duration)
+        ?? host.triggerFlash?.(className, duration);
+}
 export function showPowerup(...args) { return host.showPowerup?.(...args); }
 export function flickerPowerup(...args) { return host.flickerPowerup?.(...args); }
 export function hidePowerup(...args) { return host.hidePowerup?.(...args); }
@@ -59,15 +64,21 @@ export function updateEnemyRotation(...args) { return host.updateEnemyRotation?.
 export function updateThingPosition(...args) { return host.updateThingPosition?.(...args); }
 export function reparentThingToSector(...args) { return host.reparentThingToSector?.(...args); }
 export function collectItem(...args) { return host.collectItem?.(...args); }
+export function removeThing(...args) { return host.removeThing?.(...args); }
 export function setThingVisible(...args) { return host.setThingVisible?.(...args); }
 export function createPuff(...args) { return host.createPuff?.(...args); }
 export function createExplosion(...args) { return host.createExplosion?.(...args); }
 export function createTeleportFog(...args) { return host.createTeleportFog?.(...args); }
 export function createProjectile(...args) { return host.createProjectile?.(...args); }
+export function updateProjectilePosition(...args) { return host.updateProjectilePosition?.(...args); }
 export function removeProjectile(...args) { return host.removeProjectile?.(...args); }
 
 // ── Player visuals ───────────────────────────────────────────────────
 export function setPlayerDead(...args) { return host.setPlayerDead?.(...args); }
+export function setViewerPlayerDead(dead, forSessionId) {
+    return host.setViewerPlayerDead?.(dead, forSessionId)
+        ?? host.setPlayerDead?.(dead);
+}
 export function clearKeys(...args) { return host.clearKeys?.(...args); }
 export function setPlayerMoving(...args) { return host.setPlayerMoving?.(...args); }
 export function collectKey(...args) { return host.collectKey?.(...args); }

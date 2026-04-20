@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# Rendered provision script for {{APP_NAME}} (LXC target).
+# Runs ON the Proxmox node as root via SSH from the agent's workstation.
+# All values come from deploy-work/{{APP_NAME}}/draft/host-vars.json.
+
+set -euo pipefail
+
+CT_ID={{CT_ID}}
+CT_HOSTNAME="{{CT_HOSTNAME}}"
+CT_TEMPLATE="{{CT_TEMPLATE}}"
+CT_STORAGE="{{CT_STORAGE}}"
+CT_BRIDGE="{{CT_BRIDGE}}"
+CT_CORES={{CT_CORES}}
+CT_MEMORY_MB={{CT_MEMORY_MB}}
+CT_DISK_GB={{CT_DISK_GB}}
+
+PUBKEY_FILE="$(mktemp)"
+trap 'rm -f "$PUBKEY_FILE"' EXIT
+cat > "$PUBKEY_FILE" <<'EOF_PUBKEY'
+{{CT_SSH_PUBKEY}}
+EOF_PUBKEY
+
+if pct status "${CT_ID}" >/dev/null 2>&1; then
+    echo "lxc-create: container ${CT_ID} already exists; aborting" >&2
+    exit 3
+fi
+
+pct create "${CT_ID}" "${CT_TEMPLATE}" \
+    --hostname "${CT_HOSTNAME}" \
+    --cores "${CT_CORES}" \
+    --memory "${CT_MEMORY_MB}" \
+    --rootfs "${CT_STORAGE}:${CT_DISK_GB}" \
+    --net0 "name=eth0,bridge=${CT_BRIDGE},ip=dhcp" \
+    --features nesting=1,keyctl=1 \
+    --unprivileged 1 \
+    --password "{{CT_PASSWORD}}" \
+    --ssh-public-keys "${PUBKEY_FILE}" \
+    --start 1 \
+    --onboot 1
+
+# Poll for an IPv4 lease (DHCP). Times out after 60s.
+for _ in $(seq 1 30); do
+    IP="$(pct exec "${CT_ID}" -- ip -4 -o addr show dev eth0 \
+        | awk '{print $4}' | cut -d/ -f1 | head -n1 || true)"
+    if [[ -n "${IP:-}" ]]; then
+        printf '{"ip":"%s","id":%d,"kind":"lxc"}\n' "${IP}" "${CT_ID}"
+        exit 0
+    fi
+    sleep 2
+done
+
+echo "lxc-create: container ${CT_ID} did not acquire an IPv4 address in 60s" >&2
+exit 4

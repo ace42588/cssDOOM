@@ -51,11 +51,6 @@ body.sector-lights {
 /* Distance Fog */
 
 body.light-falloff {
-    #scene {
-        --camera-forward-x: calc(sin(calc(var(--player-angle) * 1rad)) * -1);
-        --camera-forward-y: cos(calc(var(--player-angle) * 1rad));
-    }
-
     .wall, .floor, .ceiling, .enemy, .barrel, .pickup, .decoration {
         --view-depth: calc(
             (var(--x) - var(--player-x)) * var(--camera-forward-x) +
@@ -65,7 +60,12 @@ body.light-falloff {
         --light-falloff: clamp(0.15, calc(1 - var(--view-depth) / 1500), 1);
     }
 
-    .wall, .floor, .ceiling, .decoration img, .sprite {
+    /* Walls/floors/ceilings pick up --light-falloff through their tint-overlay
+       opacity (see walls.css / floors.css / ceilings.css). Sprites keep
+       `filter: brightness` because they have transparent pixels — a flat
+       black overlay would show as a box over transparent areas. Sprites
+       are leaves with no 3D descendants, so a filter here is harmless. */
+    .decoration img, .sprite {
         filter: brightness(calc(var(--light, 1) * var(--light-falloff)));
     }
 }

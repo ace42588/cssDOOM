@@ -4,8 +4,8 @@
  * Doors are identified by their sector index. All runtime door state is
  * mirrored into `state.doorState` by the net client. Tools here let an
  * agent enumerate doors, press 'use' to open the door in front of the
- * marine, or — when the local session is possessing a door's security
- * camera — approve/deny pending operator requests.
+ * controlled body, or — when the local session is the door camera operator
+ * (`actor.possess` with `targetId: 'door:N'`) — approve/deny pending requests.
  *
  * Directly opening an arbitrary door by id is intentionally not exposed:
  * that would be an admin operation (server-protocol change), whereas

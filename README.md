@@ -49,6 +49,41 @@ Example SCIM extensions and related YAML/JSON for treating the map or session as
 On startup, the entry point can emit a CAEP *session established* event when the CAEP URL and token are configured. **Opening a door** calls Access Evaluations when the evaluation URL, token, and `VITE_CAEP_SUBJECT_EMAIL` (principal id) are all set; if anything is missing, evaluation is skipped and doors behave like vanilla DOOM. SCIM entity push is implemented on the server in `server/sgnl/scim.js` and is invoked from `server/sgnl/index.js` when SCIM env vars are configured; fresh clones stay quiet until you opt in.
 
 
+## MCP (AI agent interface)
+
+The multiplayer game server (`npm run server`) embeds an [MCP](https://modelcontextprotocol.io/) server so external AI agents can join the game as **peer players** alongside humans. Agents talk to the same authoritative engine and input pipeline as a browser client — they do not get a privileged path.
+
+Two transports are exposed by the same process:
+
+- **Streamable HTTP** at `POST /mcp` on the game server's port (default `8787`). Use this for cloud-hosted or remote agents and as the canonical endpoint.
+- **stdio bridge** via `npm run mcp:stdio`. Spawn-from-config friendly (Claude Desktop, Cursor, Codex). The bridge proxies stdio JSON-RPC into the HTTP endpoint above — there is **only one** game server, every agent is a peer in the same world.
+
+Each MCP connection becomes one session in `server/connections.js`. On `initialize` the server auto-assigns a body using the same policy as a fresh WebSocket client: the marine if free, otherwise a random live enemy, otherwise spectator.
+
+Tool surface (input-parity with a human player; no privileged engine access):
+
+- `world-get-state`, `world-get-map`, `world-list-players`, `world-poll-events`, `world-get-latest-snapshot`
+- `players-list`, `players-peers`, `players-get-self`
+- `actor-get-state`, `actor-set-move`, `actor-stop`, `actor-turn-by`, `actor-fire`, `actor-stop-fire`, `actor-use`, `actor-switch-weapon`, `actor-possess`
+- `enemies-list`, `enemies-get-state`
+- `doors-list`, `doors-get-state`, `doors-open-in-front`, `doors-approve-request`, `doors-deny-request`
+
+A possessed enemy uses the same input pipeline, so `actor-fire` from an Imp-piloting agent throws fireballs at humans. Door approve/deny only takes effect when the calling session is the door's current camera operator (`actor-possess` with `targetId: 'door:N'`). Live role hints: `cssdoom://role/current`.
+
+Agent-facing reference docs are exposed as MCP resources (under `cssdoom://docs/...`) plus live reads (`cssdoom://world/...`, `cssdoom://role/current`). Three bootstrapping prompts (`play-the-game`, `hunt-a-peer`, `operate-a-door`) are exposed via `prompts/list`. The source markdown lives under `server/mcp/docs/` — read `agent-guide.md` first.
+
+Env (see `.env.example`):
+
+- `MCP_HTTP_URL` — endpoint the stdio bridge connects to (default `http://localhost:8787/mcp`).
+- `MCP_BEARER_TOKEN` — when set on the server, every `/mcp` request must carry `Authorization: Bearer <token>`. The stdio bridge forwards the same value.
+
+Smoke test:
+
+```bash
+npm run test:mcp:server   # in-process: boots the world, drives every tool over an in-memory transport
+```
+
+
 ## How it works
 
 We start with the linedefs, sidedefs, and sectors from the DOOM WAD file and construct our scene by creating `<div>` elements placed in 3D space using CSS transforms. But we don't set those properties directly from JavaScript. Instead we set custom properties with the raw DOOM vertex geometry. These values come straight out of the WAD file.
@@ -160,9 +195,11 @@ No JavaScript animation loop needed. The CSS renderer handles the visual animati
 
 The HUD status bar wraps over multiple rows on narrow screens using `flex-wrap`. The weapon sprite anchors itself to the top edge of the status bar using CSS anchor positioning, so it follows regardless of how tall the status bar gets.
 
-### Lighting with `filter: brightness()`
+### Lighting with a black tint overlay
 
 DOOM stores a light level per sector. We set it as a `--light` custom property on a sector container element and everything inside inherits it. Flickering lights are keyframe animations on `--light`, made possible by `@property`.
+
+Walls, floors, and ceilings are darkened by a child `<div class="tint">` with `background: #000` and `opacity: calc(1 - var(--light))`. An opaque black layer at alpha `1 − light` blends to `light · original`, which matches `filter: brightness(light)` exactly — but without a filter, which the CSS Transforms spec would otherwise force to `transform-style: flat`. Keeping the surfaces filter-free preserves the 3D scene. Sprite leaves keep `filter: brightness` because they have transparent pixels, and they have no 3D descendants for a filter to flatten.
 
 ### Billboarding sprites with `rotateY()`
 

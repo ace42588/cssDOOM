@@ -1,0 +1,369 @@
+# System of Record: cssDOOM game-state events (Event Push).
+#
+# SGNL's SCIM 2.0 Entity Push only accepts `/Users` and `/Groups`, so
+# dynamic in-world state (doors, lifts, crushers, pickups, keys, AI
+# actors) cannot live in the SCIM SoR. Instead the cssDOOM server POSTs
+# discrete state-change events to the Event Push endpoint SGNL issues
+# at SoR creation time:
+#
+#   POST https://{client}.sgnlapis.cloud/events/custom/v1/{datasourceId}
+#   Authorization: Bearer <SGNL-issued token>
+#   Content-Type: application/json
+#   Body: { "events": [ { "type": "...", "subject": "...", ... }, ... ] }
+#
+# Each entity below declares:
+#   • `externalId` — literal value of `$.type` that binds events to
+#     this entity (e.g. `DoorState`). Event-type names are dot-free so
+#     policy expressions `<entity>.<attribute>` parse unambiguously.
+#   • `pushExternalId: $.type` — where the binding value lives.
+#   • A unique `$.id` per event (UUID) and an indexed `$.subject` that
+#     matches the canonical asset id used by the SCIM User / map adapter
+#     ids (door:<MAP>:<sectorIndex>, actor:<MAP>:<mapThingIndex>, …).
+#
+# Rate limiting: the cssDOOM server coalesces dirty entities at 1Hz and
+# dedupes by content hash — no state change means no event POST.
+
+displayName: "cssDOOM game-state events"
+icon: ""
+description: >-
+  Discrete state-change events pushed from the cssDOOM server for every
+  in-world entity the access engine cares about. `$.subject` uses the
+  same canonical id as the SCIM `User.userName` join key and the SGNL
+  map adapter, so policies can correlate identity, static map, and
+  dynamic state without bespoke joins.
+type: "CssDoomEvents-1.0.0"
+deliveryMethod: eventPush
+pushType: Custom
+pushEventsPath: $.events[*]
+
+entities:
+  # ─── Door ────────────────────────────────────────────────────────────
+  DoorState:
+    displayName: Door state
+    externalId: DoorState
+    pushExternalId: $.type
+    description: Open / passable / key-required / pending-request transitions on a door sector.
+    attributes:
+      - name: id
+        externalId: $.id
+        type: String
+        indexed: true
+        uniqueId: true
+      - name: subject
+        externalId: $.subject
+        type: String
+        indexed: true
+      - name: timestamp
+        externalId: $.timestamp
+        type: DateTime
+        indexed: true
+      - name: mapName
+        externalId: $.mapName
+        type: String
+        indexed: true
+      - name: sectorIndex
+        externalId: $.sectorIndex
+        type: Int64
+        indexed: true
+      - name: open
+        externalId: $.open
+        type: Bool
+        indexed: true
+      - name: passable
+        externalId: $.passable
+        type: Bool
+        indexed: true
+      - name: keyRequired
+        externalId: $.keyRequired
+        type: String
+        indexed: true
+      - name: pendingRequests
+        externalId: $.pendingRequests
+        type: Int64
+
+  # ─── Lift ────────────────────────────────────────────────────────────
+  LiftState:
+    displayName: Lift state
+    externalId: LiftState
+    pushExternalId: $.type
+    description: Lift height / motion transitions on a lift sector.
+    attributes:
+      - name: id
+        externalId: $.id
+        type: String
+        indexed: true
+        uniqueId: true
+      - name: subject
+        externalId: $.subject
+        type: String
+        indexed: true
+      - name: timestamp
+        externalId: $.timestamp
+        type: DateTime
+        indexed: true
+      - name: mapName
+        externalId: $.mapName
+        type: String
+        indexed: true
+      - name: sectorIndex
+        externalId: $.sectorIndex
+        type: Int64
+        indexed: true
+      - name: tag
+        externalId: $.tag
+        type: Int64
+        indexed: true
+      - name: currentHeight
+        externalId: $.currentHeight
+        type: Double
+      - name: targetHeight
+        externalId: $.targetHeight
+        type: Double
+      - name: lowerHeight
+        externalId: $.lowerHeight
+        type: Double
+      - name: upperHeight
+        externalId: $.upperHeight
+        type: Double
+      - name: moving
+        externalId: $.moving
+        type: Bool
+        indexed: true
+      - name: oneWay
+        externalId: $.oneWay
+        type: Bool
+
+  # ─── Crusher ─────────────────────────────────────────────────────────
+  CrusherState:
+    displayName: Crusher state
+    externalId: CrusherState
+    pushExternalId: $.type
+    description: Crusher activation / direction / damage-timer transitions.
+    attributes:
+      - name: id
+        externalId: $.id
+        type: String
+        indexed: true
+        uniqueId: true
+      - name: subject
+        externalId: $.subject
+        type: String
+        indexed: true
+      - name: timestamp
+        externalId: $.timestamp
+        type: DateTime
+        indexed: true
+      - name: mapName
+        externalId: $.mapName
+        type: String
+        indexed: true
+      - name: sectorIndex
+        externalId: $.sectorIndex
+        type: Int64
+        indexed: true
+      - name: active
+        externalId: $.active
+        type: Bool
+        indexed: true
+      - name: direction
+        externalId: $.direction
+        type: Int64
+      - name: currentHeight
+        externalId: $.currentHeight
+        type: Double
+      - name: topHeight
+        externalId: $.topHeight
+        type: Double
+      - name: crushHeight
+        externalId: $.crushHeight
+        type: Double
+      - name: damageTimer
+        externalId: $.damageTimer
+        type: Double
+
+  # ─── Pickup (non-key) ────────────────────────────────────────────────
+  PickupState:
+    displayName: Pickup state
+    externalId: PickupState
+    pushExternalId: $.type
+    description: Non-key pickup collection / availability transitions.
+    attributes:
+      - name: id
+        externalId: $.id
+        type: String
+        indexed: true
+        uniqueId: true
+      - name: subject
+        externalId: $.subject
+        type: String
+        indexed: true
+      - name: timestamp
+        externalId: $.timestamp
+        type: DateTime
+        indexed: true
+      - name: mapName
+        externalId: $.mapName
+        type: String
+        indexed: true
+      - name: thingIndex
+        externalId: $.thingIndex
+        type: Int64
+        indexed: true
+      - name: mapThingIndex
+        externalId: $.mapThingIndex
+        type: Int64
+        indexed: true
+      - name: pickupType
+        externalId: $.pickupType
+        type: Int64
+        indexed: true
+      - name: x
+        externalId: $.x
+        type: Double
+      - name: y
+        externalId: $.y
+        type: Double
+      - name: collected
+        externalId: $.collected
+        type: Bool
+        indexed: true
+      - name: collectedBy
+        externalId: $.collectedBy
+        type: String
+        indexed: true
+
+  # ─── Key ─────────────────────────────────────────────────────────────
+  KeyState:
+    displayName: Key state
+    externalId: KeyState
+    pushExternalId: $.type
+    description: Key pickup collection transitions (carries color/material for policy joins).
+    attributes:
+      - name: id
+        externalId: $.id
+        type: String
+        indexed: true
+        uniqueId: true
+      - name: subject
+        externalId: $.subject
+        type: String
+        indexed: true
+      - name: timestamp
+        externalId: $.timestamp
+        type: DateTime
+        indexed: true
+      - name: mapName
+        externalId: $.mapName
+        type: String
+        indexed: true
+      - name: thingIndex
+        externalId: $.thingIndex
+        type: Int64
+        indexed: true
+      - name: mapThingIndex
+        externalId: $.mapThingIndex
+        type: Int64
+        indexed: true
+      - name: pickupType
+        externalId: $.pickupType
+        type: Int64
+        indexed: true
+      - name: x
+        externalId: $.x
+        type: Double
+      - name: y
+        externalId: $.y
+        type: Double
+      - name: collected
+        externalId: $.collected
+        type: Bool
+        indexed: true
+      - name: collectedBy
+        externalId: $.collectedBy
+        type: String
+        indexed: true
+      - name: keyName
+        externalId: $.keyName
+        type: String
+        indexed: true
+      - name: color
+        externalId: $.color
+        type: String
+        indexed: true
+      - name: material
+        externalId: $.material
+        type: String
+        indexed: true
+
+  # ─── Actor (AI thing) ────────────────────────────────────────────────
+  ActorState:
+    displayName: Actor state
+    externalId: ActorState
+    pushExternalId: $.type
+    description: AI-actor position / HP / aiState / possession transitions.
+    attributes:
+      - name: id
+        externalId: $.id
+        type: String
+        indexed: true
+        uniqueId: true
+      - name: subject
+        externalId: $.subject
+        type: String
+        indexed: true
+      - name: timestamp
+        externalId: $.timestamp
+        type: DateTime
+        indexed: true
+      - name: mapName
+        externalId: $.mapName
+        type: String
+        indexed: true
+      - name: thingIndex
+        externalId: $.thingIndex
+        type: Int64
+        indexed: true
+      - name: mapThingIndex
+        externalId: $.mapThingIndex
+        type: Int64
+        indexed: true
+      - name: actorType
+        externalId: $.actorType
+        type: Int64
+        indexed: true
+      - name: x
+        externalId: $.x
+        type: Double
+      - name: y
+        externalId: $.y
+        type: Double
+      - name: z
+        externalId: $.z
+        type: Double
+      - name: hp
+        externalId: $.hp
+        type: Int64
+        indexed: true
+      - name: isDead
+        externalId: $.isDead
+        type: Bool
+        indexed: true
+      - name: aiState
+        externalId: $.aiState
+        type: String
+        indexed: true
+      - name: possessedBy
+        externalId: $.possessedBy
+        type: String
+        indexed: true
+
+relationships:
+  # Internal join: a door's `keyRequired` color matches key-pickup
+  # events carrying that color. `collectedBy` on pickup/key events
+  # joins the cssDOOM SCIM User SoR (`User.userName`) at policy time —
+  # cross-SoR joins live in the policy, not here.
+  DoorKey:
+    name: DoorKey
+    displayName: Door requires key color
+    fromAttribute: DoorState.$.keyRequired
+    toAttribute: KeyState.$.color

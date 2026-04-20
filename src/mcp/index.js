@@ -16,7 +16,7 @@
  */
 
 import { initMcpInputSource } from './input-source.js';
-import { registerMarineTools } from './tools/marine.js';
+import { registerActorTools } from './tools/actor.js';
 import { registerEnemyTools } from './tools/enemies.js';
 import { registerDoorTools } from './tools/doors.js';
 
@@ -51,7 +51,7 @@ export async function initMcpInterface() {
     initMcpInputSource();
 
     try {
-        registerMarineTools();
+        registerActorTools();
         registerEnemyTools();
         registerDoorTools();
     } catch (err) {

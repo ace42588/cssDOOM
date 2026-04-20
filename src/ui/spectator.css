@@ -70,9 +70,9 @@ body.spectator.follow-mode #scene {
     transform:
         rotateY(calc(var(--player-angle) * -1rad))
         translate3d(
-            calc((var(--player-x) + sin(calc(var(--player-angle) * 1rad)) * var(--follow-dist)) * -1px),
+            calc((var(--player-x) + var(--sin-angle) * var(--follow-dist)) * -1px),
             calc((var(--follow-height) + var(--player-floor)) * 1px),
-            calc((var(--player-y) - cos(calc(var(--player-angle) * 1rad)) * var(--follow-dist)) * 1px)
+            calc((var(--player-y) - var(--cos-angle) * var(--follow-dist)) * 1px)
         );
     transition: none;
 }

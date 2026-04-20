@@ -28,6 +28,7 @@ import { isBodySwapOpen, toggleBodySwap } from '../ui/body-swap.js';
 import { isDoorOperatorOpen } from '../ui/door-operator.js';
 import { registerInputProvider } from './index.js';
 import { pressUse, requestWeaponSwitch } from '../net/client.js';
+import { shouldOfferRespawnReload } from './respawn.js';
 
 // Internal key state — not exposed to the game layer
 const keys = {
@@ -76,10 +77,19 @@ export function initKeyboardInput() {
         // Block game input while menu is open
         if (isMenuOpen()) return;
 
-        // When dead, any key reloads the page (server-authoritative restart
-        // is triggered by a fresh connection).
+        // When the marine dies AND this client is the one driving the
+        // marine, a key press after the death animation reloads the page
+        // to start a fresh session. Sessions possessing a monster (or
+        // spectating) must not reload just because someone else's marine
+        // died — their own body is unrelated to `player.isDead`.
+        if (shouldOfferRespawnReload()) {
+            location.reload();
+            return;
+        }
         if (player.isDead) {
-            if (performance.now() - player.deathTime > 4000) location.reload();
+            // Marine is dead but we're not the marine controller — swallow
+            // the keystroke so it doesn't drive a body the local session
+            // doesn't own this frame.
             return;
         }
 

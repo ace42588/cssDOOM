@@ -1,0 +1,30 @@
+#cloud-config
+# Cloud-init user-data for {{APP_NAME}} (VM target).
+# Written to <PVE_VM_SNIPPET_STORAGE>:snippets/{{APP_NAME}}-user.yaml on
+# the Proxmox node and referenced via `qm set --cicustom`.
+
+hostname: {{VM_NAME}}
+manage_etc_hosts: true
+
+users:
+  - name: {{VM_CLOUDINIT_USER}}
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    groups: [sudo, adm]
+    shell: /bin/bash
+    lock_passwd: true
+    ssh_authorized_keys:
+      - {{VM_SSH_PUBKEY}}
+
+package_update: true
+package_upgrade: true
+packages:
+  - curl
+  - ca-certificates
+  - gnupg
+  - rsync
+
+ssh_pwauth: false
+disable_root: true
+
+runcmd:
+  - [ systemctl, enable, --now, qemu-guest-agent ]

@@ -1,0 +1,64 @@
+---
+description: After changes, remove dead code paths and unused imports
+alwaysApply: true
+---
+
+# Remove Dead Code After Changes
+
+After making any code change, scan the affected files (and call sites) for code that became dead as a result of the change, and delete it in the same edit.
+
+## What to look for
+
+- **Unused imports**: Modules, symbols, or types no longer referenced in the file.
+- **Unreachable code**: Branches after `return`/`throw`, conditions that can never be true, `else` arms whose `if` is now always taken, etc.
+- **Orphaned functions / classes / variables**: Symbols whose last caller you just removed or renamed.
+- **Dead parameters**: Function parameters that are no longer read (update call sites too).
+- **Stale feature flags / env checks**: Conditionals guarding code paths the change just removed.
+- **Empty files / modules**: Delete the file if nothing in it is used anymore.
+
+## Required actions on every edit
+
+1. Re-read the diff and the surrounding file(s) for newly-unused imports and symbols.
+2. Grep the repo for any symbol you removed or renamed; delete remaining definitions/imports if they have no callers.
+3. Delete the dead code outright. Do **not** comment it out, leave a `TODO`, or keep it "just in case" (see `no-backcompat`).
+4. If a comment referenced the deleted code, remove or update it (see `update-related-comments`).
+5. Run linters/type-checkers when available and fix any new "unused" warnings introduced by the change.
+
+## Examples
+
+```js
+// BAD: `parseLegacy` is no longer called but still imported and defined
+import { parseLegacy, parse } from "./parser";
+
+export function load(input) {
+  return parse(input);
+}
+
+function parseLegacy(input) { /* ... */ }
+```
+
+```js
+// GOOD: unused import and orphaned helper removed
+import { parse } from "./parser";
+
+export function load(input) {
+  return parse(input);
+}
+```
+
+```js
+// BAD: unreachable branch left after early return
+function pickColor(state) {
+  if (state.dead) return "gray";
+  return state.hurt ? "red" : "white";
+  return "blue"; // unreachable
+}
+
+// GOOD
+function pickColor(state) {
+  if (state.dead) return "gray";
+  return state.hurt ? "red" : "white";
+}
+```
+
+If you are unsure whether something is truly dead, grep for it across the repo before deleting. If it has no references, remove it.

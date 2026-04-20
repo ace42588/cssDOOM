@@ -8,12 +8,15 @@
 import { updateCamera } from '../scene/camera.js';
 import { updateHud, clearWeaponSlots, showHudMessage } from '../hud.js';
 import { startCullingLoop, updateCulling } from '../scene/culling.js';
-import { triggerFlash, showPowerup, flickerPowerup, hidePowerup } from '../effects.js';
+import {
+    triggerFlash, showPowerup, flickerPowerup, hidePowerup,
+} from '../effects.js';
 import {
     setEnemyState, resetEnemy, killEnemy,
     updateEnemyRotation, updateThingPosition, reparentThingToSector,
-    collectItem, setThingVisible,
-    createPuff, createExplosion, createTeleportFog, createProjectile, removeProjectile,
+    collectItem, removeThing, setThingVisible,
+    createPuff, createExplosion, createTeleportFog,
+    createProjectile, updateProjectilePosition, removeProjectile,
 } from '../scene/entities/sprites.js';
 import { setPlayerDead, clearKeys, setPlayerMoving, collectKey } from '../scene/entities/player.js';
 import { isWeaponSwitching, switchWeapon, startFiring, stopFiring } from '../weapons.js';
@@ -33,15 +36,22 @@ export function createDomRendererHost() {
         updateCamera, updateHud, clearWeaponSlots, showHudMessage,
         // Culling
         startCullingLoop, updateCulling,
-        // Effects
-        triggerFlash, showPowerup, flickerPowerup, hidePowerup,
+        // Effects (`forSessionId` is multiplayer-only; DOM host ignores it.)
+        triggerFlash,
+        triggerViewerFlash: (className, _forSessionId, duration = 300) => {
+            triggerFlash(className, duration);
+        },
+        showPowerup, flickerPowerup, hidePowerup,
         // Sprites / things
         setEnemyState, resetEnemy, killEnemy,
         updateEnemyRotation, updateThingPosition, reparentThingToSector,
-        collectItem, setThingVisible,
-        createPuff, createExplosion, createTeleportFog, createProjectile, removeProjectile,
+        collectItem, removeThing, setThingVisible,
+        createPuff, createExplosion, createTeleportFog,
+        createProjectile, updateProjectilePosition, removeProjectile,
         // Player visuals
-        setPlayerDead, clearKeys, setPlayerMoving, collectKey,
+        setPlayerDead,
+        setViewerPlayerDead: (dead, _forSessionId) => setPlayerDead(dead),
+        clearKeys, setPlayerMoving, collectKey,
         // Weapons
         isWeaponSwitching, switchWeapon, startFiring, stopFiring,
         // Doors / lifts / crushers / switches

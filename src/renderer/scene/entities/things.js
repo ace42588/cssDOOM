@@ -62,14 +62,24 @@ export function buildThings() {
             thingContainer.appendChild(imageElement);
         }
 
-        thingContainer.hidden = true;
-        appendToSector(thingContainer, sector?.sectorIndex);
+        thingContainer.classList.add('culled');
+        const sectorIndex = sector?.sectorIndex;
+        // Stamped on the DOM element so reparentThingToSector keeps it in
+        // sync as moving things cross sector boundaries; the PVS culling
+        // pass reads from here.
+        thingContainer._sectorIndex = sectorIndex;
+        appendToSector(thingContainer, sectorIndex);
 
         const thingIndex = mapThingToIndex[mapIdx];
         if (thingIndex !== null && thingIndex !== undefined) {
             sceneState.thingDom.set(thingIndex, { element: thingContainer, sprite: spriteElement });
-            sceneState.thingContainers.push({ element: thingContainer, x: thing.x, y: thing.y, gameId: thingIndex });
+            // Movable entries: cull pass reads live `state.things[gameId].x/y`
+            // each frame, so no spawn-time x/y is stored here. See the
+            // `culling.js` thing-cull loop for why.
+            sceneState.thingContainers.push({ element: thingContainer, gameId: thingIndex });
         } else {
+            // Static entries (decorations the spawner skipped): never move,
+            // so cache spawn coords for the cull pass to read directly.
             sceneState.thingContainers.push({ element: thingContainer, x: thing.x, y: thing.y });
         }
     }

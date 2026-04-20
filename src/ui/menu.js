@@ -6,7 +6,7 @@ import { state } from '../game/state.js';
 import { currentMap } from '../data/maps.js';
 import { dom } from '../renderer/dom.js';
 import { MAPS } from '../data/maps.js';
-import { loadMap } from '../game/lifecycle.js';
+import { requestLoadMap } from '../net/client.js';
 
 const menuLevelList = document.querySelector('.menu-level-list');
 
@@ -24,7 +24,9 @@ for (const name of MAPS) {
     btn.appendChild(digit);
 
     btn.addEventListener('click', () => {
-        loadMap(name);
+        // The server is authoritative; ask it to switch maps. The local
+        // scene is rebuilt when the server's `mapLoad` arrives.
+        requestLoadMap(name);
         updateMenuSelection();
         toggleMenu(false);
     });
@@ -32,11 +34,13 @@ for (const name of MAPS) {
     menuLevelList.appendChild(btn);
 }
 
-// Skill buttons
+// Skill buttons re-load the current map at a new difficulty. Skill is a
+// pure server concern, but we still update the local toggle state so the
+// UI reflects the picked button immediately.
 document.querySelectorAll('.menu-skill').forEach(btn => {
     btn.addEventListener('click', () => {
         state.skillLevel = parseInt(btn.dataset.skill);
-        loadMap(currentMap);
+        requestLoadMap(currentMap);
         updateMenuSelection();
         toggleMenu(false);
     });

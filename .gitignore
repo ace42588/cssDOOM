@@ -6,3 +6,9 @@ package-lock.json
 .DS_Store
 .env
 AGENTS.md
+.deploy.env
+# SGNL SoR skill working directory
+sgnl-work/
+
+# deploy-node-proxmox-pingaccess skill working directory
+deploy-work/

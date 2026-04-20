@@ -19,27 +19,73 @@
     transform-style: preserve-3d;
 
 
-    /* Common styles for all elements in the scene */
+    /* Common styles for all elements in the scene. Note: `transform-style`
+       is NOT set universally here — see the focused selector below. */
 
     & * {
         position: absolute;
-        transform-style: preserve-3d;
-        backface-visibility: hidden;
         image-rendering: pixelated;
-    }
-
-    & .ceiling {
-        backface-visibility: visible;
-    }
-
-    & .platform .floor {
-        backface-visibility: visible;
     }
 }
 
 
+/* `transform-style: preserve-3d` is only applied to elements that actually
+   own 3D-transformed children. Each preserve-3d element creates its own 3D
+   rendering context, which has a real cost (extra stacking context, layer
+   bookkeeping, no flatten-into-parent optimization). Pure leaves —
+   sprites, projectiles, puffs, explosions, the .marker, key icons, the
+   floor/ceiling .tint overlays, etc. — have no 3D descendants and gain
+   nothing from preserve-3d, so they stay flat (the default).
+
+   The wall `.tint` is intentionally included: the parent `.wall` is
+   preserve-3d so the tint's `translateZ(0.01px)` (used to avoid coplanar
+   z-fighting with the wall texture) stays in 3D, and we keep preserve-3d
+   on the tint itself so its own `backface-visibility: hidden` matches the
+   wall's culling plane consistently across browsers. */
+#scene .sector,
+#scene .wall,
+#scene .wall > .tint,
+#scene .floor,
+#scene .ceiling,
+#scene .door,
+#scene .door > .panel,
+#scene .lift,
+#scene .platform,
+#scene .crusher,
+#scene .enemy,
+#scene .barrel,
+#scene .pickup,
+#scene .decoration,
+#player {
+    transform-style: preserve-3d;
+}
+
+
+/* Culled scene elements — toggled by the JS culler in culling.js.
+   `content-visibility: hidden` skips paint/layout for descendants like
+   `display: none` would, but is cheaper to flip and preserves rendering
+   state. Pausing animations on the subtree avoids ticking style for
+   things the player can't see. */
+.culled {
+    content-visibility: hidden;
+}
+
+.culled, .culled * {
+    animation-play-state: paused;
+}
+
+
 /* Sector containers — grouping nodes for CSS custom property inheritance.
-   No transform, so they sit at the scene origin and don't affect 3D layout. */
+   No transform, so they sit at the scene origin and don't affect 3D layout.
+
+   We deliberately do NOT set `filter` here: the CSS Transforms 2 spec forces
+   transform-style to `flat` on any element with a non-`none` filter, which
+   would collapse every wall/floor/ceiling inside the sector onto the sector's
+   plane and destroy the 3D scene. Walls/floors/ceilings instead darken via
+   a black `.tint` child overlay whose alpha is `1 − light` (see walls.css /
+   floors.css / ceilings.css), which is visually identical to `brightness(light)`
+   but uses no filters. Sprite leaves (things.css) keep `filter: brightness`
+   because they have transparent pixels. */
 .sector {
     top: 0; left: 0; width: 0; height: 0;
 }

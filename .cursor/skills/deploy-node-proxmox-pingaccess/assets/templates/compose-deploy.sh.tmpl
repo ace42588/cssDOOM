@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# Brings up the {{APP_NAME}} compose stack on the Docker host.
+# Runs ON the target host (the agent SSHes in to invoke it).
+
+set -euo pipefail
+
+REPO_PATH="{{REPO_PATH_ON_HOST}}"
+cd "${REPO_PATH}"
+
+if [[ ! -f docker-compose.yml && ! -f compose.yaml ]]; then
+    echo "compose-deploy: no docker-compose.yml in ${REPO_PATH}" >&2
+    exit 2
+fi
+
+if [[ ! -f .env ]]; then
+    if [[ -f .env.example ]]; then
+        echo "compose-deploy: no .env present; copying .env.example (optional channels disabled)"
+        cp .env.example .env
+    else
+        echo "compose-deploy: no .env or .env.example; proceeding without env"
+    fi
+fi
+
+docker compose pull --ignore-pull-failures || true
+docker compose up --build -d --remove-orphans
+
+# Wait for healthchecks. Services without a HEALTHCHECK report
+# "no-healthcheck" and are treated as healthy.
+DEADLINE=$(( $(date +%s) + 180 ))
+SERVICES=$(docker compose ps --services)
+while :; do
+    PENDING=""
+    for SVC in ${SERVICES}; do
+        CID=$(docker compose ps -q "${SVC}")
+        [[ -z "${CID}" ]] && { PENDING="${PENDING} ${SVC}(no-cid)"; continue; }
+        STATUS=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}' "${CID}")
+        case "${STATUS}" in
+            healthy|no-healthcheck) ;;
+            *) PENDING="${PENDING} ${SVC}(${STATUS})" ;;
+        esac
+    done
+    if [[ -z "${PENDING}" ]]; then
+        echo "compose-deploy: all services healthy"
+        # Edge proxies to `web` / `game` by hostname. When deploy tooling
+        # replaces docker/edge.conf atomically, bind mounts can keep an old
+        # inode; compare content and recreate edge only when needed.
+        if docker compose ps --services | grep -qx edge; then
+            EDGE_CONF_HOST="docker/edge.conf"
+            EDGE_CONF_CONTAINER="/etc/nginx/conf.d/default.conf"
+            if [[ -f "${EDGE_CONF_HOST}" ]]; then
+                HOST_SHA="$(sha256sum "${EDGE_CONF_HOST}" | awk '{print $1}')"
+                EDGE_SHA="$(docker compose exec -T edge sh -lc "sha256sum \"${EDGE_CONF_CONTAINER}\" 2>/dev/null | cut -d' ' -f1" 2>/dev/null || true)"
+                if [[ -n "${EDGE_SHA}" && "${HOST_SHA}" != "${EDGE_SHA}" ]]; then
+                    echo "compose-deploy: edge config changed on host; recreating edge container"
+                    docker compose up -d --force-recreate edge || true
+                else
+                    docker compose exec -T edge nginx -s reload 2>/dev/null \
+                        || docker compose restart -t 5 edge \
+                        || true
+                fi
+            else
+                docker compose exec -T edge nginx -s reload 2>/dev/null \
+                    || docker compose restart -t 5 edge \
+                    || true
+            fi
+        fi
+        exit 0
+    fi
+    if (( $(date +%s) > DEADLINE )); then
+        echo "compose-deploy: timed out waiting for: ${PENDING}" >&2
+        for SVC in ${SERVICES}; do
+            echo "----- logs: ${SVC} -----"
+            docker compose logs --tail 100 "${SVC}" || true
+        done
+        exit 5
+    fi
+    sleep 3
+done

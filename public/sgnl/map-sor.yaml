@@ -8,6 +8,13 @@
 # `id` of the form `<kind>:<MAP>:<key>` that matches the `assetId` the
 # engine sends to SGNL Access Evaluations, so decision requests correlate
 # directly to the SoR entity.
+#
+# Conventions:
+#   • Every entity's YAML key equals its `externalId`. Relationships and
+#     `parent:` pointers therefore use that single lowercase name
+#     uniformly.
+#   • The adapter does not sort rows, so `pagesOrderedById` is omitted
+#     everywhere.
 
 displayName: cssDOOM maps
 icon: ""
@@ -24,7 +31,7 @@ auth:
       authToken: "{{Input Required: Bearer token (same value as gRPC metadata key token)}}"
 
 entities:
-  Map:
+  map:
     displayName: Map
     externalId: map
     description: Root map document (name, player start, bounds).
@@ -33,7 +40,6 @@ entities:
     apiCallFrequency: SECONDLY
     apiCallMinInterval: 1
     pageSize: 10
-    pagesOrderedById: true
     attributes:
       - name: name
         externalId: name
@@ -83,7 +89,6 @@ entities:
     apiCallFrequency: SECONDLY
     apiCallMinInterval: 1
     pageSize: 200
-    pagesOrderedById: true
     attributes:
       - name: id
         externalId: id
@@ -133,7 +138,6 @@ entities:
     apiCallFrequency: SECONDLY
     apiCallMinInterval: 1
     pageSize: 200
-    pagesOrderedById: true
     attributes:
       - name: id
         externalId: id
@@ -191,7 +195,6 @@ entities:
     apiCallFrequency: SECONDLY
     apiCallMinInterval: 1
     pageSize: 200
-    pagesOrderedById: true
     attributes:
       - name: id
         externalId: id
@@ -245,7 +248,6 @@ entities:
     apiCallFrequency: SECONDLY
     apiCallMinInterval: 1
     pageSize: 500
-    pagesOrderedById: true
     attributes:
       - name: id
         externalId: id
@@ -295,7 +297,6 @@ entities:
     apiCallFrequency: SECONDLY
     apiCallMinInterval: 1
     pageSize: 100
-    pagesOrderedById: true
     attributes:
       - name: id
         externalId: id
@@ -341,7 +342,6 @@ entities:
     apiCallFrequency: SECONDLY
     apiCallMinInterval: 1
     pageSize: 100
-    pagesOrderedById: true
     attributes:
       - name: id
         externalId: id
@@ -391,7 +391,6 @@ entities:
     apiCallFrequency: SECONDLY
     apiCallMinInterval: 1
     pageSize: 100
-    pagesOrderedById: true
     attributes:
       - name: id
         externalId: id
@@ -429,7 +428,6 @@ entities:
     apiCallFrequency: SECONDLY
     apiCallMinInterval: 1
     pageSize: 100
-    pagesOrderedById: true
     attributes:
       - name: id
         externalId: id
@@ -465,49 +463,27 @@ entities:
         type: Double
         indexed: false
 
+# Parent-child wiring for every interactable entity under `map`, plus
+# explicit cross-entity joins used by policy.
 relationships:
-  DoorMap:
-    name: DoorMap
-    displayName: Door to map
-    fromAttribute: doors.mapName
-    toAttribute: Map.name
-  SwitchMap:
-    name: SwitchMap
-    displayName: Switch to map
-    fromAttribute: switches.mapName
-    toAttribute: Map.name
-  KeyMap:
-    name: KeyMap
-    displayName: Key to map
-    fromAttribute: keys.mapName
-    toAttribute: Map.name
-  PickupMap:
-    name: PickupMap
-    displayName: Pickup to map
-    fromAttribute: pickups.mapName
-    toAttribute: Map.name
-  ExitMap:
-    name: ExitMap
-    displayName: Exit to map
-    fromAttribute: exits.mapName
-    toAttribute: Map.name
-  LiftMap:
-    name: LiftMap
-    displayName: Lift to map
-    fromAttribute: lifts.mapName
-    toAttribute: Map.name
-  TeleporterMap:
-    name: TeleporterMap
-    displayName: Teleporter to map
-    fromAttribute: teleporters.mapName
-    toAttribute: Map.name
-  CrusherMap:
-    name: CrusherMap
-    displayName: Crusher to map
-    fromAttribute: crushers.mapName
-    toAttribute: Map.name
-  DoorKey:
-    name: DoorKey
-    displayName: Door requires key
+  ParentOfDoors:
+    childEntity: doors
+  ParentOfSwitches:
+    childEntity: switches
+  ParentOfKeys:
+    childEntity: keys
+  ParentOfPickups:
+    childEntity: pickups
+  ParentOfExits:
+    childEntity: exits
+  ParentOfLifts:
+    childEntity: lifts
+  ParentOfTeleporters:
+    childEntity: teleporters
+  ParentOfCrushers:
+    childEntity: crushers
+  doorKey:
+    name: doorKey
+    displayName: Door requires key color
     fromAttribute: doors.keyRequired
     toAttribute: keys.color

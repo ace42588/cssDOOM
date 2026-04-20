@@ -21,6 +21,13 @@
             calc((var(--min-y) + var(--max-y)) / 2 * -1px)
         )
         rotateX(90deg);
+}
 
-    filter: brightness(var(--light, 1));
+/* See walls.css for the tint-overlay rationale. */
+.ceiling > .tint {
+    inset: 0;
+    background: #000;
+    opacity: calc(1 - var(--light, 1) * var(--light-falloff, 1));
+    pointer-events: none;
+    transform: translateZ(0.01px);
 }

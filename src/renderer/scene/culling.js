@@ -16,13 +16,15 @@ import { sceneState } from '../dom.js';
 import { MAX_RENDER_DISTANCE } from '../../game/constants.js';
 import { spectatorActive } from '../../ui/spectator.js';
 import { getControlledEye } from '../../game/possession.js';
+import { computeVisibleSectors } from './pvs.js';
 
 // Culling flags — toggled by the debug menu
 export const culling = {
-    frustum: true,
-    distance: true,
-    backface: true,
-    sky: true,
+    pvs: true,       // Coarse: sector PVS via portal flood
+    frustum: true,   // Fine: per-element frustum
+    distance: true,  // Fine: per-element distance
+    backface: true,  // Fine: per-wall backface
+    sky: true,       // Fine: sky-wall occlusion
 };
 
 // Stats updated each frame — per-step counts track how many elements
@@ -30,10 +32,13 @@ export const culling = {
 export const cullingStats = {
     total: 0,
     culled: 0,
+    afterPvs: 0,
     afterDistance: 0,
     afterBackface: 0,
     afterFrustum: 0,
     afterSky: 0,
+    visibleSectors: 0,
+    totalSectors: 0,
 };
 
 // Half-FOV derived from perspective: atan(viewportWidth/2 / perspective)
@@ -43,8 +48,12 @@ const FRUSTUM_MARGIN = 0.15; // ~9° extra on each side
 /**
  * Tests whether a point (relative to the player) is within the camera's
  * horizontal view frustum. Returns true if visible.
+ *
+ * The horizontal angle test reduces to |localX| < tan(halfFov) * localZ
+ * because localZ > 0 here — equivalent to atan2(|localX|, localZ) < halfFov
+ * but without the trig call. Caller precomputes tanHalfFov once per cull tick.
  */
-function pointInFrustum(relX, relY, sinAngle, cosAngle, halfFov) {
+function pointInFrustum(relX, relY, sinAngle, cosAngle, tanHalfFov) {
     // Rotate point into camera-local space (forward = +Z)
     const localX = relX * cosAngle + relY * sinAngle;
     const localZ = -relX * sinAngle + relY * cosAngle;
@@ -52,9 +61,7 @@ function pointInFrustum(relX, relY, sinAngle, cosAngle, halfFov) {
     // Behind the camera
     if (localZ <= 0) return false;
 
-    // Check horizontal angle against half-FOV
-    const angle = Math.abs(Math.atan2(localX, localZ));
-    return angle < halfFov;
+    return Math.abs(localX) < tanHalfFov * localZ;
 }
 
 /**
@@ -64,7 +71,7 @@ function pointInFrustum(relX, relY, sinAngle, cosAngle, halfFov) {
  */
 const NEAR_WALL_DIST_SQ = 200 * 200; // Never cull walls closer than this
 
-function wallInFrustum(wall, playerX, playerY, sinAngle, cosAngle, halfFov) {
+function wallInFrustum(wall, playerX, playerY, sinAngle, cosAngle, tanHalfFov) {
     const startRelX = wall.start.x - playerX;
     const startRelY = wall.start.y - playerY;
     const endRelX = wall.end.x - playerX;
@@ -81,9 +88,9 @@ function wallInFrustum(wall, playerX, playerY, sinAngle, cosAngle, halfFov) {
     const closestY = startRelY + t * dy;
     if (closestX * closestX + closestY * closestY < NEAR_WALL_DIST_SQ) return true;
 
-    return pointInFrustum(startRelX, startRelY, sinAngle, cosAngle, halfFov) ||
-           pointInFrustum(endRelX, endRelY, sinAngle, cosAngle, halfFov) ||
-           pointInFrustum((startRelX + endRelX) / 2, (startRelY + endRelY) / 2, sinAngle, cosAngle, halfFov);
+    return pointInFrustum(startRelX, startRelY, sinAngle, cosAngle, tanHalfFov) ||
+           pointInFrustum(endRelX, endRelY, sinAngle, cosAngle, tanHalfFov) ||
+           pointInFrustum((startRelX + endRelX) / 2, (startRelY + endRelY) / 2, sinAngle, cosAngle, tanHalfFov);
 }
 
 /**
@@ -91,7 +98,7 @@ function wallInFrustum(wall, playerX, playerY, sinAngle, cosAngle, halfFov) {
  * Checks corners, center, and whether the camera is inside the bbox
  * or the frustum edges intersect the bbox edges.
  */
-function surfaceInFrustum(element, playerX, playerY, sinAngle, cosAngle, halfFov) {
+function surfaceInFrustum(element, playerX, playerY, sinAngle, cosAngle, tanHalfFov, leftDirX, leftDirY, rightDirX, rightDirY) {
     const minX = element._minX - playerX;
     const maxX = element._maxX - playerX;
     const minY = element._minY - playerY;
@@ -101,24 +108,17 @@ function surfaceInFrustum(element, playerX, playerY, sinAngle, cosAngle, halfFov
     if (minX <= 0 && maxX >= 0 && minY <= 0 && maxY >= 0) return true;
 
     // Any corner or center in frustum
-    if (pointInFrustum(minX, minY, sinAngle, cosAngle, halfFov) ||
-        pointInFrustum(maxX, minY, sinAngle, cosAngle, halfFov) ||
-        pointInFrustum(minX, maxY, sinAngle, cosAngle, halfFov) ||
-        pointInFrustum(maxX, maxY, sinAngle, cosAngle, halfFov) ||
-        pointInFrustum((minX + maxX) / 2, (minY + maxY) / 2, sinAngle, cosAngle, halfFov)) {
+    if (pointInFrustum(minX, minY, sinAngle, cosAngle, tanHalfFov) ||
+        pointInFrustum(maxX, minY, sinAngle, cosAngle, tanHalfFov) ||
+        pointInFrustum(minX, maxY, sinAngle, cosAngle, tanHalfFov) ||
+        pointInFrustum(maxX, maxY, sinAngle, cosAngle, tanHalfFov) ||
+        pointInFrustum((minX + maxX) / 2, (minY + maxY) / 2, sinAngle, cosAngle, tanHalfFov)) {
         return true;
     }
 
-    // Check if frustum edges intersect bbox edges.
-    // The left and right frustum rays can cross a large bbox even when
-    // no corners are in the frustum.
-    const sinH = Math.sin(halfFov);
-    const cosH = Math.cos(halfFov);
-    const leftDirX = -sinH * cosAngle - cosH * sinAngle;
-    const leftDirY = -sinH * sinAngle + cosH * cosAngle;
-    const rightDirX = sinH * cosAngle - cosH * sinAngle;
-    const rightDirY = sinH * sinAngle + cosH * cosAngle;
-
+    // Frustum edge rays (left/right view boundaries) are angle-dependent
+    // only, so the caller precomputes them once per cull tick instead of
+    // per surface.
     return rayIntersectsAABB(0, 0, leftDirX, leftDirY, minX, minY, maxX, maxY) ||
            rayIntersectsAABB(0, 0, rightDirX, rightDirY, minX, minY, maxX, maxY);
 }
@@ -158,11 +158,7 @@ function rayIntersectsAABB(ox, oy, dx, dy, minX, minY, maxX, maxY) {
  * product of (camera → wall center) and the wall normal is positive,
  * the wall faces away from the camera.
  */
-function wallFacesCamera(wallData, wallAngle, midX, midY, playerX, playerY) {
-    // Wall normal: perpendicular to the wall direction (right-hand side = front in DOOM)
-    const normalX = Math.sin(wallAngle);
-    const normalY = -Math.cos(wallAngle);
-
+function wallFacesCamera(normalX, normalY, midX, midY, playerX, playerY) {
     // Vector from wall center to camera
     const toCameraX = playerX - midX;
     const toCameraY = playerY - midY;
@@ -289,31 +285,107 @@ export function debugSkyTrace(wallId) {
 
 /**
  * Run culling checks on all scene elements. Called each frame from the game loop.
- * Elements are hidden/shown by toggling the `hidden` attribute which maps to
- * `display: none` and fully removes them from compositor work.
+ * Elements are hidden/shown by toggling a `culled` class which applies
+ * `content-visibility: hidden` and pauses animations on the subtree, sparing
+ * the compositor from painting / ticking offscreen content.
  */
+function setCulled(el, hide) {
+    const isCulled = el.classList.contains('culled');
+    if (isCulled !== hide) el.classList.toggle('culled', hide);
+}
+
+/**
+ * Resolve the active camera (player or possessed monster) plus the
+ * horizontal half-FOV used by both the coarse PVS flood and the fine
+ * per-element frustum tests. Cheap — just trig and a window read.
+ */
+function getEyeAndHalfFov() {
+    const eye = getControlledEye();
+    const halfFov = Math.atan2(window.innerWidth / 2, sceneState.perspectiveValue) + FRUSTUM_MARGIN;
+    return { eye, halfFov };
+}
+
+/**
+ * Coarse pass: run the sector PVS flood and toggle `.culled` on each
+ * sector container. Cheap enough to run every frame so newly-visible
+ * sectors un-cull immediately when the camera turns; the descendant
+ * `.culled, .culled *` rule in scene.css means flipping a sector also
+ * reveals every wall/surface/thing inside it without waiting for the
+ * fine pass to refine them. Returns the raw Uint8Array (or null when
+ * PVS is disabled, which forces every sector visible).
+ */
+function runPvsPass(eye, halfFov) {
+    const containers = sceneState.sectorContainers;
+    const visibleSectors = culling.pvs ? computeVisibleSectors(eye, halfFov) : null;
+    let visibleCount = 0;
+    if (visibleSectors) {
+        for (let i = 0, len = containers.length; i < len; i++) {
+            const visible = visibleSectors[i] === 1;
+            if (visible) visibleCount++;
+            setCulled(containers[i], !visible);
+        }
+    } else {
+        for (let i = 0, len = containers.length; i < len; i++) {
+            setCulled(containers[i], false);
+        }
+        visibleCount = containers.length;
+    }
+    cullingStats.totalSectors = containers.length;
+    cullingStats.visibleSectors = visibleCount;
+    return visibleSectors;
+}
+
+/**
+ * PVS-only tick used between full culling passes. Keeps sector-level
+ * visibility in lockstep with the camera so turning reveals new rooms
+ * with single-frame latency, while the expensive fine pass stays
+ * throttled by `CULLING_INTERVAL`.
+ */
+export function updatePvs() {
+    const { eye, halfFov } = getEyeAndHalfFov();
+    runPvsPass(eye, halfFov);
+}
+
 export function updateCulling() {
-    const anyCulling = culling.frustum || culling.distance || culling.backface || culling.sky;
+    const anyFineCulling = culling.frustum || culling.distance || culling.backface || culling.sky;
 
     let total = 0;
     let culled = 0;
+    let pvsCulled = 0;
     let distanceCulled = 0;
     let backfaceCulled = 0;
     let frustumCulled = 0;
     let skyCulled = 0;
 
-    // Culling runs from the camera's point of view, which may be the player
-    // character or a possessed monster.
-    const eye = getControlledEye();
+    const { eye, halfFov } = getEyeAndHalfFov();
     const playerX = eye.x;
     const playerY = eye.y;
     const distSq = MAX_RENDER_DISTANCE * MAX_RENDER_DISTANCE;
     const skyPlanes = culling.sky ? sceneState.skyWallPlanes : null;
 
-    // Precompute frustum parameters
     const sinAngle = Math.sin(eye.angle);
     const cosAngle = Math.cos(eye.angle);
-    const halfFov = Math.atan2(window.innerWidth / 2, sceneState.perspectiveValue) + FRUSTUM_MARGIN;
+
+    // Left/right frustum edge rays depend only on camera angle + halfFov,
+    // so compute them once here instead of per-surface inside
+    // surfaceInFrustum(). tanHalfFov is reused by pointInFrustum to avoid
+    // a per-point Math.atan2.
+    const sinH = Math.sin(halfFov);
+    const cosH = Math.cos(halfFov);
+    const tanHalfFov = sinH / cosH;
+    const leftDirX = -sinH * cosAngle - cosH * sinAngle;
+    const leftDirY = -sinH * sinAngle + cosH * cosAngle;
+    const rightDirX = sinH * cosAngle - cosH * sinAngle;
+    const rightDirY = sinH * sinAngle + cosH * cosAngle;
+
+    const visibleSectors = runPvsPass(eye, halfFov);
+
+    // Coarse PVS gate: when the element's sector container is hidden, the
+    // CSS `.culled` class on the container already short-circuits paint
+    // and pauses descendant animations (see scene.css `.culled, .culled *`),
+    // so we skip the per-element fine pass entirely. Elements with no
+    // recorded sector (effects, dynamic spawns) are never PVS-gated.
+    const pvsActive = !!visibleSectors;
 
     // Cull walls
     const walls = sceneState.wallElements;
@@ -321,8 +393,17 @@ export function updateCulling() {
         const el = walls[i];
         total++;
 
-        if (!anyCulling) {
-            if (el.hidden) el.hidden = false;
+        if (pvsActive) {
+            const si = el._sectorIndex;
+            if (si !== undefined && si >= 0 && visibleSectors[si] !== 1) {
+                pvsCulled++;
+                culled++;
+                continue;
+            }
+        }
+
+        if (!anyFineCulling) {
+            setCulled(el, false);
             continue;
         }
 
@@ -335,13 +416,13 @@ export function updateCulling() {
         }
 
         if (!hide && culling.backface && el._wall) {
-            if (!wallFacesCamera(el._wall, el._angle, el._midX, el._midY, playerX, playerY)) {
+            if (!wallFacesCamera(el._normalX, el._normalY, el._midX, el._midY, playerX, playerY)) {
                 hide = true; backfaceCulled++;
             }
         }
 
         if (!hide && culling.frustum && el._wall) {
-            if (!wallInFrustum(el._wall, playerX, playerY, sinAngle, cosAngle, halfFov)) {
+            if (!wallInFrustum(el._wall, playerX, playerY, sinAngle, cosAngle, tanHalfFov)) {
                 hide = true; frustumCulled++;
             }
         }
@@ -353,7 +434,7 @@ export function updateCulling() {
         }
 
         if (hide) culled++;
-        if (el.hidden !== hide) el.hidden = hide;
+        setCulled(el, hide);
     }
 
     // Cull surfaces (floors/ceilings)
@@ -363,10 +444,19 @@ export function updateCulling() {
         total++;
 
         // In spectator mode, CSS controls ceiling visibility — skip culling
-        if (spectatorActive && el.className === 'ceiling') continue;
+        if (spectatorActive && el.classList.contains('ceiling')) continue;
 
-        if (!anyCulling) {
-            if (el.hidden) el.hidden = false;
+        if (pvsActive) {
+            const si = el._sectorIndex;
+            if (si !== undefined && si >= 0 && visibleSectors[si] !== 1) {
+                pvsCulled++;
+                culled++;
+                continue;
+            }
+        }
+
+        if (!anyFineCulling) {
+            setCulled(el, false);
             continue;
         }
 
@@ -379,7 +469,7 @@ export function updateCulling() {
         }
 
         if (!hide && culling.frustum) {
-            if (!surfaceInFrustum(el, playerX, playerY, sinAngle, cosAngle, halfFov)) {
+            if (!surfaceInFrustum(el, playerX, playerY, sinAngle, cosAngle, tanHalfFov, leftDirX, leftDirY, rightDirX, rightDirY)) {
                 hide = true; frustumCulled++;
             }
         }
@@ -391,10 +481,19 @@ export function updateCulling() {
         }
 
         if (hide) culled++;
-        if (el.hidden !== hide) el.hidden = hide;
+        setCulled(el, hide);
     }
 
     // Cull things (enemies, pickups, decorations)
+    //
+    // For moving entities (those with a `gameId` in `state.things`) we
+    // read the *live* position from the gameplay record, not the cached
+    // spawn coords on the container entry. Without this, an enemy that
+    // walked across the level would still be distance/frustum/sky-tested
+    // against where it spawned — PVS would say "visible" but the fine
+    // pass would (wrongly) hide it because the spawn point fell outside
+    // the frustum. Static entries without a gameId never move, so their
+    // stamped `t.x/t.y` is still correct.
     const things = sceneState.thingContainers;
     for (let i = 0, len = things.length; i < len; i++) {
         const t = things[i];
@@ -405,17 +504,28 @@ export function updateCulling() {
         // previously culled offscreen.
         const gameEntry = t.gameId !== undefined ? state.things[t.gameId] : null;
         if (gameEntry?.collected) {
-            if (t.element.hidden) t.element.hidden = false;
+            setCulled(t.element, false);
             continue;
         }
 
-        if (!anyCulling) {
-            if (t.element.hidden) t.element.hidden = false;
+        if (pvsActive) {
+            const si = t.element._sectorIndex;
+            if (si !== undefined && si >= 0 && visibleSectors[si] !== 1) {
+                pvsCulled++;
+                culled++;
+                continue;
+            }
+        }
+
+        if (!anyFineCulling) {
+            setCulled(t.element, false);
             continue;
         }
 
-        const relX = t.x - playerX;
-        const relY = t.y - playerY;
+        const tx = gameEntry ? gameEntry.x : t.x;
+        const ty = gameEntry ? gameEntry.y : t.y;
+        const relX = tx - playerX;
+        const relY = ty - playerY;
         let hide = false;
 
         if (culling.distance) {
@@ -423,30 +533,36 @@ export function updateCulling() {
         }
 
         if (!hide && culling.frustum) {
-            if (!pointInFrustum(relX, relY, sinAngle, cosAngle, halfFov)) {
+            if (!pointInFrustum(relX, relY, sinAngle, cosAngle, tanHalfFov)) {
                 hide = true; frustumCulled++;
             }
         }
 
         if (!hide && skyPlanes && skyPlanes.length > 0) {
-            if (behindSkyWall(t.x, t.y, 0, -1, playerX, playerY, skyPlanes)) {
+            if (behindSkyWall(tx, ty, 0, -1, playerX, playerY, skyPlanes)) {
                 hide = true; skyCulled++;
             }
         }
 
         if (hide) culled++;
-        if (t.element.hidden !== hide) t.element.hidden = hide;
+        setCulled(t.element, hide);
     }
 
     cullingStats.total = total;
     cullingStats.culled = culled;
-    cullingStats.afterDistance = total - distanceCulled;
+    cullingStats.afterPvs = total - pvsCulled;
+    cullingStats.afterDistance = cullingStats.afterPvs - distanceCulled;
     cullingStats.afterBackface = cullingStats.afterDistance - backfaceCulled;
     cullingStats.afterFrustum = cullingStats.afterBackface - frustumCulled;
     cullingStats.afterSky = cullingStats.afterFrustum - skyCulled;
 }
 
-const CULLING_INTERVAL = 3; // Run every N frames
+// Fine pass (per-element distance / backface / frustum / sky) runs every Nth
+// rAF. The coarse PVS sector toggle runs every frame on the off-ticks so
+// turning the camera un-culls newly-visible rooms with single-frame latency
+// — sector containers reveal all descendants via `.culled, .culled *`,
+// even before the next fine pass refines the elements inside.
+const CULLING_INTERVAL = 3;
 let frameCount = 0;
 
 function cullingLoop() {
@@ -454,6 +570,8 @@ function cullingLoop() {
     if (frameCount >= CULLING_INTERVAL) {
         frameCount = 0;
         updateCulling();
+    } else {
+        updatePvs();
     }
     requestAnimationFrame(cullingLoop);
 }

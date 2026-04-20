@@ -31,6 +31,7 @@ import {
     connect as connectToServer,
     sendInputFrame,
     getSession,
+    prepareForLocalSpawn,
 } from './src/net/client.js';
 import { spawnThings } from './src/game/things/spawner.js';
 import { initMcpInterface } from './src/mcp/index.js';
@@ -85,6 +86,14 @@ async function applyServerMap(name, _mapData) {
     // same thingIndex positions the server is broadcasting against.
     const isInitialLoad = !ready;
     await beginLevelTransition(isInitialLoad);
+    // Re-clear right before `spawnThings()` so the spawn pass is
+    // guaranteed to start from index 0 — even if anything mutated
+    // `state.things` during the begin-transition await. Without this
+    // synchronous reset, `spawnThings` (which appends via
+    // `registerThingEntry`) would allocate at high indices and the DOM
+    // built off `mapData._thingIndexByMapIdx` would never match the
+    // server's snapshot indices, leaving every enemy frozen until reload.
+    prepareForLocalSpawn();
     spawnThings();
     await rebuildLevelScene(isInitialLoad);
     endLevelTransition(isInitialLoad);

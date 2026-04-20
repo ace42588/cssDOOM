@@ -9,7 +9,6 @@
 @import url('src/renderer/scene/mechanics/lifts.css');
 @import url('src/renderer/scene/mechanics/crushers.css');
 @import url('src/renderer/scene/mechanics/lighting.css');
-@import url('src/renderer/scene/culling.css');
 @import url('src/renderer/scene/mechanics/switches.css');
 @import url('src/renderer/scene/entities/sprites.css');
 @import url('src/renderer/scene/entities/things.css');

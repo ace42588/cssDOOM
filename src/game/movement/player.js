@@ -30,6 +30,7 @@ import {
     getControlledSpeed,
 } from '../possession.js';
 import { getThingIndex } from '../things/registry.js';
+import { normalizeAngle } from '../math/angle.js';
 
 let wasMoving = false;
 
@@ -54,16 +55,18 @@ export function updateMovementFor(sessionId, inputSnapshot, deltaTime, timestamp
         return;
     }
     updateLocation(entity, inputSnapshot, deltaTime);
-    if (entity === player) updatePlayerFromLift(timestamp);
+    if (entity === player) updatePlayerFromLift();
     updateHeight(entity);
     if (sessionId === LOCAL_SESSION) updateMovingState(inputSnapshot);
 }
 
 function updateDoorViewAngle(doorEntity, inputSnapshot, deltaTime) {
     const turnSpeed = inputSnapshot.run ? TURN_SPEED * RUN_MULTIPLIER : TURN_SPEED;
-    const angle = (doorEntity.viewAngle ?? 0)
+    const angle = normalizeAngle(
+        (doorEntity.viewAngle ?? 0)
         + (inputSnapshot.turn || 0) * turnSpeed * deltaTime
-        + (inputSnapshot.turnDelta || 0);
+        + (inputSnapshot.turnDelta || 0),
+    );
     doorEntity.viewAngle = angle;
     doorEntity.facing = angle + Math.PI / 2;
 }
@@ -97,9 +100,11 @@ function updateLocation(entity, inputSnapshot, deltaTime) {
     const speed = inputSnapshot.run ? baseSpeed * RUN_MULTIPLIER : baseSpeed;
     const turnSpeed = inputSnapshot.run ? TURN_SPEED * RUN_MULTIPLIER : TURN_SPEED;
 
-    const angle = getViewAngle(entity)
+    const angle = normalizeAngle(
+        getViewAngle(entity)
         + (inputSnapshot.turn || 0) * turnSpeed * deltaTime
-        + (inputSnapshot.turnDelta || 0);
+        + (inputSnapshot.turnDelta || 0),
+    );
     setViewAngle(entity, angle);
 
     if (!inputSnapshot.moveX && !inputSnapshot.moveY) return;

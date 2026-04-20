@@ -29,6 +29,7 @@ export function getAudioHost() {
     return host;
 }
 
-export function playSound(name) {
-    return host.playSound?.(name);
+/** @param {string} [forSessionId] — if set (multiplayer), only that client replays. */
+export function playSound(name, forSessionId) {
+    return host.playSound?.(name, forSessionId);
 }

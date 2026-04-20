@@ -1,0 +1,41 @@
+# Trim the build context — only what `npm ci` and `vite build` need
+# at the root, plus `server/` and `public/`, ever has to ship.
+
+# Dev / build outputs
+node_modules
+dist
+docs
+generate
+*.log
+*.tmp
+
+# Editor & OS noise
+.DS_Store
+.vscode
+.idea
+
+# Local configuration that shouldn't bake into images
+.env
+.env.*
+!.env.example
+
+# Repo metadata
+.git
+.gitignore
+.gitattributes
+.github
+
+# Tooling state / agent context — never needed at runtime
+.cursor
+.codex
+AGENTS.md
+
+# Ancillary content not consumed by the runtime
+sprites
+scripts
+wrangler.toml
+
+# Don't recurse into another Docker build context
+Dockerfile*
+docker-compose*.yml
+.dockerignore

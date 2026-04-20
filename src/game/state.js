@@ -10,7 +10,55 @@ import { MOVE_SPEED, PLAYER_HEIGHT, PLAYER_RADIUS } from './constants.js';
  * Migration note: actor adapters in `game/actors/adapter.js` provide
  * unified signatures across player/enemy/thing systems while this state shape
  * remains unchanged.
+ *
+ * Ammo + maxAmmo are wrapped in Proxies that emit `(type, value, max)` to
+ * any subscriber registered via `subscribeAmmo`. Consumers (the HUD, in
+ * particular) can react to mutations instead of polling per frame.
+ * Always mutate per key — `player.ammo = {...}` would replace the proxy and
+ * silently drop subscribers; `player.ammo[type] = n` is the only supported
+ * write path.
  */
+
+const ammoListeners = new Set();
+const _ammo = { bullets: 50, shells: 0, rockets: 0, cells: 0 };
+const _maxAmmo = { bullets: 200, shells: 50, rockets: 50, cells: 300 };
+
+function emitAmmoChange(type) {
+    const value = _ammo[type];
+    const max = _maxAmmo[type];
+    for (const cb of ammoListeners) cb(type, value, max);
+}
+
+const ammoProxy = new Proxy(_ammo, {
+    set(target, key, value) {
+        const changed = target[key] !== value;
+        target[key] = value;
+        if (changed && typeof key === 'string') emitAmmoChange(key);
+        return true;
+    },
+});
+
+const maxAmmoProxy = new Proxy(_maxAmmo, {
+    set(target, key, value) {
+        const changed = target[key] !== value;
+        target[key] = value;
+        if (changed && typeof key === 'string') emitAmmoChange(key);
+        return true;
+    },
+});
+
+/**
+ * Subscribe to ammo / maxAmmo mutations. Returns an unsubscribe function.
+ * The callback is `(type, value, max) => void` and fires only when the
+ * stored value actually changes.
+ */
+export function subscribeAmmo(callback) {
+    ammoListeners.add(callback);
+    return () => ammoListeners.delete(callback);
+}
+
+/** Ammo types in canonical order — useful for initial-render seeding. */
+export const AMMO_TYPES = Object.freeze(['bullets', 'shells', 'rockets', 'cells']);
 
 export const player = {
     // Skill level 1-5 (maps to DOOM flag bits for thing spawning)
@@ -38,8 +86,8 @@ export const player = {
     //   0 = no armor, 1 = green armor (absorbs 1/3), 2 = blue armor (absorbs 1/2)
     // Based on: linuxdoom-1.10/p_inter.c:P_DamageMobj()
     armorType: 0,
-    ammo: { bullets: 50, shells: 0, rockets: 0, cells: 0 },
-    maxAmmo: { bullets: 200, shells: 50, rockets: 50, cells: 300 },
+    ammo: ammoProxy,
+    maxAmmo: maxAmmoProxy,
     hasBackpack: false,
     isDead: false,
     deathTime: 0,

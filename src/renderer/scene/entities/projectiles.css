@@ -1,28 +1,21 @@
-/* Projectiles */
+/* Projectiles
+ *
+ * Position is driven per-frame by `--x/--y/--z` written from
+ * `src/net/client.js` `tickProjectileInterp` — same pattern as things.
+ * The CSS-keyframe trajectory we used to bake at spawn is gone; the
+ * authoritative server snapshot drives motion, lerped on rAF. */
 
 .projectile {
     background-repeat: no-repeat;
 
+    translate:
+        calc(var(--x) * 1px)
+        calc(var(--z) * -1px)
+        calc(var(--y) * -1px);
+
     rotate: y calc(var(--player-angle) * 1rad);
 
-    animation:
-        projectile-move var(--duration) linear both,
-        projectile-glow 150ms ease-in-out infinite alternate;
-}
-
-@keyframes projectile-move {
-    from {
-        translate:
-            calc(var(--start-x) * 1px)
-            calc(var(--start-z) * -1px)
-            calc(var(--start-y) * -1px);
-    }
-    to {
-        translate:
-            calc(var(--end-x) * 1px)
-            calc(var(--end-z) * -1px)
-            calc(var(--end-y) * -1px);
-    }
+    animation: projectile-glow 150ms ease-in-out infinite alternate;
 }
 
 @keyframes projectile-glow {

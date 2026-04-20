@@ -1,0 +1,66 @@
+---
+description: Keep related comments in sync with code changes
+alwaysApply: true
+---
+
+# Update Related Comments After Changes
+
+When you change code, update every comment that references the changed behavior, signature, names, values, or invariants — in the same edit. Stale comments are bugs.
+
+## What counts as a "related comment"
+
+- Inline comments next to the changed lines
+- Block/JSDoc/docstring comments on the enclosing function, class, or module
+- Comments referencing the symbol by name elsewhere in the file
+- Comments in callers/callees that describe the changed contract (search the repo)
+- Top-of-file headers, README snippets, and `AGENTS.md` notes that describe the changed area
+- TODO/FIXME/NOTE/HACK markers that the change resolves or invalidates
+
+## Required actions on every edit
+
+1. After editing, scan the diff for any nearby comment that references the old behavior, name, type, parameter, return value, or constant.
+2. Grep the repo for the renamed/removed symbol and update or delete any comment that references it.
+3. If a comment becomes redundant or merely narrates the new code, delete it (per the project's no-narration comment guideline).
+4. If a TODO/FIXME is resolved by the change, remove it.
+5. Never leave a comment that contradicts the code. If unsure, delete the comment rather than leaving it stale.
+
+## Examples
+
+```js
+// BAD: signature changed, comment still says "id"
+// Looks up the user by id.
+function getUser(email) { /* ... */ }
+
+// GOOD
+// Looks up the user by email.
+function getUser(email) { /* ... */ }
+```
+
+```js
+// BAD: behavior changed, TODO is now stale
+// TODO: handle null case
+function parse(input) {
+  if (input == null) return null;
+  return JSON.parse(input);
+}
+
+// GOOD: TODO removed because it's resolved
+function parse(input) {
+  if (input == null) return null;
+  return JSON.parse(input);
+}
+```
+
+```js
+// BAD: renamed `loadMap` -> `loadLevel`, doc still references old name
+// loadMap reads the map JSON and returns a Level.
+export function loadLevel(name) { /* ... */ }
+
+// GOOD
+// loadLevel reads the map JSON and returns a Level.
+export function loadLevel(name) { /* ... */ }
+```
+
+## Do not add narration
+
+Updating comments does not mean adding new ones. Do not add comments that just restate what the code does. Only keep comments that explain non-obvious intent, trade-offs, or constraints.

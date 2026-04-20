@@ -14,6 +14,7 @@
     background-repeat: repeat;
     background-position: calc(var(--texture-offset-x, 0) * -1px) calc(var(--texture-offset-y, 0) * -1px);
     transform-origin: 0 0;
+    backface-visibility: hidden;
 
     /* Position at start vertex, convert DOOM→CSS coords (X=X, Y=−Z, height=−Y) */
     transform:
@@ -23,16 +24,32 @@
             calc(var(--start-y) * -1px)
         )
         rotateY(atan2(var(--delta-y), var(--delta-x)));
-
-    filter: brightness(var(--light, 1));
 }
 
-body.show-wall-ids .wall {
+/* Lighting tint overlay — opaque black at `1 − light` alpha visually matches
+   `filter: brightness(light)` (result = (1−α)·C = light·C) without forcing
+   transform-style to flat, so the wall keeps preserve-3d. translateZ nudges
+   the tint off the wall plane to avoid coplanar z-fighting, and backface-
+   visibility mirrors the parent wall so we don't see the tint from behind. */
+.wall > .tint {
+    inset: 0;
+    background: #000;
+    opacity: calc(1 - var(--light, 1) * var(--light-falloff, 1));
+    pointer-events: none;
+    backface-visibility: hidden;
+    transform: translateZ(0.01px);
+}
+
+body.show-wall-ids .wall[id]::after {
+    content: attr(id);
+    position: absolute;
+    top: 2px;
+    left: 2px;
     font-size: 12px;
     color: white;
     text-shadow: 0 0 2px black, 0 0 2px black;
-    overflow: hidden;
-    padding: 2px;
+    pointer-events: none;
+    transform: translateZ(0.02px);
 }
 
 button.wall {
@@ -65,18 +82,3 @@ body.scroll-textures .wall.scroll-texture {
 .wall.unpegged {
     background-position-y: calc(100% + var(--texture-offset-y, 0) * -1px);
 }
-
-/* Sky walls — invisible occluders above wall tops in sky-ceiling sectors.
-   Hidden by default; shown as hotpink via the debug toggle. */
-.sky-wall {
-    display: none;
-    filter: none;
-}
-
-body.show-sky-walls .sky-wall {
-    display: block;
-    background: hotpink;
-}
-
-
-

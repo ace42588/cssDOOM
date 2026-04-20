@@ -3,7 +3,7 @@
  *
  * Connection rules:
  *   - The first joining session gets the marine.
- *   - Subsequent sessions possess a random living, unpossessed enemy.
+ *   - Subsequent sessions possess the lowest-index living, unpossessed enemy.
  *   - If nothing playable is available, the session becomes a spectator
  *     following a randomly-picked currently-controlled body.
  *
@@ -69,6 +69,22 @@ function pickRandom(list) {
     return list[Math.floor(Math.random() * list.length)];
 }
 
+/** Deterministic pick: lowest thing index among free enemies (stable across reconnects). */
+function pickLowestIndexEnemy(enemies) {
+    if (enemies.length === 0) return null;
+    let best = enemies[0];
+    let bestIdx = getThingIndex(best);
+    for (let i = 1; i < enemies.length; i++) {
+        const t = enemies[i];
+        const idx = getThingIndex(t);
+        if (idx >= 0 && (bestIdx < 0 || idx < bestIdx)) {
+            best = t;
+            bestIdx = idx;
+        }
+    }
+    return best;
+}
+
 function pickFollowTarget(excludeSessionId) {
     const entries = listHumanControlledEntries().filter(([sid]) => sid !== excludeSessionId);
     if (entries.length === 0) return null;
@@ -81,8 +97,37 @@ function pickFollowTarget(excludeSessionId) {
  *   { role, controlledId, followTargetId }
  *
  * Mutates the possession map via `possessFor` when a body is claimed.
+ *
+ * @param {object} [options]
+ * @param {string|null} [options.preferredControlledId] — e.g. `'player'` or `'thing:12'`; honored first when still possessable (MCP sticky reconnect).
  */
-export function assignOnJoin(conn) {
+export function assignOnJoin(conn, options = {}) {
+    const pref = options.preferredControlledId;
+    if (pref) {
+        const entity = resolveEntity(pref);
+        if (pref === 'player' && entity === player) {
+            if (!isHumanControlled(player) && !player.isDead && !player.isAiDead) {
+                if (possessFor(conn.sessionId, player)) {
+                    return {
+                        role: ROLE.PLAYER,
+                        controlledId: 'player',
+                        followTargetId: null,
+                    };
+                }
+            }
+        } else if (entity && entity !== player && !entity.__isDoorEntity) {
+            if (isLivingEnemy(entity) && !isHumanControlled(entity)) {
+                if (possessFor(conn.sessionId, entity)) {
+                    return {
+                        role: ROLE.PLAYER,
+                        controlledId: entityId(entity),
+                        followTargetId: null,
+                    };
+                }
+            }
+        }
+    }
+
     // Marine first.
     if (!isHumanControlled(player) && !player.isDead && !player.isAiDead) {
         if (possessFor(conn.sessionId, player)) {
@@ -94,11 +139,11 @@ export function assignOnJoin(conn) {
         }
     }
 
-    // Then a random free enemy.
+    // Then lowest-index free enemy (deterministic).
     const freeEnemies = state.things.filter(
         (t) => isLivingEnemy(t) && !isHumanControlled(t),
     );
-    const enemy = pickRandom(freeEnemies);
+    const enemy = pickLowestIndexEnemy(freeEnemies);
     if (enemy) {
         if (possessFor(conn.sessionId, enemy)) {
             return {

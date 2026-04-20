@@ -2,7 +2,7 @@
   "schemas": [
     "urn:ietf:params:scim:schemas:core:2.0:Schema"
   ],
-  "id": "urn:cssdoom:params:scim:schemas:extension:player:2.0:Player",
+  "id": "urn:cssdoom:params:scim:schemas:Player",
   "name": "Player",
   "description": "CSS DOOM player persistence schema.",
   "attributes": [

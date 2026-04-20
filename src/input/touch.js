@@ -17,6 +17,7 @@ import { player } from '../game/state.js';
 import { isMenuOpen } from '../ui/menu.js';
 import { registerInputProvider } from './index.js';
 import { pressUse, requestWeaponSwitch } from '../net/client.js';
+import { shouldOfferRespawnReload } from './respawn.js';
 
 const JOYSTICK_MAX_RADIUS = 50;
 const JOYSTICK_DEADZONE = 0.15;
@@ -245,7 +246,7 @@ function cycleWeapon(direction) {
 
 function handleDeadRestart() {
     if (!player.isDead) return false;
-    if (performance.now() - player.deathTime > 4000) {
+    if (shouldOfferRespawnReload()) {
         location.reload();
     }
     return true;

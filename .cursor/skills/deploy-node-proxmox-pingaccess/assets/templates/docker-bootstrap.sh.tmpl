@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Bootstraps Docker Engine + Compose plugin on the new host for
+# {{APP_NAME}}. Runs ON the target host as root via SSH.
+
+set -euo pipefail
+
+export DEBIAN_FRONTEND=noninteractive
+
+apt-get update -qq
+apt-get install -y -qq curl ca-certificates gnupg
+
+if ! command -v docker >/dev/null 2>&1; then
+    curl -fsSL https://get.docker.com | sh
+fi
+
+systemctl enable --now docker
+
+# Optional non-root deploy user (no-op if user does not exist).
+if id "{{DEPLOY_USER}}" >/dev/null 2>&1; then
+    usermod -aG docker "{{DEPLOY_USER}}"
+fi
+
+docker version --format 'server={{.Server.Version}} client={{.Client.Version}}'
+docker compose version --short
+docker run --rm hello-world | grep -q 'Hello from Docker'
+
+if [[ -f /var/run/reboot-required ]]; then
+    echo "docker-bootstrap: reboot required by package upgrade — rebooting"
+    ( sleep 2 && systemctl reboot ) &
+fi

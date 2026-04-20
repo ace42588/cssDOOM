@@ -141,9 +141,17 @@ function raiseLift(sectorIndex) {
  * Called each frame to interpolate lift heights in sync with the renderer animation.
  * Uses an ease-in-out curve that matches the renderer's easing so that the
  * currentHeight closely tracks the visual position of the animated platform.
+ *
+ * NOTE: this used to take the caller's frame timestamp, but the browser ships
+ * `performance.now()` (RAF) while the server ships `Date.now()`. Since
+ * `activateLift`/`raiseLift` stamp `moveStart` with `performance.now()`, mixing
+ * the two clocks made `elapsedSeconds` astronomical and snapped lifts to their
+ * target on the very next physics tick — leaving the player walled in by the
+ * shaft's collision edges while the visual platform was still animating up.
+ * Using `performance.now()` directly keeps both ends honest.
  */
-export function updatePlayerFromLift(timestamp) {
-    const currentTimeSeconds = timestamp / 1000;
+export function updatePlayerFromLift() {
+    const currentTimeSeconds = performance.now() / 1000;
     for (let index = 0, count = liftEntries.length; index < count; index++) {
         const { sectorIndex, entry: liftState } = liftEntries[index];
         if (!liftState.moving) continue;

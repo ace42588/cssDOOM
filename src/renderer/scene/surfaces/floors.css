@@ -21,8 +21,16 @@
             calc((var(--min-y) + var(--max-y)) / 2 * -1px)
         )
         rotateX(90deg);
+}
 
-    filter: brightness(var(--light, 1));
+/* See walls.css for the tint-overlay rationale. Same formula; no backface-
+   visibility because horizontal surfaces don't set it on the parent. */
+.floor > .tint {
+    inset: 0;
+    background: #000;
+    opacity: calc(1 - var(--light, 1) * var(--light-falloff, 1));
+    pointer-events: none;
+    transform: translateZ(0.01px);
 }
 
 body.show-sector-ids .floor::after {
@@ -35,6 +43,8 @@ body.show-sector-ids .floor::after {
     color: white;
     text-shadow: 0 0 4px black, 0 0 4px black;
     pointer-events: none;
+    /* Lift above the `.tint` overlay (which sits at translateZ(0.01px)). */
+    transform: translateZ(0.02px);
 }
 
 

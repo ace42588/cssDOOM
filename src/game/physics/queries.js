@@ -12,7 +12,7 @@ function getEffectiveFloorHeight(sector) {
     return lift ? lift.currentHeight : sector.floorHeight;
 }
 
-function pointInsideSector(x, y, sector) {
+export function pointInsideSector(x, y, sector) {
     const outerBoundary = sector.boundaries[0];
     if (!outerBoundary || outerBoundary.length < 3) return false;
     if (!pointInPolygon(x, y, outerBoundary)) return false;

@@ -125,7 +125,9 @@ export function buildHorizontalSurface(sector, height, textureName, surfaceType)
     surfaceElement._maxY = maxY;
     surfaceElement._bboxH = boundingBoxHeight;
 
-    surfaceElement.hidden = true;
+    surfaceElement.appendChild(document.createElement('div')).className = 'tint';
+
+    surfaceElement.classList.add('culled');
     appendToSector(surfaceElement, sector.sectorIndex);
     sceneState.surfaceElements.push(surfaceElement);
 }

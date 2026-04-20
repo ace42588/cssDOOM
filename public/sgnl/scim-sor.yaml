@@ -1,283 +1,209 @@
-# System of Record: cssDOOM SCIM 2.0 entity push (per-entity).
+# System of Record: cssDOOM player sessions (SCIM 2.0 entity push).
 #
-# Each game entity that matters for access decisions is mirrored as its
-# own SCIM User resource:
+# SGNL's SCIM 2.0 Entity Push only accepts `/Users` and `/Groups`. So
+# this SoR pushes exactly one thing: a SCIM User per connected player
+# session. Everything else about the running game (doors, lifts,
+# crushers, pickups, keys, AI actors) is pushed via the Event Push SoR
+# in events-sor.yaml — SGNL cannot host custom SCIM resource types.
 #
-#   Player  — one per connected session (userName: player:<sessionId>)
-#   Actor   — one per AI thing (userName: actor:<MAP>:<mapThingIndex>)
-#   Door    — one per door (userName: door:<MAP>:<sectorIndex>)
-#   Lift    — one per lift (userName: lift:<MAP>:<sectorIndex>)
-#   Crusher — one per crusher (userName: crusher:<MAP>:<sectorIndex>)
-#   Pickup  — one per non-key pickup (userName: pickup:<MAP>:<mapThingIndex>)
-#   Key     — one per key pickup (userName: key:<MAP>:<mapThingIndex>)
+# Wire:
+#   POST   <address>/Users                     # create on first push
+#   PUT    <address>/Users/{id}                # subsequent updates
+#   DELETE <address>/Users/{id}                # on session drop
 #
-# `userName` is always the same canonical id the SGNL gRPC map adapter
-# (map-sor.yaml) emits for the same entity, so decision engines can
-# cross-reference static + dynamic state without a join.
+# `userName` is the canonical asset id the SGNL map adapter would
+# reference for this player (player:<sessionId>), so decision engines
+# can cross-reference the SCIM User with game-state events (subject =
+# player:<sessionId>) without an explicit join.
 #
-# Rate limit: the engine marks entities dirty on state changes; the SCIM
-# pusher enforces a 1Hz floor per entity and skips PUTs whose content
-# hash is unchanged — no update, no network traffic.
-#
-# `type` must match the SCIM 2.0 Entity Push adapter registration.
-# `adapterConfig` is base64("{}").
+# Conventions:
+#   • One uniqueId attribute per entity (`id`, mapped to SCIM resource id).
+#   • Nested attributes use JSONPath (`$.position.x`); top-level SCIM
+#     fields use the bare name.
+#   • `pagesOrderedById: false` — SCIM push doesn't guarantee ordering.
 
-displayName: cssDOOM game state (SCIM)
+displayName: "cssDOOM player sessions (SCIM)"
 icon: ""
 description: >-
-  Per-entity mutable game-session state pushed from the cssDOOM server
-  via SCIM 2.0. `userName` matches the SGNL adapter `id` so dynamic
-  state correlates with the static map SoR (map-sor.yaml) without a
-  join.
-address: "{{Input Required: SCIM 2.0 push endpoint base URL}}"
-defaultSyncFrequency: NEVER
-defaultSyncMinInterval: 1
-defaultApiCallFrequency: SECONDLY
-defaultApiCallMinInterval: 1
-type: "SCIM-2.0"
-adapterConfig: "e30="
+  One SCIM 2.0 User per connected cssDOOM player session. Pushed from
+  the cssDOOM server on every meaningful state change (health, ammo,
+  keys, powerups, map transition). `userName` matches the subject id
+  used by the cssDOOM events SoR, so policies can join on
+  `User.userName == <event>.subject`.
+type: "SCIM2.0-1.0.0"
+address: "{{Input Required: SCIM 2.0 base URL; SGNL appends /Users and /Groups}}"
+deliveryMethod: entityPush
+pushType: SCIM2.0
 auth:
   - bearer:
       authToken: "{{Input Required: Bearer token for SCIM push endpoint}}"
 
 entities:
-  # ─── Player ──────────────────────────────────────────────────────────
-  Player:
-    displayName: Player
-    externalId: "urn:cssdoom:params:scim:schemas:extension:player:2.0:Player"
-    description: One resource per connected player session. userName = player:<sessionId>.
-    syncFrequency: NEVER
-    syncMinInterval: 1
-    apiCallFrequency: SECONDLY
-    apiCallMinInterval: 1
-    pageSize: 50
-    pagesOrderedById: true
+  # ─── User (player session) ───────────────────────────────────────────
+  User:
+    displayName: Users (player sessions)
+    externalId: User
+    pushExternalId: User
+    description: SCIM User resource per connected player session. userName = player:<sessionId>.
+    pageSize: 100
+    pagesOrderedById: false
     attributes:
-      - { name: sessionId,     externalId: sessionId,        type: String, indexed: true, uniqueId: true }
-      - { name: mapName,       externalId: mapName,          type: String, indexed: true }
-      - { name: correlationId, externalId: correlationId,    type: String, indexed: true }
-      - { name: displayName,   externalId: displayName,      type: String, indexed: false }
-      - { name: positionX,     externalId: position.x,       type: Double, indexed: false }
-      - { name: positionY,     externalId: position.y,       type: Double, indexed: false }
-      - { name: positionZ,     externalId: position.z,       type: Double, indexed: false }
-      - { name: positionAngle, externalId: position.angle,   type: Double, indexed: false }
-      - { name: health,        externalId: vitals.health,    type: Int64,  indexed: true }
-      - { name: armor,         externalId: vitals.armor,     type: Int64,  indexed: false }
-      - { name: armorType,     externalId: vitals.armorType, type: Int64,  indexed: false }
-      - { name: isDead,        externalId: vitals.isDead,    type: Bool,   indexed: true }
-      - { name: ammoBullets,   externalId: ammo.bullets,     type: Int64,  indexed: false }
-      - { name: ammoShells,    externalId: ammo.shells,      type: Int64,  indexed: false }
-      - { name: ammoRockets,   externalId: ammo.rockets,     type: Int64,  indexed: false }
-      - { name: ammoCells,     externalId: ammo.cells,       type: Int64,  indexed: false }
-      - { name: maxAmmoBullets, externalId: maxAmmo.bullets, type: Int64, indexed: false }
-      - { name: maxAmmoShells,  externalId: maxAmmo.shells,  type: Int64, indexed: false }
-      - { name: maxAmmoRockets, externalId: maxAmmo.rockets, type: Int64, indexed: false }
-      - { name: maxAmmoCells,   externalId: maxAmmo.cells,   type: Int64, indexed: false }
-      - { name: hasBackpack,    externalId: inventory.hasBackpack,    type: Bool,   indexed: false }
-      - { name: currentWeapon,  externalId: inventory.currentWeapon,  type: Int64,  indexed: false }
-      - { name: ownedWeapons,   externalId: inventory.ownedWeapons,   type: String, indexed: false }
-      - { name: collectedKeys,  externalId: inventory.collectedKeys,  type: String, indexed: true }
-      - { name: updatedAt,      externalId: updatedAt,                type: DateTime, indexed: true }
+      - name: id
+        externalId: id
+        pushExternalId: id
+        type: String
+        indexed: true
+        uniqueId: true
+      - name: schemas
+        externalId: schemas
+        pushExternalId: schemas
+        type: String
+        list: true
+      - name: userName
+        externalId: userName
+        pushExternalId: userName
+        type: String
+        indexed: true
+      - name: active
+        externalId: active
+        pushExternalId: active
+        type: Bool
+        indexed: true
+      - name: sessionId
+        externalId: sessionId
+        pushExternalId: sessionId
+        type: String
+        indexed: true
+      - name: correlationId
+        externalId: correlationId
+        pushExternalId: correlationId
+        type: String
+        indexed: true
+      - name: mapName
+        externalId: mapName
+        pushExternalId: mapName
+        type: String
+        indexed: true
+      - name: displayName
+        externalId: displayName
+        pushExternalId: displayName
+        type: String
+      - name: positionX
+        externalId: $.position.x
+        pushExternalId: $.position.x
+        type: Double
+      - name: positionY
+        externalId: $.position.y
+        pushExternalId: $.position.y
+        type: Double
+      - name: positionZ
+        externalId: $.position.z
+        pushExternalId: $.position.z
+        type: Double
+      - name: positionAngle
+        externalId: $.position.angle
+        pushExternalId: $.position.angle
+        type: Double
+      - name: health
+        externalId: $.vitals.health
+        pushExternalId: $.vitals.health
+        type: Int64
+        indexed: true
+      - name: armor
+        externalId: $.vitals.armor
+        pushExternalId: $.vitals.armor
+        type: Int64
+      - name: armorType
+        externalId: $.vitals.armorType
+        pushExternalId: $.vitals.armorType
+        type: Int64
+      - name: isDead
+        externalId: $.vitals.isDead
+        pushExternalId: $.vitals.isDead
+        type: Bool
+        indexed: true
+      - name: ammoBullets
+        externalId: $.ammo.bullets
+        pushExternalId: $.ammo.bullets
+        type: Int64
+      - name: ammoShells
+        externalId: $.ammo.shells
+        pushExternalId: $.ammo.shells
+        type: Int64
+      - name: ammoRockets
+        externalId: $.ammo.rockets
+        pushExternalId: $.ammo.rockets
+        type: Int64
+      - name: ammoCells
+        externalId: $.ammo.cells
+        pushExternalId: $.ammo.cells
+        type: Int64
+      - name: maxAmmoBullets
+        externalId: $.maxAmmo.bullets
+        pushExternalId: $.maxAmmo.bullets
+        type: Int64
+      - name: maxAmmoShells
+        externalId: $.maxAmmo.shells
+        pushExternalId: $.maxAmmo.shells
+        type: Int64
+      - name: maxAmmoRockets
+        externalId: $.maxAmmo.rockets
+        pushExternalId: $.maxAmmo.rockets
+        type: Int64
+      - name: maxAmmoCells
+        externalId: $.maxAmmo.cells
+        pushExternalId: $.maxAmmo.cells
+        type: Int64
+      - name: hasBackpack
+        externalId: $.inventory.hasBackpack
+        pushExternalId: $.inventory.hasBackpack
+        type: Bool
+      - name: currentWeapon
+        externalId: $.inventory.currentWeapon
+        pushExternalId: $.inventory.currentWeapon
+        type: Int64
+      - name: ownedWeapons
+        externalId: $.inventory.ownedWeapons
+        pushExternalId: $.inventory.ownedWeapons
+        type: Int64
+        list: true
+      - name: collectedKeys
+        externalId: $.inventory.collectedKeys
+        pushExternalId: $.inventory.collectedKeys
+        type: String
+        list: true
+        indexed: true
+      - name: updatedAt
+        externalId: updatedAt
+        pushExternalId: updatedAt
+        type: DateTime
+        indexed: true
 
+  # ─── Powerup (nested child of User) ──────────────────────────────────
+  # Multi-valued nested attribute modelled as a child entity per SGNL's
+  # SCIM Push template convention.
   Powerup:
-    displayName: Powerup
+    parent: User
+    displayName: Player Powerups
     externalId: powerups
-    description: Active powerup with remaining duration (child of Player).
-    parent: Player
-    syncFrequency: NEVER
-    syncMinInterval: 1
-    apiCallFrequency: SECONDLY
-    apiCallMinInterval: 1
+    pushExternalId: powerups
+    description: Active powerup with remaining duration. Multi-valued child of User.
     pageSize: 50
-    pagesOrderedById: true
+    pagesOrderedById: false
     attributes:
-      - { name: name,             externalId: name,             type: String, indexed: true, uniqueId: true }
-      - { name: remainingSeconds, externalId: remainingSeconds, type: Double, indexed: false }
-
-  # ─── Actor (AI thing) ────────────────────────────────────────────────
-  Actor:
-    displayName: Actor
-    externalId: "urn:cssdoom:params:scim:schemas:extension:actor:2.0:Actor"
-    description: One resource per AI thing. userName = actor:<MAP>:<mapThingIndex>.
-    syncFrequency: NEVER
-    syncMinInterval: 1
-    apiCallFrequency: SECONDLY
-    apiCallMinInterval: 1
-    pageSize: 100
-    pagesOrderedById: true
-    attributes:
-      - { name: actorId,       externalId: actorId,       type: String, indexed: true, uniqueId: true }
-      - { name: mapName,       externalId: mapName,       type: String, indexed: true }
-      - { name: thingIndex,    externalId: thingIndex,    type: Int64,  indexed: true }
-      - { name: mapThingIndex, externalId: mapThingIndex, type: Int64,  indexed: true }
-      - { name: type,          externalId: type,          type: Int64,  indexed: true }
-      - { name: x,             externalId: x,             type: Double, indexed: false }
-      - { name: y,             externalId: y,             type: Double, indexed: false }
-      - { name: z,             externalId: z,             type: Double, indexed: false }
-      - { name: hp,            externalId: hp,            type: Int64,  indexed: true }
-      - { name: isDead,        externalId: isDead,        type: Bool,   indexed: true }
-      - { name: aiState,       externalId: aiState,       type: String, indexed: true }
-      - { name: possessedBy,   externalId: possessedBy,   type: String, indexed: true }
-      - { name: updatedAt,     externalId: updatedAt,     type: DateTime, indexed: true }
-
-  # ─── Door ────────────────────────────────────────────────────────────
-  Door:
-    displayName: Door
-    externalId: "urn:cssdoom:params:scim:schemas:extension:door:2.0:Door"
-    description: One resource per door. userName = door:<MAP>:<sectorIndex>.
-    syncFrequency: NEVER
-    syncMinInterval: 1
-    apiCallFrequency: SECONDLY
-    apiCallMinInterval: 1
-    pageSize: 200
-    pagesOrderedById: true
-    attributes:
-      - { name: doorId,          externalId: doorId,          type: String, indexed: true, uniqueId: true }
-      - { name: mapName,         externalId: mapName,         type: String, indexed: true }
-      - { name: sectorIndex,     externalId: sectorIndex,     type: Int64,  indexed: true }
-      - { name: open,            externalId: open,            type: Bool,   indexed: true }
-      - { name: passable,        externalId: passable,        type: Bool,   indexed: true }
-      - { name: keyRequired,     externalId: keyRequired,     type: String, indexed: true }
-      - { name: pendingRequests, externalId: pendingRequests, type: Int64,  indexed: false }
-      - { name: updatedAt,       externalId: updatedAt,       type: DateTime, indexed: true }
-
-  # ─── Lift ────────────────────────────────────────────────────────────
-  Lift:
-    displayName: Lift
-    externalId: "urn:cssdoom:params:scim:schemas:extension:lift:2.0:Lift"
-    description: One resource per lift. userName = lift:<MAP>:<sectorIndex>.
-    syncFrequency: NEVER
-    syncMinInterval: 1
-    apiCallFrequency: SECONDLY
-    apiCallMinInterval: 1
-    pageSize: 100
-    pagesOrderedById: true
-    attributes:
-      - { name: liftId,        externalId: liftId,        type: String, indexed: true, uniqueId: true }
-      - { name: mapName,       externalId: mapName,       type: String, indexed: true }
-      - { name: sectorIndex,   externalId: sectorIndex,   type: Int64,  indexed: true }
-      - { name: tag,           externalId: tag,           type: Int64,  indexed: true }
-      - { name: currentHeight, externalId: currentHeight, type: Double, indexed: false }
-      - { name: targetHeight,  externalId: targetHeight,  type: Double, indexed: false }
-      - { name: lowerHeight,   externalId: lowerHeight,   type: Double, indexed: false }
-      - { name: upperHeight,   externalId: upperHeight,   type: Double, indexed: false }
-      - { name: moving,        externalId: moving,        type: Bool,   indexed: true }
-      - { name: oneWay,        externalId: oneWay,        type: Bool,   indexed: false }
-      - { name: updatedAt,     externalId: updatedAt,     type: DateTime, indexed: true }
-
-  # ─── Crusher ─────────────────────────────────────────────────────────
-  Crusher:
-    displayName: Crusher
-    externalId: "urn:cssdoom:params:scim:schemas:extension:crusher:2.0:Crusher"
-    description: One resource per crusher. userName = crusher:<MAP>:<sectorIndex>.
-    syncFrequency: NEVER
-    syncMinInterval: 1
-    apiCallFrequency: SECONDLY
-    apiCallMinInterval: 1
-    pageSize: 100
-    pagesOrderedById: true
-    attributes:
-      - { name: crusherId,     externalId: crusherId,     type: String, indexed: true, uniqueId: true }
-      - { name: mapName,       externalId: mapName,       type: String, indexed: true }
-      - { name: sectorIndex,   externalId: sectorIndex,   type: Int64,  indexed: true }
-      - { name: active,        externalId: active,        type: Bool,   indexed: true }
-      - { name: direction,     externalId: direction,     type: Int64,  indexed: false }
-      - { name: currentHeight, externalId: currentHeight, type: Double, indexed: false }
-      - { name: topHeight,     externalId: topHeight,     type: Double, indexed: false }
-      - { name: crushHeight,   externalId: crushHeight,   type: Double, indexed: false }
-      - { name: damageTimer,   externalId: damageTimer,   type: Double, indexed: false }
-      - { name: updatedAt,     externalId: updatedAt,     type: DateTime, indexed: true }
-
-  # ─── Pickup (non-key) ────────────────────────────────────────────────
-  Pickup:
-    displayName: Pickup
-    externalId: "urn:cssdoom:params:scim:schemas:extension:pickup:2.0:Pickup"
-    description: One resource per non-key pickup. userName = pickup:<MAP>:<mapThingIndex>.
-    syncFrequency: NEVER
-    syncMinInterval: 1
-    apiCallFrequency: SECONDLY
-    apiCallMinInterval: 1
-    pageSize: 500
-    pagesOrderedById: true
-    attributes:
-      - { name: pickupId,      externalId: pickupId,      type: String, indexed: true, uniqueId: true }
-      - { name: mapName,       externalId: mapName,       type: String, indexed: true }
-      - { name: thingIndex,    externalId: thingIndex,    type: Int64,  indexed: true }
-      - { name: mapThingIndex, externalId: mapThingIndex, type: Int64,  indexed: true }
-      - { name: type,          externalId: type,          type: Int64,  indexed: true }
-      - { name: x,             externalId: x,             type: Double, indexed: false }
-      - { name: y,             externalId: y,             type: Double, indexed: false }
-      - { name: collected,     externalId: collected,     type: Bool,   indexed: true }
-      - { name: updatedAt,     externalId: updatedAt,     type: DateTime, indexed: true }
-
-  # ─── Key ─────────────────────────────────────────────────────────────
-  Key:
-    displayName: Key
-    externalId: "urn:cssdoom:params:scim:schemas:extension:key:2.0:Key"
-    description: One resource per key pickup. userName = key:<MAP>:<mapThingIndex>.
-    syncFrequency: NEVER
-    syncMinInterval: 1
-    apiCallFrequency: SECONDLY
-    apiCallMinInterval: 1
-    pageSize: 100
-    pagesOrderedById: true
-    attributes:
-      - { name: pickupId,      externalId: pickupId,      type: String, indexed: true, uniqueId: true }
-      - { name: mapName,       externalId: mapName,       type: String, indexed: true }
-      - { name: thingIndex,    externalId: thingIndex,    type: Int64,  indexed: true }
-      - { name: mapThingIndex, externalId: mapThingIndex, type: Int64,  indexed: true }
-      - { name: type,          externalId: type,          type: Int64,  indexed: true }
-      - { name: x,             externalId: x,             type: Double, indexed: false }
-      - { name: y,             externalId: y,             type: Double, indexed: false }
-      - { name: collected,     externalId: collected,     type: Bool,   indexed: true }
-      - { name: keyName,       externalId: keyName,       type: String, indexed: true }
-      - { name: color,         externalId: color,         type: String, indexed: true }
-      - { name: material,      externalId: material,      type: String, indexed: true }
-      - { name: updatedAt,     externalId: updatedAt,     type: DateTime, indexed: true }
+      - name: name
+        externalId: name
+        pushExternalId: name
+        type: String
+        indexed: true
+        uniqueId: true
+      - name: remainingSeconds
+        externalId: remainingSeconds
+        pushExternalId: remainingSeconds
+        type: Double
 
 relationships:
-  PlayerMap:
-    name: PlayerMap
-    displayName: Player to map
-    fromAttribute: Player.mapName
-    toAttribute: Player.mapName
-  ActorMap:
-    name: ActorMap
-    displayName: Actor to map
-    fromAttribute: Actor.mapName
-    toAttribute: Actor.mapName
-  ActorPossessedBy:
-    name: ActorPossessedBy
-    displayName: Actor possessed by player session
-    fromAttribute: Actor.possessedBy
-    toAttribute: Player.sessionId
-  DoorMap:
-    name: DoorMap
-    displayName: Door to map
-    fromAttribute: Door.mapName
-    toAttribute: Door.mapName
-  DoorKey:
-    name: DoorKey
-    displayName: Door requires key color
-    fromAttribute: Door.keyRequired
-    toAttribute: Key.color
-  LiftMap:
-    name: LiftMap
-    displayName: Lift to map
-    fromAttribute: Lift.mapName
-    toAttribute: Lift.mapName
-  CrusherMap:
-    name: CrusherMap
-    displayName: Crusher to map
-    fromAttribute: Crusher.mapName
-    toAttribute: Crusher.mapName
-  PickupMap:
-    name: PickupMap
-    displayName: Pickup to map
-    fromAttribute: Pickup.mapName
-    toAttribute: Pickup.mapName
-  KeyMap:
-    name: KeyMap
-    displayName: Key to map
-    fromAttribute: Key.mapName
-    toAttribute: Key.mapName
+  # Multi-valued nested attribute `powerups` on User is exposed as the
+  # Powerup child entity; SGNL requires the explicit parent/child link.
+  ParentOfPowerup:
+    childEntity: Powerup
