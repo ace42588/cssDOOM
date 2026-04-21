@@ -10,11 +10,11 @@ import {
   INFIGHTING_THRESHOLD,
 } from "../constants.js";
 
-import { state, player } from "../state.js";
+import { state, getMarine } from "../state.js";
 import { currentMap } from "../../data/maps.js";
 import { hasLineOfSight } from "../physics/line-of-sight.js";
-import { damagePlayer } from "../player/damage.js";
-import { hasPowerup } from "../player/pickups.js";
+import { damageActor } from './damage.js';
+import { hasPowerup } from '../actor/pickups.js';
 import { playSound } from "../../audio/audio.js";
 import { setEnemyState } from '../ai/state.js';
 import { getThingIndex } from '../things/registry.js';
@@ -22,7 +22,7 @@ import { forEachRadiusDamageTarget } from './radius.js';
 import {
   asDamageableActor,
   assertDamageableActor,
-} from '../actors/adapter.js';
+} from '../entity/interop.js';
 import {
   applyDamage,
   normalizeDamageSource,
@@ -67,9 +67,10 @@ import { resolveTargetActor } from '../actors/math.js';
  * infighting enemy).
  */
 export function enemyHitscanAttack(attacker) {
+  const m = getMarine();
   const attackerAI = attacker.ai;
-  const target = resolveTargetActor(attacker, player);
-  const targetIsPlayer = target === player;
+  const target = resolveTargetActor(attacker, m);
+  const targetIsPlayer = target === m;
   if (!targetIsPlayer && (!target || target.collected)) return;
 
   if (!hasLineOfSight(attacker, target)) {
@@ -79,8 +80,8 @@ export function enemyHitscanAttack(attacker) {
 
   const distance = getHorizontalDistance(attacker, target);
   const radius =
-    target === player
-      ? (player.radius ?? PLAYER_RADIUS)
+    target === m
+      ? (m.radius ?? PLAYER_RADIUS)
       : target.ai
         ? target.ai.radius
         : ENEMY_RADIUS;
@@ -149,17 +150,18 @@ export function checkMissileRange(enemy, distanceToPlayer) {
  * and other barrels), enabling chain explosions when barrels are clustered.
  */
 function barrelExplosion(barrel) {
+  const m = getMarine();
   forEachRadiusDamageTarget(barrel, BARREL_EXPLOSION_RADIUS, (target, damage) => {
-    if (target === player) {
-      damagePlayer(damage);
+    if (target === m) {
+      damageActor(m, damage, null);
       return;
     }
     if (target === barrel) return;
-    // Barrel explosions are sourced from the player since only player actions
+    // Barrel explosions are sourced from the marine since only marine actions
     // can currently trigger them (shooting a barrel). This means barrel splash
     // damage won't trigger infighting — matching original DOOM where barrels
     // have no "source" monster and don't cause retargeting.
-    damageEnemy(target, damage, player);
+    damageEnemy(target, damage, m);
   });
 }
 
@@ -186,8 +188,9 @@ function barrelExplosion(barrel) {
  * is then set to BASETHRESHOLD (~2.86s) to prevent rapid target-switching.
  */
 export function damageEnemy(target, damage, source) {
+  const m = getMarine();
   const normalizedTarget = resolveDamageTarget(target);
-  if (normalizedTarget === player) return damagePlayer(damage);
+  if (normalizedTarget === m) return damageActor(m, damage, null);
   const targetActor = asDamageableActor(normalizedTarget);
   const sourceActor = normalizeDamageSource(source);
   assertDamageableActor(targetActor, "damageEnemy");
@@ -237,6 +240,11 @@ export function damageEnemy(target, damage, source) {
   }
 }
 
+/** HP-bearing things in `state.things` (e.g. barrels) — thin alias over `damageEnemy`. */
+export function damageThing(thing, damage, source) {
+  return damageEnemy(thing, damage, source);
+}
+
 // ============================================================================
 // E1M8 Boss Death Trigger
 // ============================================================================
@@ -246,9 +254,13 @@ export function damageEnemy(target, damage, source) {
  * floor to open the exit on E1M8.
  */
 function checkBossDeath() {
-  const allThings = state.things;
-  for (let i = 0, len = allThings.length; i < len; i++) {
-    if (allThings[i].type === 3003 && !allThings[i].collected) return;
+  for (let i = 1, len = state.actors.length; i < len; i++) {
+    const t = state.actors[i];
+    if (t && t.type === 3003 && !t.collected) return;
+  }
+  for (let i = 0, len = state.things.length; i < len; i++) {
+    const t = state.things[i];
+    if (t && t.type === 3003 && !t.collected) return;
   }
   renderer.lowerTaggedFloor(666);
 }

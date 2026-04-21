@@ -5,7 +5,9 @@
  */
 
 import { culling, cullingStats, debugSkyTrace } from '../renderer/scene/culling.js';
-import { state, player, debug } from '../game/state.js';
+import { state, getMarine, debug } from '../game/state.js';
+
+const marine = () => getMarine();
 import { EYE_HEIGHT } from '../game/constants.js';
 import { THING_NAMES } from '../renderer/scene/constants.js';
 import { getFloorHeightAt, getSectorAt } from '../game/physics/queries.js';
@@ -22,26 +24,29 @@ window.teleportTo = function(name) {
         return typeName === name;
     });
     if (!thing) { console.log(`No "${name}" found on this map`); return; }
-    player.x = thing.x;
-    player.y = thing.y;
+    marine().x = thing.x;
+    marine().y = thing.y;
     console.log(`Teleported to ${name} at (${thing.x}, ${thing.y})`);
 };
 
 window.teleport = (positionX, positionY, angleDegrees) => {
-    player.x = positionX;
-    player.y = positionY;
-    if (angleDegrees !== undefined) player.angle = angleDegrees * Math.PI / 180;
-    player.floorHeight = getFloorHeightAt(player.x, player.y);
-    player.z = player.floorHeight + EYE_HEIGHT;
+    marine().x = positionX;
+    marine().y = positionY;
+    if (angleDegrees !== undefined) {
+        marine().viewAngle = angleDegrees * Math.PI / 180;
+        marine().facing = marine().viewAngle + Math.PI / 2;
+    }
+    marine().floorHeight = getFloorHeightAt(marine().x, marine().y);
+    marine().z = marine().floorHeight + EYE_HEIGHT;
     updateCamera();
 };
 
 window.save = function (slot = 0) {
     const data = {
         map: currentMap,
-        x: player.x,
-        y: player.y,
-        angle: player.angle,
+        x: marine().x,
+        y: marine().y,
+        angle: marine().viewAngle,
     };
     localStorage.setItem(`cssdoom-save-${slot}`, JSON.stringify(data));
     console.log(`Saved slot ${slot}: ${currentMap} (${Math.round(data.x)}, ${Math.round(data.y)})`);
@@ -55,11 +60,12 @@ window.load = async function (slot = 0) {
         console.log(`Switching to ${data.map}...`);
         await loadMap(data.map);
     }
-    player.x = data.x;
-    player.y = data.y;
-    player.angle = data.angle;
-    player.floorHeight = getFloorHeightAt(player.x, player.y);
-    player.z = player.floorHeight + EYE_HEIGHT;
+    marine().x = data.x;
+    marine().y = data.y;
+    marine().viewAngle = data.angle;
+    marine().facing = data.angle + Math.PI / 2;
+    marine().floorHeight = getFloorHeightAt(marine().x, marine().y);
+    marine().z = marine().floorHeight + EYE_HEIGHT;
     updateCamera();
     console.log(`Loaded slot ${slot}: ${data.map} (${Math.round(data.x)}, ${Math.round(data.y)})`);
 };
@@ -68,14 +74,14 @@ window.traceSky = debugSkyTrace;
 
 /** Dump player position, angle, sector, and current map */
 window.dump = function () {
-    const sector = getSectorAt(player.x, player.y);
-    const angleDeg = ((player.angle * 180 / Math.PI) % 360 + 360) % 360;
-    const lookX = -Math.sin(player.angle);
-    const lookY = Math.cos(player.angle);
+    const sector = getSectorAt(marine().x, marine().y);
+    const angleDeg = ((marine().viewAngle * 180 / Math.PI) % 360 + 360) % 360;
+    const lookX = -Math.sin(marine().viewAngle);
+    const lookY = Math.cos(marine().viewAngle);
     const info = {
         map: currentMap,
-        position: { x: Math.round(player.x), y: Math.round(player.y), z: Math.round(player.z) },
-        floorHeight: player.floorHeight,
+        position: { x: Math.round(marine().x), y: Math.round(marine().y), z: Math.round(marine().z) },
+        floorHeight: marine().floorHeight,
         angle: Math.round(angleDeg) + '°',
         lookDir: { x: +lookX.toFixed(3), y: +lookY.toFixed(3) },
         sector: sector ? {
@@ -84,10 +90,10 @@ window.dump = function () {
             ceiling: sector.ceilingHeight,
             light: sector.lightLevel,
         } : null,
-        health: player.health,
-        armor: player.armor,
-        weapon: player.currentWeapon,
-        isDead: player.isDead,
+        health: marine().hp,
+        armor: marine().armor,
+        weapon: marine().currentWeapon,
+        isDead: marine().deathMode === 'gameover',
     };
     console.table ? console.table(info.position) : null;
     console.log(info);
@@ -96,8 +102,8 @@ window.dump = function () {
 
 /** Dump all walls, doors, things, and projectiles near the player */
 window.nearby = function (radius = 512) {
-    const px = player.x, py = player.y;
-    const eyeZ = player.floorHeight + EYE_HEIGHT;
+    const px = marine().x, py = marine().y;
+    const eyeZ = marine().floorHeight + EYE_HEIGHT;
     const r = radius;
 
     // Walls

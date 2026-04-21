@@ -19,7 +19,7 @@ export function registerEnemyTools(server, ctx) {
         {
             title: 'List enemies',
             description:
-                'List currently-alive enemies. Each entry has a stable thingIndex `id` (use with enemies-get-state and actor-possess). Sorted by distance to the marine.',
+                'List currently-alive enemies. Each entry has stable `id`: `actor:N` slot for spawned monsters, or thing index for legacy thing-only hostiles. Use with enemies-get-state and actor-possess. Sorted by distance to the marine.',
             inputSchema: {
                 maxDistance: z.number().optional().describe('Omit enemies farther than this many map units from the marine.'),
                 limit: z.number().int().optional().describe('Cap on the number of entries returned.'),
@@ -37,16 +37,18 @@ export function registerEnemyTools(server, ctx) {
         'enemies-get-state',
         {
             title: 'Get enemy state',
-            description: 'Return the latest authoritative state for a single enemy by its thingIndex id.',
+            description: 'Return the latest authoritative state for a single enemy by actor slot id (enemies-list `id`, usually ≥ 1) or thing index for non-actor hostiles.',
             inputSchema: {
-                id: z.number().int().describe('thingIndex of the enemy.'),
+                id: z.number().int().describe('Enemy id from enemies-list (actor slot or thing index).'),
             },
         },
         async (args) => {
             const sid = ctx.getSessionId();
             const id = Number(args?.id);
-            if (!Number.isInteger(id) || id < 0 || id >= state.things.length) return err('invalid id', {}, sid);
-            const thing = state.things[id];
+            if (!Number.isInteger(id) || id <= 0) return err('invalid id', {}, sid);
+            let thing = null;
+            if (id < state.actors.length) thing = state.actors[id];
+            else if (id < state.things.length) thing = state.things[id];
             if (!thing) return err('not found', {}, sid);
             return textResult({
                 ok: true,

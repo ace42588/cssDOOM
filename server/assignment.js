@@ -14,12 +14,12 @@
  *   - Spectators never get promoted back to active play; they watch
  *     until they reconnect (which is a fresh session anyway).
  *
- * All functions here are pure with respect to `state.things`/`player`
+ * All functions here are pure with respect to `state.things` / the marine (`getMarine()`)
  * and the possession module — the server's world loop calls them at
  * explicit lifecycle points (connect / disconnect / body death / tick).
  */
 
-import { player, state } from '../src/game/state.js';
+import { getMarine, state } from '../src/game/state.js';
 import {
     ENEMIES,
 } from '../src/game/constants.js';
@@ -30,32 +30,13 @@ import {
     getControlledFor,
     listHumanControlledEntries,
 } from '../src/game/possession.js';
-import { getThingIndex } from '../src/game/things/registry.js';
+import { getThingIndex, getActorIndex } from '../src/game/things/registry.js';
 import { ROLE } from './net.js';
+import { formatRuntimeId, resolveRuntimeId } from '../src/game/entity/id.js';
+import { isActorAlive } from '../src/game/entity/caps.js';
 
-/** Stable id for an entity (marine = 'player', things = 'thing:<idx>'). */
-export function entityId(entity) {
-    if (!entity) return null;
-    if (entity === player) return 'player';
-    if (entity.__isDoorEntity) return `door:${entity.sectorIndex}`;
-    const idx = getThingIndex(entity);
-    return idx >= 0 ? `thing:${idx}` : null;
-}
-
-export function resolveEntity(id) {
-    if (!id) return null;
-    if (id === 'player') return player;
-    if (id.startsWith('thing:')) {
-        const idx = Number(id.slice('thing:'.length));
-        return state.things[idx] || null;
-    }
-    if (id.startsWith('door:')) {
-        const sectorIndex = Number(id.slice('door:'.length));
-        const entry = state.doorState.get(sectorIndex);
-        return entry?.doorEntity || null;
-    }
-    return null;
-}
+export const entityId = formatRuntimeId;
+export const resolveEntity = resolveRuntimeId;
 
 function isLivingEnemy(thing) {
     if (!thing || !thing.ai) return false;
@@ -70,13 +51,19 @@ function pickRandom(list) {
 }
 
 /** Deterministic pick: lowest thing index among free enemies (stable across reconnects). */
+function slotIndex(entity) {
+    const a = getActorIndex(entity);
+    if (a >= 0) return a;
+    return getThingIndex(entity);
+}
+
 function pickLowestIndexEnemy(enemies) {
     if (enemies.length === 0) return null;
     let best = enemies[0];
-    let bestIdx = getThingIndex(best);
+    let bestIdx = slotIndex(best);
     for (let i = 1; i < enemies.length; i++) {
         const t = enemies[i];
-        const idx = getThingIndex(t);
+        const idx = slotIndex(t);
         if (idx >= 0 && (bestIdx < 0 || idx < bestIdx)) {
             best = t;
             bestIdx = idx;
@@ -105,17 +92,18 @@ export function assignOnJoin(conn, options = {}) {
     const pref = options.preferredControlledId;
     if (pref) {
         const entity = resolveEntity(pref);
-        if (pref === 'player' && entity === player) {
-            if (!isHumanControlled(player) && !player.isDead && !player.isAiDead) {
-                if (possessFor(conn.sessionId, player)) {
+        const m = getMarine();
+        if ((pref === 'player' || pref === 'actor:0') && entity === m) {
+            if (!isHumanControlled(m) && m.hp > 0 && !m.deathMode) {
+                if (possessFor(conn.sessionId, m)) {
                     return {
                         role: ROLE.PLAYER,
-                        controlledId: 'player',
+                        controlledId: entityId(m),
                         followTargetId: null,
                     };
                 }
             }
-        } else if (entity && entity !== player && !entity.__isDoorEntity) {
+        } else if (entity && entity !== getMarine() && !entity.__isDoorEntity) {
             if (isLivingEnemy(entity) && !isHumanControlled(entity)) {
                 if (possessFor(conn.sessionId, entity)) {
                     return {
@@ -129,19 +117,20 @@ export function assignOnJoin(conn, options = {}) {
     }
 
     // Marine first.
-    if (!isHumanControlled(player) && !player.isDead && !player.isAiDead) {
-        if (possessFor(conn.sessionId, player)) {
+    const marine = getMarine();
+    if (!isHumanControlled(marine) && marine.hp > 0 && !marine.deathMode) {
+        if (possessFor(conn.sessionId, marine)) {
             return {
                 role: ROLE.PLAYER,
-                controlledId: entityId(player),
+                controlledId: entityId(marine),
                 followTargetId: null,
             };
         }
     }
 
     // Then lowest-index free enemy (deterministic).
-    const freeEnemies = state.things.filter(
-        (t) => isLivingEnemy(t) && !isHumanControlled(t),
+    const freeEnemies = state.actors.slice(1).filter(
+        (t) => t && isLivingEnemy(t) && !isHumanControlled(t),
     );
     const enemy = pickLowestIndexEnemy(freeEnemies);
     if (enemy) {
@@ -199,11 +188,5 @@ export function pickNewFollowTargetId(sessionId) {
  * engine and demote players promptly.
  */
 export function controlledBodyIsAlive(conn) {
-    const entity = getControlledFor(conn.sessionId);
-    if (!entity) return false;
-    if (entity === player) return !player.isDead && !player.isAiDead;
-    // Doors are always "alive" — they have no hp and can't be killed.
-    if (entity.__isDoorEntity) return true;
-    if (entity.collected) return false;
-    return (entity.hp ?? 0) > 0;
+    return isActorAlive(getControlledFor(conn.sessionId));
 }

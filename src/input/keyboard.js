@@ -21,7 +21,7 @@
  */
 
 import { input } from './index.js';
-import { player } from '../game/state.js';
+import { getMarine } from '../game/state.js';
 import { WEAPONS } from '../game/constants.js';
 import { isMenuOpen, toggleMenu } from '../ui/menu.js';
 import { isBodySwapOpen, toggleBodySwap } from '../ui/body-swap.js';
@@ -86,7 +86,7 @@ export function initKeyboardInput() {
             location.reload();
             return;
         }
-        if (player.isDead) {
+        if (getMarine().deathMode === 'gameover') {
             // Marine is dead but we're not the marine controller — swallow
             // the keystroke so it doesn't drive a body the local session
             // doesn't own this frame.

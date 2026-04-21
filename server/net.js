@@ -67,7 +67,7 @@
  *       // `despawn` is just the id.
  *       things: {
  *           spawn:   [{ id, type, x, y, z, floorHeight, facing, viewAngle,
- *                       hp, maxHp, collected, aiState, __sessionId }],
+ *                       hp, maxHp, collected, aiState, __sessionId (controller session, derived server-side) }],
  *           update:  [{ id, ...changedFields }],
  *           despawn: [id, id, ...]
  *       },
@@ -87,7 +87,7 @@
  *       // only `update` entries with changed fields are emitted.
  *       //
  *       // Mutable fields that flow over the wire:
- *       //   doors:    open, passable, operatorSessionId, viewAngle,
+ *       //   doors:    open, passable, sessionId, viewAngle,
  *       //             pendingRequests
  *       //   lifts:    currentHeight, targetHeight, moving
  *       //   crushers: active, direction, currentHeight, damageTimer
@@ -119,72 +119,21 @@
  *   { type: 'bye', reason }
  */
 
-export const MSG = {
-    HELLO: 'hello',
-    INPUT: 'input',
-    PONG: 'pong',
-    WELCOME: 'welcome',
-    ROLE_CHANGE: 'roleChange',
-    MAP_LOAD: 'mapLoad',
-    MAP_LOAD_COMPLETE: 'mapLoadComplete',
-    LOAD_MAP_REQUEST: 'loadMapRequest',
-    SNAPSHOT: 'snapshot',
-    NOTICE: 'notice',
-    BYE: 'bye',
-};
-
-/** Whitelist of map ids the menu is allowed to request. */
-export const ALLOWED_MAPS = new Set([
-    'E1M1', 'E1M2', 'E1M3', 'E1M4', 'E1M5', 'E1M6', 'E1M7', 'E1M8', 'E1M9',
-]);
-
-export const ROLE = {
-    PLAYER: 'player',
-    SPECTATOR: 'spectator',
-};
-
-/** Default input state used before the first packet arrives. */
-export function emptyInput() {
-    return {
-        moveX: 0,
-        moveY: 0,
-        turn: 0,
-        turnDelta: 0,
-        run: false,
-        fireHeld: false,
-        use: false,
-        bodySwap: null,
-        doorDecision: null,
-        switchWeapon: null,
-    };
-}
-
-/** Merge `partial` on top of `base`, clamping ranges and discarding junk. */
-export function sanitizeInput(partial) {
-    const out = emptyInput();
-    if (!partial || typeof partial !== 'object') return out;
-    out.moveX = clamp(Number(partial.moveX) || 0, -1, 1);
-    out.moveY = clamp(Number(partial.moveY) || 0, -1, 1);
-    out.turn  = clamp(Number(partial.turn)  || 0, -1, 1);
-    out.turnDelta = Number(partial.turnDelta) || 0;
-    out.run = Boolean(partial.run);
-    out.fireHeld = Boolean(partial.fireHeld);
-    out.use = Boolean(partial.use);
-    if (partial.bodySwap && typeof partial.bodySwap === 'object') {
-        out.bodySwap = { targetId: partial.bodySwap.targetId ?? null };
-    }
-    if (partial.doorDecision && typeof partial.doorDecision === 'object') {
-        const sectorIndex = Number(partial.doorDecision.sectorIndex);
-        const requestId = Number(partial.doorDecision.requestId);
-        const decision = partial.doorDecision.decision === 'open' ? 'open' : 'ignore';
-        if (Number.isFinite(sectorIndex) && Number.isFinite(requestId)) {
-            out.doorDecision = { sectorIndex, requestId, decision };
-        }
-    }
-    if (Number.isFinite(partial.switchWeapon)) {
-        out.switchWeapon = Math.max(1, Math.min(9, Math.floor(partial.switchWeapon)));
-    }
-    return out;
-}
-
-function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
+export {
+    ALLOWED_MAPS,
+    BodySwapSchema,
+    ClientInputMessageSchema,
+    DoorDecisionSchema,
+    InputPayloadSchema,
+    LoadMapRequestMessageSchema,
+    MSG,
+    MapLoadCompleteMessageSchema,
+    MapLoadMessageSchema,
+    NoticeMessageSchema,
+    ROLE,
+    RoleChangeMessageSchema,
+    SnapshotMessageSchema,
+    WelcomeMessageSchema,
+    emptyInput,
+    sanitizeInput,
+} from '../src/net/protocol.js';

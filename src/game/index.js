@@ -3,9 +3,9 @@
  */
 
 import { MAX_FRAME_DELTA_TIME } from './constants.js';
-import { updateMovement, updateMovementFor } from './movement/player.js';
-import { checkSectorDamage } from './player/damage.js';
-import { checkPickups, updatePowerups } from './player/pickups.js';
+import { updateMovement, updateMovementFor } from './movement/system.js';
+import { checkSectorDamage } from './combat/damage.js';
+import { checkPickups, updatePowerups } from './actor/pickups.js';
 import { updateAllEnemies } from './ai/controller.js';
 import { updateProjectiles } from './ai/projectiles.js';
 import { checkWalkOverTriggers } from './mechanics/lifts.js';

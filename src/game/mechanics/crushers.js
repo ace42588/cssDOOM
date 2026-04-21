@@ -19,10 +19,10 @@
  *   walk-over trigger (W1/WR types 6, 25, 73, 77).
  */
 
-import { state, player } from '../state.js';
+import { state, getMarine } from '../state.js';
 import { mapData, currentMap } from '../../data/maps.js';
 import { getSectorAt } from '../physics/queries.js';
-import { damagePlayer } from '../player/damage.js';
+import { damageActor } from '../combat/damage.js';
 import * as renderer from '../../renderer/index.js';
 import { markEntityDirty } from '../services.js';
 
@@ -117,16 +117,17 @@ export function updateCrushers(deltaTime) {
  * the floor height at the player's position against the crusher's sector.
  */
 function checkCrusherDamage(entry, deltaTime) {
-    // Only damage when the ceiling is low enough to crush the player
-    // Player height is approximately EYE_HEIGHT (41 units)
-    const playerCeilingClearance = entry.currentHeight - player.floorHeight;
+    const m = getMarine();
+    // Only damage when the ceiling is low enough to crush the marine
+    // Marine height is approximately EYE_HEIGHT (41 units)
+    const playerCeilingClearance = entry.currentHeight - m.floorHeight;
     if (playerCeilingClearance > 41) {
         entry.damageTimer = 0;
         return;
     }
 
-    // Check if the player is actually in this sector
-    const playerSector = getSectorAt(player.x, player.y);
+    // Check if the marine is actually in this sector
+    const playerSector = getSectorAt(m.x, m.y);
     const playerInSector = playerSector && playerSector.sectorIndex === entry.sectorIndex;
 
     if (!playerInSector) {
@@ -137,6 +138,6 @@ function checkCrusherDamage(entry, deltaTime) {
     entry.damageTimer += deltaTime;
     if (entry.damageTimer >= CRUSHER_DAMAGE_INTERVAL) {
         entry.damageTimer -= CRUSHER_DAMAGE_INTERVAL;
-        damagePlayer(CRUSHER_DAMAGE);
+        damageActor(m, CRUSHER_DAMAGE, null);
     }
 }

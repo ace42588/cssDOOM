@@ -15,12 +15,14 @@
 
 import { z } from 'zod';
 
-import { player, state } from '../../../src/game/state.js';
+import { getMarine, state } from '../../../src/game/state.js';
 import { getControlledFor } from '../../../src/game/possession.js';
 import { getThingIndex } from '../../../src/game/things/registry.js';
-import { poseOf, snapshotPlayer, isLiveEnemy } from '../snapshot.js';
+import { poseOf } from '../../../src/game/entity/caps.js';
+import { snapshotPlayer, isLiveEnemy } from '../snapshot.js';
 import { rolePromptFor } from '../role.js';
 import { textResult, ok, err, requireConn } from './_helpers.js';
+import { normalizePossessTargetId } from '../../../src/game/entity/id.js';
 
 function clampUnit(v) {
     const n = Number(v);
@@ -60,19 +62,6 @@ function zeroMoveIntent(input) {
     input.run = false;
 }
 
-function normalizePossessTargetId(raw) {
-    if (raw == null) return null;
-    const s = String(raw).trim();
-    if (!s) return null;
-    const lower = s.toLowerCase();
-    if (lower === 'marine' || lower === 'player') return { bodySwap: 'player', requested: 'player' };
-    const thingM = /^thing:(\d+)$/i.exec(s);
-    if (thingM) return { bodySwap: `thing:${thingM[1]}`, requested: `thing:${thingM[1]}` };
-    const doorM = /^door:(\d+)$/i.exec(s);
-    if (doorM) return { bodySwap: `door:${doorM[1]}`, requested: `door:${doorM[1]}` };
-    return null;
-}
-
 export function registerActorTools(server, ctx) {
     server.registerTool(
         'actor-get-state',
@@ -86,7 +75,7 @@ export function registerActorTools(server, ctx) {
             const { conn, error } = requireConn(ctx.getSessionId());
             if (error) return error;
             const controlled = getControlledFor(conn.sessionId);
-            const pose = poseOf(controlled || player);
+            const pose = poseOf(controlled || getMarine());
             return textResult({
                 marine: snapshotPlayer(),
                 controlled: pose,
@@ -264,10 +253,21 @@ export function registerActorTools(server, ctx) {
             const parsed = normalizePossessTargetId(args?.targetId);
             if (!parsed) return err('invalid targetId (use thing:N, door:N, marine, or player)', {}, conn.sessionId);
 
-            if (parsed.bodySwap === 'player') {
-                conn.input.bodySwap = { targetId: 'player' };
-                const role = rolePromptFor(player);
+            if (parsed.bodySwap === 'actor:0' || parsed.bodySwap === 'player') {
+                conn.input.bodySwap = { targetId: 'actor:0' };
+                const role = rolePromptFor(getMarine());
                 return ok({ requested: parsed.requested, role }, conn.sessionId);
+            }
+
+            if (parsed.bodySwap.startsWith('actor:')) {
+                const id = Number(parsed.bodySwap.slice('actor:'.length));
+                if (!Number.isInteger(id) || id <= 0) return err('invalid actor index', {}, conn.sessionId);
+                const thing = state.actors[id];
+                if (!thing) return err('not found', {}, conn.sessionId);
+                if (!isLiveEnemy(thing)) return err('enemy not possessable (dead, collected, or non-AI)', {}, conn.sessionId);
+                conn.input.bodySwap = { targetId: `actor:${id}` };
+                const role = rolePromptFor(thing);
+                return ok({ requested: `actor:${id}`, role }, conn.sessionId);
             }
 
             if (parsed.bodySwap.startsWith('thing:')) {

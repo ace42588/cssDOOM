@@ -26,11 +26,15 @@ import {
     ENEMY_AI_STATS,
     LINE_OF_SIGHT_CHECK_INTERVAL,
     SOLID_THING_RADIUS,
+    PLAYER_HEIGHT,
+    MAX_STEP_HEIGHT,
+    MONSTER_INTRINSIC_WEAPON_SLOT,
+    ENEMY_KIND_BY_TYPE,
 } from '../constants.js';
 import { THING_SPRITES, THING_NAMES } from '../../renderer/scene/constants.js';
 import { THING_CATEGORY } from '../../data/things.js';
 import { state } from '../state.js';
-import { registerThingEntry } from './registry.js';
+import { registerActorEntry, registerThingEntry } from './registry.js';
 import { mapData } from '../../data/maps.js';
 
 /**
@@ -87,12 +91,13 @@ export function spawnThings() {
         const entry = {
             x: thing.x,
             y: thing.y,
+            z: 0,
             type: thing.type,
             collected: false,
             hp: THING_HEALTH[thing.type] || 0,
             // Position of this thing in the raw map JSON. Used to build
-            // stable asset ids (`pickup:<MAP>:<mapThingIndex>`,
-            // `key:<MAP>:<mapThingIndex>`) that line up with the ids the
+            // stable short asset ids (`pickup:<mapThingIndex>`, `key:<mapThingIndex>`)
+            // that line up with the ids the
             // SGNL gRPC adapter emits for the same entity.
             mapThingIndex,
         };
@@ -102,6 +107,7 @@ export function spawnThings() {
         }
 
         const aiStats = ENEMY_AI_STATS[thing.type];
+        let wSlot;
         if (aiStats) {
             entry.spawnX = thing.x;
             entry.spawnY = thing.y;
@@ -127,10 +133,40 @@ export function spawnThings() {
                 entry.ai.painDuration /= 2;
                 entry.ai.cooldown /= 2;
             }
+
+            wSlot = MONSTER_INTRINSIC_WEAPON_SLOT[thing.type];
+            if (wSlot !== undefined) {
+                entry.kind = ENEMY_KIND_BY_TYPE[thing.type] || 'enemy';
+                entry.maxDropHeight = MAX_STEP_HEIGHT;
+                entry.height = PLAYER_HEIGHT;
+                entry.radius = entry.ai.radius;
+                entry.speed = entry.ai.speed;
+                entry.ownedWeapons = new Set([wSlot]);
+                entry.currentWeapon = wSlot;
+                entry.viewAngle = entry.facing - Math.PI / 2;
+                entry.armor = 0;
+                entry.armorType = 0;
+                entry.ammo = {};
+                entry.maxAmmo = {};
+                entry.hasBackpack = false;
+                entry.powerups = {};
+                entry.collectedKeys = new Set();
+                entry.deathMode = null;
+                entry.deathTime = 0;
+                entry.isFiring = false;
+                entry.sectorDamageTimer = 0;
+                entry.mapThingIndex = thing.mapThingIndex;
+            }
         }
 
-        const thingIndex = registerThingEntry(entry);
-        mapThingToIndex.push(thingIndex);
+        let mapRef;
+        if (Boolean(aiStats) && wSlot !== undefined) {
+            registerActorEntry(entry);
+            mapRef = entry.thingIndex;
+        } else {
+            mapRef = registerThingEntry(entry);
+        }
+        mapThingToIndex.push(mapRef);
     }
 
     mapData._thingIndexByMapIdx = mapThingToIndex;

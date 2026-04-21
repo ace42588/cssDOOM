@@ -10,7 +10,7 @@
  *   4. renders the scene (camera + HUD + transient events)
  */
 
-import { state, player } from './src/game/state.js';
+import { state, getMarine } from './src/game/state.js';
 import { mapData, setMapState } from './src/data/maps.js';
 import { updateCamera, startCullingLoop, updateHud, setRendererHost } from './src/renderer/index.js';
 import { setAudioHost } from './src/audio/audio.js';
@@ -65,7 +65,7 @@ function frame() {
 
     sendInputFrame();
 
-    if (!player.isDead && !isBodySwapOpen()) {
+    if (getMarine().deathMode !== 'gameover' && !isBodySwapOpen()) {
         updateHud();
     } else if (isBodySwapOpen()) {
         updateHud();
@@ -132,4 +132,4 @@ async function init() {
 init();
 
 // expose for the debug console / spectator UI
-window.__cssdoom = { state, player, session: getSession() };
+window.__cssdoom = { state, getMarine, session: getSession() };

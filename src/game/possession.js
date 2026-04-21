@@ -2,7 +2,8 @@
  * Body-swap / possession state — generalized for multi-controller (server).
  *
  * At any point zero or more "controllers" (session ids) are each bound to a
- * single body (the marine `player`, or an enemy entry in `state.things`).
+ * single body (the marine `player` in `state.actors[0]`, an enemy in
+ * `state.actors[1..]`, a `state.things` entry, or a door entity).
  * A body can be controlled by at most one controller. Bodies not controlled
  * by any human run under AI.
  *
@@ -28,11 +29,14 @@ import {
     PLAYER_RADIUS,
     WEAPONS,
 } from './constants.js';
-import { state, player } from './state.js';
+import { state, getMarine } from './state.js';
+
+const marine = () => getMarine();
 import { getFloorHeightAt } from './physics/queries.js';
 import { getThingIndex } from './things/registry.js';
 import { setEnemyState } from './ai/state.js';
 import * as renderer from '../renderer/index.js';
+import { formatRuntimeId } from './entity/id.js';
 
 function isDoorEntity(entity) {
     return Boolean(entity && entity.__isDoorEntity);
@@ -125,23 +129,23 @@ export function listHumanControlledEntities() {
  * exists (e.g. the browser HUD on the first pre-snapshot frame).
  */
 export function getControlled() {
-    return controllers.get(LOCAL_SESSION) || player;
+    return controllers.get(LOCAL_SESSION) || marine();
 }
 
 export function isControllingPlayer() {
     const controlled = controllers.get(LOCAL_SESSION);
     // No binding means "default view": treat as if controlling the marine.
-    return !controlled || controlled === player;
+    return !controlled || controlled === marine();
 }
 
 export function isPossessing() {
     const controlled = controllers.get(LOCAL_SESSION);
-    return Boolean(controlled) && controlled !== player;
+    return Boolean(controlled) && controlled !== marine();
 }
 
 export function getControlledEyeHeight() {
     const controlled = controllers.get(LOCAL_SESSION);
-    if (controlled === player) return EYE_HEIGHT;
+    if (controlled === marine()) return EYE_HEIGHT;
     return EYE_HEIGHT * 0.9;
 }
 
@@ -150,7 +154,7 @@ export function getControlledEyeHeight() {
  * parameterised by whichever weapon the player has equipped.
  */
 function buildPlayerAiProfile() {
-    const weapon = WEAPONS[player.currentWeapon] || WEAPONS[2];
+    const weapon = WEAPONS[marine().currentWeapon] || WEAPONS[2];
     const fireRateSeconds = (weapon.fireRate || 543) / 1000;
     return {
         state: 'idle',
@@ -183,22 +187,22 @@ function buildPlayerAiProfile() {
 
 /** Install an AI block on `player` so the enemy controller can tick it. */
 export function ensurePlayerAi() {
-    if (!player.ai) {
-        player.ai = buildPlayerAiProfile();
+    if (!marine().ai) {
+        marine().ai = buildPlayerAiProfile();
     } else {
-        const weapon = WEAPONS[player.currentWeapon] || WEAPONS[2];
+        const weapon = WEAPONS[marine().currentWeapon] || WEAPONS[2];
         const fireRateSeconds = (weapon.fireRate || 543) / 1000;
-        player.ai.cooldown = Math.max(0.5, fireRateSeconds);
-        player.ai.attackDuration = Math.max(0.3, fireRateSeconds);
-        player.ai.attackRange = weapon.range || 1500;
-        player.ai.pellets = weapon.pellets || 1;
-        player.ai.hitscanSound = weapon.sound || 'DSPISTOL';
+        marine().ai.cooldown = Math.max(0.5, fireRateSeconds);
+        marine().ai.attackDuration = Math.max(0.3, fireRateSeconds);
+        marine().ai.attackRange = weapon.range || 1500;
+        marine().ai.pellets = weapon.pellets || 1;
+        marine().ai.hitscanSound = weapon.sound || 'DSPISTOL';
     }
-    return player.ai;
+    return marine().ai;
 }
 
 export function clearPlayerAi() {
-    player.ai = null;
+    marine().ai = null;
 }
 
 function rehydrateEnemyAi(enemy) {
@@ -239,12 +243,12 @@ export function possessFor(sessionId, entity) {
 
     if (isDoorEntity(entity)) {
         // Doors are always available; no hp/collected gate.
-    } else if (entity !== player) {
+    } else if (entity !== marine()) {
         if (!entity.ai) return false;
         if (entity.collected) return false;
         if ((entity.hp ?? 0) <= 0) return false;
     } else {
-        if (player.isDead || player.isAiDead) return false;
+        if (marine().hp <= 0 || marine().deathMode) return false;
     }
 
     const previous = controllers.get(sessionId) || null;
@@ -254,31 +258,24 @@ export function possessFor(sessionId, entity) {
 
     // If the previous body is no longer controlled by *any* session, rejoin AI.
     if (previous && previous !== entity && !isHumanControlled(previous)) {
-        if (previous !== player && !isDoorEntity(previous)) {
+        if (previous !== marine() && !isDoorEntity(previous)) {
             rehydrateEnemyAi(previous);
             hideThingSprite(previous, false);
         }
     }
 
     // Install AI on `player` if the marine is no longer controlled by anyone.
-    if (!isHumanControlled(player)) {
+    if (!isHumanControlled(marine())) {
         ensurePlayerAi();
     } else {
         clearPlayerAi();
     }
 
-    if (entity !== player && !isDoorEntity(entity)) {
+    if (entity !== marine() && !isDoorEntity(entity)) {
         // The controlled monster's sprite is hidden so the camera eye doesn't
         // look at the inside of the sprite it's driving. On the server this
         // is a no-op through the recording host.
         hideThingSprite(entity, true);
-    }
-
-    // Tagging for engine modules that need to map an entity back to its
-    // owning session (e.g. door evaluations).
-    entity.__sessionId = sessionId;
-    if (previous && previous !== entity && !isHumanControlled(previous)) {
-        delete previous.__sessionId;
     }
 
     notifyChange(sessionId, entity);
@@ -292,14 +289,13 @@ export function releaseFor(sessionId) {
     controllers.delete(sessionId);
 
     if (!isHumanControlled(previous)) {
-        if (previous === player) {
+        if (previous === marine()) {
             ensurePlayerAi();
         } else if (isDoorEntity(previous)) {
-            delete previous.__sessionId;
+            // no-op
         } else {
             rehydrateEnemyAi(previous);
             hideThingSprite(previous, false);
-            delete previous.__sessionId;
         }
     }
 
@@ -312,7 +308,7 @@ export function possess(entity) {
 }
 
 export function possessPlayer() {
-    return possessFor(LOCAL_SESSION, player);
+    return possessFor(LOCAL_SESSION, marine());
 }
 
 /**
@@ -327,7 +323,7 @@ export function onPossessedDeath(entity) {
 
     const next = findNextLivingBody(entity);
     if (next) {
-        controllers.set(sid, player); // allow possessFor to detect the change
+        controllers.set(sid, marine()); // allow possessFor to detect the change
         possessFor(sid, next);
         return;
     }
@@ -335,21 +331,21 @@ export function onPossessedDeath(entity) {
     // No living body available. For the local session this triggers the
     // normal game-over flow; for remote sessions the caller should promote
     // the client to spectator via releaseFor().
-    controllers.set(sid, player);
+    controllers.set(sid, marine());
     if (sid === LOCAL_SESSION) {
-        player.isDead = true;
-        player.deathTime = performance.now();
+        marine().deathMode = 'gameover';
+        marine().hp = 0;
+        marine().deathTime = performance.now();
         renderer.setPlayerDead(true);
     }
-    notifyChange(sid, player);
+    notifyChange(sid, marine());
 }
 
 function findNextLivingBody(dyingEntity) {
     const candidates = [];
-    const allThings = state.things;
-    for (let i = 0; i < allThings.length; i++) {
-        const thing = allThings[i];
-        if (thing === dyingEntity) continue;
+    for (let i = 1; i < state.actors.length; i++) {
+        const thing = state.actors[i];
+        if (!thing || thing === dyingEntity) continue;
         if (!thing.ai) continue;
         if (!ENEMIES.has(thing.type)) continue;
         if (thing.collected) continue;
@@ -367,8 +363,8 @@ function findNextLivingBody(dyingEntity) {
 
     if (candidates.length > 0) return candidates[0];
 
-    if (!player.isDead && !player.isAiDead && dyingEntity !== player && !isHumanControlled(player)) {
-        return player;
+    if (marine().hp > 0 && !marine().deathMode && dyingEntity !== marine() && !isHumanControlled(marine())) {
+        return marine();
     }
     return null;
 }
@@ -390,22 +386,21 @@ function enemyLabel(type) {
 export function listAvailableBodies() {
     const bodies = [];
     const localControlled = controllers.get(LOCAL_SESSION);
-    if (!player.isDead && !player.isAiDead) {
+    if (marine().hp > 0 && !marine().deathMode) {
         bodies.push({
             kind: 'player',
             label: 'You (marine)',
             type: null,
-            hp: Math.round(player.health),
+            hp: Math.round(marine().hp),
             maxHp: 100,
-            isControlled: localControlled === player,
-            entity: player,
+            isControlled: localControlled === marine(),
+            entity: marine(),
         });
     }
 
-    const allThings = state.things;
-    for (let i = 0; i < allThings.length; i++) {
-        const thing = allThings[i];
-        if (!thing.ai) continue;
+    for (let i = 1; i < state.actors.length; i++) {
+        const thing = state.actors[i];
+        if (!thing || !thing.ai) continue;
         if (!ENEMIES.has(thing.type)) continue;
         if (thing.collected) continue;
         if ((thing.hp ?? 0) <= 0) continue;
@@ -446,34 +441,33 @@ export function listAvailableBodies() {
  */
 export function describeInteractor(entity) {
     if (!entity) return { id: 'unknown', label: 'Unknown', details: {} };
-    if (entity === player) {
-        const sessionId = entity.__sessionId || null;
+    if (entity === marine()) {
+        const sessionId = getSessionIdControlling(entity);
         return {
-            id: 'player',
+            id: formatRuntimeId(entity),
             label: sessionId ? 'Marine' : 'Marine (AI)',
             details: {
                 kind: 'marine',
-                health: Math.round(player.health),
-                armor: Math.round(player.armor),
-                keys: [...player.collectedKeys],
-                weapon: player.currentWeapon,
+                health: Math.round(marine().hp),
+                armor: Math.round(marine().armor),
+                keys: [...marine().collectedKeys],
+                weapon: marine().currentWeapon,
                 sessionId,
             },
         };
     }
     if (isDoorEntity(entity)) {
         return {
-            id: `door:${entity.sectorIndex}`,
+            id: formatRuntimeId(entity),
             label: `Door #${entity.sectorIndex}`,
             details: { kind: 'door' },
         };
     }
-    const idx = getThingIndex(entity);
-    const sessionId = entity.__sessionId || null;
+    const sessionId = getSessionIdControlling(entity);
     const type = entity.type;
     const aiLabel = enemyLabel(type);
     return {
-        id: idx >= 0 ? `thing:${idx}` : 'unknown',
+        id: formatRuntimeId(entity) ?? 'unknown',
         label: sessionId ? `${aiLabel} (human)` : aiLabel,
         details: {
             kind: ENEMIES.has(type) ? 'enemy' : 'thing',
@@ -495,14 +489,14 @@ export function describeInteractor(entity) {
 export function resetPossession() {
     controllers.clear();
     clearPlayerAi();
-    player.isAiDead = false;
+    marine().deathMode = null;
     notifyChange(LOCAL_SESSION, null);
 }
 
 /** Position/angle snapshot used by the camera. Default: local session. */
 export function getControlledEye(sessionId = LOCAL_SESSION) {
-    const controlled = controllers.get(sessionId) || player;
-    if (controlled === player) {
+    const controlled = controllers.get(sessionId) || marine();
+    if (controlled === marine()) {
         const rendered = renderedPlayerPoseFn?.();
         if (rendered) {
             return {
@@ -516,11 +510,11 @@ export function getControlledEye(sessionId = LOCAL_SESSION) {
             };
         }
         return {
-            x: player.x,
-            y: player.y,
-            z: player.z,
-            angle: player.angle,
-            floorHeight: player.floorHeight,
+            x: marine().x,
+            y: marine().y,
+            z: marine().z,
+            angle: marine().viewAngle,
+            floorHeight: marine().floorHeight,
         };
     }
     if (isDoorEntity(controlled)) {
@@ -558,15 +552,15 @@ export function getControlledEye(sessionId = LOCAL_SESSION) {
 }
 
 export function getControlledRadius(sessionId = LOCAL_SESSION) {
-    const controlled = controllers.get(sessionId) || player;
-    if (controlled === player) return player.radius ?? PLAYER_RADIUS;
+    const controlled = controllers.get(sessionId) || marine();
+    if (controlled === marine()) return marine().radius ?? PLAYER_RADIUS;
     if (isDoorEntity(controlled)) return 0;
     return controlled.ai?.radius ?? PLAYER_RADIUS;
 }
 
 export function getControlledHeight(sessionId = LOCAL_SESSION) {
-    const controlled = controllers.get(sessionId) || player;
-    if (controlled === player) return player.height ?? PLAYER_HEIGHT;
+    const controlled = controllers.get(sessionId) || marine();
+    if (controlled === marine()) return marine().height ?? PLAYER_HEIGHT;
     if (isDoorEntity(controlled)) return 0;
     return PLAYER_HEIGHT;
 }
@@ -581,8 +575,8 @@ export function getControlledHeight(sessionId = LOCAL_SESSION) {
 const POSSESSED_SPEED_FLOOR_RATIO = 0.85;
 
 export function getControlledSpeed(sessionId = LOCAL_SESSION) {
-    const controlled = controllers.get(sessionId) || player;
-    if (controlled === player) return player.speed;
+    const controlled = controllers.get(sessionId) || marine();
+    if (controlled === marine()) return marine().speed;
     if (isDoorEntity(controlled)) return 0;
     const aiSpeed = controlled.ai?.speed ?? MOVE_SPEED;
     return Math.max(aiSpeed, MOVE_SPEED * POSSESSED_SPEED_FLOOR_RATIO);

@@ -27,7 +27,9 @@ import {
     EXIT_SPECIAL, SECRET_EXIT_SPECIAL,
 } from '../constants.js';
 
-import { state, player } from '../state.js';
+import { state, getMarine } from '../state.js';
+
+const marine = () => getMarine();
 import { mapData } from '../../data/maps.js';
 import { toggleDoor } from './doors.js';
 import { activateLift } from './lifts.js';
@@ -47,12 +49,12 @@ import * as renderer from '../../renderer/index.js';
  *                                  within range
  */
 export async function tryUseSwitch(requestedBy) {
-    const controller = requestedBy || player;
-    const originX = controller?.x ?? player.x;
-    const originY = controller?.y ?? player.y;
-    const originAngle = controller === player
-        ? player.angle
-        : (controller?.viewAngle ?? controller?.facing ?? player.angle);
+    const controller = requestedBy || marine();
+    const originX = controller?.x ?? marine().x;
+    const originY = controller?.y ?? marine().y;
+    const originAngle = controller === marine()
+        ? marine().viewAngle
+        : (controller?.viewAngle ?? controller?.facing ?? marine().viewAngle);
 
     const forwardX = -Math.sin(originAngle);
     const forwardY = Math.cos(originAngle);

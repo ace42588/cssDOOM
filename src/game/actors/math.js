@@ -3,7 +3,7 @@
  */
 
 import { horizontalDistanceSquared } from '../geometry.js';
-import { resolveTargetEntity } from './adapter.js';
+import { resolveTargetEntity } from '../entity/interop.js';
 
 export function distance2(actorA, actorB) {
     return horizontalDistanceSquared(actorA, actorB);

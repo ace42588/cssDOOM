@@ -1,19 +1,22 @@
 /**
- * Enemy AI — state machine, movement orchestration, and per-frame update loop.
+ * Enemy AI — state machine, movement orchestration, per-frame update loop,
+ * and marine-as-AI when no human drives the player character.
  */
 
 import {
   ENEMIES,
   ENEMY_PROJECTILES,
+  ENEMY_RADIUS,
   LINE_OF_SIGHT_CHECK_INTERVAL,
+  WEAPONS,
 } from "../constants.js";
 
-import { state, player, debug } from "../state.js";
-import { getSectorAt } from "../physics/queries.js";
+import { state, getMarine, debug } from "../state.js";
+import { getSectorAt, getFloorHeightAt } from "../physics/queries.js";
 import * as renderer from "../../renderer/index.js";
 import { hasLineOfSight } from "../physics/line-of-sight.js";
 import { isSectorAlerted } from "../sound-propagation.js";
-import { damagePlayer } from "../player/damage.js";
+import { damageActor } from '../combat/damage.js';
 import { playSound } from "../../audio/audio.js";
 import { setEnemyState, respawnEnemy } from './state.js';
 import { getThingIndex } from '../things/registry.js';
@@ -25,15 +28,15 @@ import {
 import { spawnProjectile } from './projectiles.js';
 import {
   getHorizontalDistance,
+  randomDoomSpreadAngleRadians,
 } from "../geometry.js";
 import { moveEnemyToward } from './chase.js';
 import {
   distance2,
   resolveTargetActor,
 } from '../actors/math.js';
-import { isPlayerActorLike } from '../actors/adapter.js';
-import { isHumanControlled } from '../possession.js';
-import { updatePlayerAi } from './player-ai.js';
+import { isPlayerActorLike } from '../entity/interop.js';
+import { isHumanControlled, ensurePlayerAi } from '../possession.js';
 
 /** Throttle overlapping alert cries when many enemies wake at once. */
 const ALERT_SOUND_MIN_INTERVAL_MS = 500;
@@ -53,19 +56,22 @@ function rollMeleeDamage(enemyType) {
   return roll ? roll() : 0;
 }
 
+const marine = () => getMarine();
+
 /**
- * Chase target position; invalidates dead infighting targets (→ player, threshold 0).
+ * Chase target position; invalidates dead infighting targets (→ marine, threshold 0).
  * Based on: linuxdoom-1.10/p_enemy.c:A_Chase() — target dead → P_LookForPlayers flow.
  */
 function resolveTarget(enemy, deltaTime) {
   const ai = enemy.ai;
-  let targetActor = resolveTargetActor(enemy, player);
+  const m = marine();
+  let targetActor = resolveTargetActor(enemy, m);
 
-  if (targetActor !== player) {
+  if (targetActor !== m) {
     if (targetActor.collected || targetActor.hp <= 0) {
       ai.target = "player";
       ai.threshold = 0;
-      targetActor = player;
+      targetActor = m;
     }
   }
 
@@ -185,7 +191,7 @@ function tickAttacking(enemy, targetPos, currentTime) {
       const meleeDmg = rollMeleeDamage(enemy.type);
       if (hasLineOfSight(enemy, targetPos)) {
         if (targetIsPlayer) {
-          damagePlayer(meleeDmg);
+          damageActor(marine(), meleeDmg, null);
         } else {
           damageEnemy(ai.target, meleeDmg, enemy);
         }
@@ -245,6 +251,181 @@ function updateSingleEnemy(enemy, deltaTime, currentTime) {
   }
 }
 
+// ============================================================================
+// Player-as-AI (marine body while user possesses a monster)
+// ============================================================================
+
+function pickPlayerAiTarget() {
+  const m = marine();
+  const aiTarget = m.ai?.target;
+  if (
+    aiTarget &&
+    typeof aiTarget === 'object' &&
+    aiTarget !== m &&
+    !aiTarget.collected &&
+    (aiTarget.hp ?? 0) > 0
+  ) {
+    return aiTarget;
+  }
+
+  let closestDistSq = Infinity;
+  let closest = null;
+  for (let i = 1; i < state.actors.length; i++) {
+    const thing = state.actors[i];
+    if (!thing || !thing.ai) continue;
+    if (!ENEMIES.has(thing.type)) continue;
+    if (thing.collected) continue;
+    if ((thing.hp ?? 0) <= 0) continue;
+    if (isHumanControlled(thing)) continue;
+    const dx = thing.x - m.x;
+    const dy = thing.y - m.y;
+    const d2 = dx * dx + dy * dy;
+    if (d2 < closestDistSq) {
+      closestDistSq = d2;
+      closest = thing;
+    }
+  }
+  return closest;
+}
+
+function rollHitscanDamage() {
+  return 5 * (Math.floor(Math.random() * 3) + 1);
+}
+
+function fireAiWeapon(target) {
+  const m = marine();
+  const weapon = WEAPONS[m.currentWeapon];
+  if (!weapon) return;
+
+  if (!hasLineOfSight(m, target)) {
+    if (weapon.sound) playSound(weapon.sound);
+    return;
+  }
+
+  if (weapon.ammoType) {
+    if (m.ammo[weapon.ammoType] < weapon.ammoPerShot) return;
+    m.ammo[weapon.ammoType] -= weapon.ammoPerShot;
+  }
+
+  const distance = Math.max(1, getHorizontalDistance(m, target));
+  const radius = target.ai?.radius ?? ENEMY_RADIUS;
+  const angularSize = Math.atan2(radius, distance);
+
+  if (weapon.sound) playSound(weapon.sound);
+
+  const pellets = weapon.pellets || 1;
+  let totalDamage = 0;
+  for (let i = 0; i < pellets; i++) {
+    const spread = randomDoomSpreadAngleRadians(22.5);
+    if (Math.abs(spread) < angularSize) {
+      totalDamage += rollHitscanDamage();
+    }
+  }
+
+  if (totalDamage > 0) {
+    damageEnemy(target, totalDamage, m);
+  }
+}
+
+function updatePlayerFacingForAi(target) {
+  const m = marine();
+  const dx = target.x - m.x;
+  const dy = target.y - m.y;
+  if (dx === 0 && dy === 0) return;
+  m.viewAngle = Math.atan2(-dx, dy);
+  m.facing = m.viewAngle + Math.PI / 2;
+}
+
+function updatePlayerAi(deltaTime) {
+  const m = marine();
+  if (!m.ai) ensurePlayerAi();
+  if (m.hp <= 0 || m.deathMode) return;
+
+  m.floorHeight = getFloorHeightAt(m.x, m.y);
+
+  const ai = m.ai;
+  ai.stateTime += deltaTime;
+  if (ai.threshold > 0) ai.threshold -= deltaTime;
+
+  const target = pickPlayerAiTarget();
+  if (!target) {
+    ai.state = 'idle';
+    return;
+  }
+  ai.target = target;
+
+  const distSq = distance2(m, target);
+
+  switch (ai.state) {
+    case 'idle':
+      ai.wakeCheckTimer += deltaTime;
+      if (ai.wakeCheckTimer >= LINE_OF_SIGHT_CHECK_INTERVAL) {
+        ai.wakeCheckTimer = 0;
+        if (
+          distSq < ai.sightRange * ai.sightRange &&
+          hasLineOfSight(m, target)
+        ) {
+          ai.state = 'chasing';
+          ai.stateTime = 0;
+          ai.reactionTimer = ai.reactionTime;
+        }
+      }
+      break;
+
+    case 'chasing': {
+      updatePlayerFacingForAi(target);
+      if (moveEnemyToward(m, target, deltaTime)) {
+        // Movement updates handled by chase helper.
+      }
+
+      if (ai.reactionTimer > 0) {
+        ai.reactionTimer -= deltaTime;
+        break;
+      }
+
+      const now = performance.now();
+      if (now - ai.lastAttack > ai.cooldown * 1000) {
+        ai.rangedLosTimer += deltaTime;
+        if (
+          ai.rangedLosTimer >= LINE_OF_SIGHT_CHECK_INTERVAL &&
+          distSq < ai.attackRange * ai.attackRange
+        ) {
+          ai.rangedLosTimer = 0;
+          if (hasLineOfSight(m, target)) {
+            ai.state = 'attacking';
+            ai.stateTime = 0;
+            ai.damageDealt = false;
+          }
+        }
+      }
+      break;
+    }
+
+    case 'attacking': {
+      updatePlayerFacingForAi(target);
+      if (!ai.damageDealt && ai.stateTime >= ai.attackDuration / 2) {
+        ai.damageDealt = true;
+        if (!debug.noEnemyAttack) {
+          fireAiWeapon(target);
+        }
+      }
+      if (ai.stateTime >= ai.attackDuration) {
+        ai.lastAttack = performance.now();
+        ai.state = 'chasing';
+        ai.stateTime = 0;
+      }
+      break;
+    }
+
+    case 'pain':
+      if (ai.stateTime >= ai.painDuration) {
+        ai.state = 'chasing';
+        ai.stateTime = 0;
+      }
+      break;
+  }
+}
+
 /**
  * All enemies: nightmare respawn, distance cull, AI tick, sprite rotation.
  * Based on: linuxdoom-1.10/p_mobj.c:P_NightmareRespawn()
@@ -252,31 +433,19 @@ function updateSingleEnemy(enemy, deltaTime, currentTime) {
  * NOTE: in single-player DOOM the world stops thinking once the marine
  * dies. Multiplayer can't do that — there may be other sessions
  * possessing monsters who still want a live simulation. AI keeps running
- * regardless of `player.isDead`; downstream damage helpers (`damagePlayer`)
+ * regardless of `getMarine().isDead`; downstream damage helpers (`damageActor`)
  * already guard against attacking a corpse, and infighting / wandering
  * remain valid for everybody else.
  */
 export function updateAllEnemies(deltaTime) {
   const currentTime = performance.now();
-  const allThings = state.things;
-  for (let i = 0, length = allThings.length; i < length; i++) {
-    const thing = allThings[i];
-    if (!thing.ai) continue;
+  for (let i = 1, length = state.actors.length; i < length; i++) {
+    const thing = state.actors[i];
+    if (!thing || !thing.ai) continue;
     if (!ENEMIES.has(thing.type)) continue;
 
-    // Skip monsters under any human controller — those sessions drive the
-    // body through movement/weapon modules instead. In single-player this
-    // matches the previous "skip the one possessed body" behavior.
-    //
-    // BUT: DOOM sprite rotation is computed relative to *the local
-    // viewer*, not the monster itself. Non-possessed enemies get their
-    // rotation refreshed every tick below; if we bail here for possessed
-    // bodies the sprite stays locked on whatever frame the last net
-    // snapshot set, so it looks static (or jumps on facing deltas) as
-    // the local player walks around them. Keep the rotation refresh but
-    // skip the AI tick.
     if (isHumanControlled(thing)) {
-      renderer.updateEnemyRotation(getThingIndex(thing), thing);
+      renderer.updateEnemyRotation(thing.thingIndex, thing);
       continue;
     }
 
@@ -291,12 +460,11 @@ export function updateAllEnemies(deltaTime) {
     }
 
     updateSingleEnemy(thing, deltaTime, currentTime);
-    renderer.updateEnemyRotation(getThingIndex(thing), thing);
+    renderer.updateEnemyRotation(thing.thingIndex, thing);
   }
 
-  // When no human is driving the player character, run a lightweight
-  // enemy-style AI on it so the ex-body keeps fighting and roaming.
-  if (!isHumanControlled(player) && !player.isAiDead && !player.isDead) {
+  const m = marine();
+  if (!isHumanControlled(m) && !m.deathMode && m.hp > 0) {
     updatePlayerAi(deltaTime);
   }
 }

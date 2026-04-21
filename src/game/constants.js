@@ -37,6 +37,9 @@ export const MAX_STEP_HEIGHT = 24; // Tallest step the player can climb without 
 // Keeps per-frame work manageable.
 export const MAX_RENDER_DISTANCE = 2250;
 
+/** Renderer `thingDom` keys for `state.actors[1..]` — disjoint from dense `thing:<n>` indices. */
+export const ACTOR_DOM_KEY_OFFSET = 1_000_000;
+
 // Cap the per-frame delta time so a single long pause (e.g. tab switch)
 // doesn't cause huge physics jumps.
 export const MAX_FRAME_DELTA_TIME = 0.05; // 50 ms = minimum 20 FPS equivalent
@@ -238,7 +241,87 @@ export const WEAPONS = {
     damageType: "melee",
     range: 80,
   },
+  // Intrinsic monster slots — shape parity with marine `currentWeapon` / `ownedWeapons`.
+  // Possessed fire still uses `fireMonsterAttack` + `monster.ai` until stage 2 unifies `fire`.
+  101: {
+    name: "MONSTER_ZOMBIE",
+    ammoType: null,
+    ammoPerShot: 0,
+    fireRate: 1500,
+    sound: "DSPISTOL",
+    damageType: "hitscan",
+    range: 1500,
+    hitscan: true,
+    pellets: 1,
+  },
+  102: {
+    name: "MONSTER_SHOTGUY",
+    ammoType: null,
+    ammoPerShot: 0,
+    fireRate: 1500,
+    sound: "DSPISTOL",
+    damageType: "hitscan",
+    range: 1500,
+    hitscan: true,
+    pellets: 3,
+  },
+  103: {
+    name: "MONSTER_IMP",
+    ammoType: null,
+    ammoPerShot: 0,
+    fireRate: 1500,
+    sound: "DSFIRSHT",
+    damageType: "rocket",
+    range: 2048,
+  },
+  104: {
+    name: "MONSTER_DEMON",
+    ammoType: null,
+    ammoPerShot: 0,
+    fireRate: 800,
+    sound: "DSSGTATK",
+    damageType: "melee",
+    range: 80,
+  },
+  105: {
+    name: "MONSTER_SPECTRE",
+    ammoType: null,
+    ammoPerShot: 0,
+    fireRate: 800,
+    sound: "DSSGTATK",
+    damageType: "melee",
+    range: 80,
+  },
+  106: {
+    name: "MONSTER_BARON",
+    ammoType: null,
+    ammoPerShot: 0,
+    fireRate: 1500,
+    sound: "DSFIRSHT",
+    damageType: "rocket",
+    range: 2048,
+  },
 };
+
+/** Maps enemy thing type → `WEAPONS` slot for `ownedWeapons` / `currentWeapon`. */
+export const MONSTER_INTRINSIC_WEAPON_SLOT = Object.freeze({
+  3004: 101,
+  9: 102,
+  3001: 103,
+  3002: 104,
+  58: 105,
+  3003: 106,
+});
+
+/** Actor `kind` string per enemy thing type. */
+export const ENEMY_KIND_BY_TYPE = Object.freeze({
+  3004: "zombieman",
+  9: "shotgunGuy",
+  3001: "imp",
+  3002: "demon",
+  58: "spectre",
+  3003: "baron",
+});
 
 // ============================================================================
 // Thing Health

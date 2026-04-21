@@ -47,7 +47,7 @@ globalThis.WebSocket = class { constructor() { this.readyState = 0; } send() {} 
 globalThis.location = { protocol: 'http:', host: 'localhost' };
 
 const { input } = await import('../src/input/index.js');
-const { player } = await import('../src/game/state.js');
+const { getMarine } = await import('../src/game/state.js');
 const inputSource = await import('../src/mcp/input-source.js');
 const { registerActorTools } = await import('../src/mcp/tools/actor.js');
 const { registerEnemyTools } = await import('../src/mcp/tools/enemies.js');
@@ -126,7 +126,8 @@ await registry.call('actor.use', {});
 console.log('  actor.use did not throw.');
 
 console.log('── 9. actor.turn-to returns target angle reached ──');
-player.x = 0; player.y = 0; player.angle = 0;
+const m = getMarine();
+m.x = 0; m.y = 0; m.viewAngle = 0;
 const turnRes = await registry.call('actor.turn-to', { angle: 0.3, tolerance: 0.2, timeoutMs: 600 });
 frame();
 assert.ok(turnRes.ok === true || turnRes.ok === false,

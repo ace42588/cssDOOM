@@ -13,7 +13,7 @@
  *   Authorization: Bearer <SGNL_EVENTS_TOKEN>
  *   Content-Type: application/json
  *   Body: { "events": [ { "id": "uuid", "type": "DoorState",
- *                         "subject": "door:E1M1:42", ... }, ... ] }
+ *                         "subject": "door:42", ... }, ... ] }
  *
  * Dispatch model (mirrors SCIM):
  *   - Engine hooks call `markEntityDirty(kind, id)` on every meaningful
@@ -79,7 +79,7 @@ let eventsFatallyDisabled = false;
 let currentMapName = 'E1M1';
 
 /**
- * Per-entity bookkeeping keyed by canonical id (e.g. `door:E1M1:42`).
+ * Per-entity bookkeeping keyed by canonical short id (e.g. `door:42`).
  *   {
  *     kind,          // 'door' | 'lift' | 'crusher' | 'pickup' | 'key' | 'actor'
  *     lastHash,      // JSON hash of the last event payload we emitted

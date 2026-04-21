@@ -20,31 +20,30 @@ import {
     drainPendingRoleChanges,
     queueRoleChange,
     getTickRateHz,
-    getMapPayload,
     requestMapLoad,
     resetBaseline,
 } from './world.js';
 import {
-    addConnection,
     bumpActivity,
-    removeConnection,
     getConnection,
     listConnections,
     send,
 } from './connections.js';
 import {
-    assignOnJoin,
-    releaseOnDisconnect,
-} from './assignment.js';
-import { sanitizeInput, MSG, ALLOWED_MAPS } from './net.js';
+    ClientInputMessageSchema,
+    LoadMapRequestMessageSchema,
+    MSG,
+    sanitizeInput,
+} from './net.js';
 import {
     createSgnlServices,
-    registerSession,
-    unregisterSession,
-    emitSessionEstablished,
     initSgnl,
 } from './sgnl/index.js';
 import { installMcp } from './mcp/index.js';
+import {
+    closeGameSession,
+    openWebSocketGameSession,
+} from './session-lifecycle.js';
 
 const PORT = Number(process.env.PORT) || 8787;
 
@@ -109,26 +108,7 @@ async function main() {
 }
 
 function handleConnection(ws) {
-    const conn = addConnection(ws);
-    registerSession(conn.sessionId);
-    emitSessionEstablished(conn.sessionId);
-    const { role, controlledId, followTargetId } = assignOnJoin(conn);
-    conn.role = role;
-    conn.controlledId = controlledId;
-    conn.followTargetId = followTargetId;
-
-    const { name: mapName, mapData } = getMapPayload();
-    send(conn, {
-        type: MSG.WELCOME,
-        sessionId: conn.sessionId,
-        role: conn.role,
-        controlledId: conn.controlledId,
-        followTargetId: conn.followTargetId,
-        mapName,
-        tickRateHz: getTickRateHz(),
-        serverTime: Date.now(),
-    });
-    send(conn, { type: MSG.MAP_LOAD, mapName, mapData });
+    const conn = openWebSocketGameSession(ws);
 
     ws.on('message', (raw) => {
         let msg;
@@ -137,10 +117,12 @@ function handleConnection(ws) {
         if (!msg || typeof msg !== 'object') return;
 
         if (msg.type === MSG.INPUT) {
-            const seq = Number(msg.seq) || 0;
+            const parsed = ClientInputMessageSchema.safeParse(msg);
+            if (!parsed.success) return;
+            const { seq, input } = parsed.data;
             if (seq < conn.lastInputSeq) return;
             conn.lastInputSeq = seq;
-            const nextInput = sanitizeInput(msg.input);
+            const nextInput = sanitizeInput(input);
             if (hasMeaningfulInputActivity(conn.input, nextInput)) {
                 bumpActivity(conn);
             }
@@ -149,8 +131,9 @@ function handleConnection(ws) {
         }
 
         if (msg.type === MSG.LOAD_MAP_REQUEST) {
-            const requested = typeof msg.mapName === 'string' ? msg.mapName : '';
-            if (!ALLOWED_MAPS.has(requested)) return;
+            const parsed = LoadMapRequestMessageSchema.safeParse(msg);
+            if (!parsed.success) return;
+            const requested = parsed.data.mapName;
             bumpActivity(conn);
             void requestMapLoad(requested);
             return;
@@ -169,11 +152,7 @@ function handleConnection(ws) {
     });
 
     ws.on('close', () => {
-        const existing = getConnection(conn.sessionId);
-        if (!existing) return;
-        releaseOnDisconnect(existing);
-        removeConnection(conn.sessionId);
-        unregisterSession(conn.sessionId);
+        closeGameSession(conn.sessionId);
     });
 
     ws.on('error', () => {

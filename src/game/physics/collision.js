@@ -3,19 +3,21 @@
  */
 
 import { PLAYER_HEIGHT, MAX_STEP_HEIGHT, EYE_HEIGHT } from '../constants.js';
-import { state, player, debug } from '../state.js';
+import { state, getMarine, debug } from '../state.js';
+
+const marine = () => getMarine();
 import { isDoorClosed, getDoorEntry } from '../mechanics/doors.js';
 import { circleLineCollision } from '../geometry.js';
 import { forEachWallInAABB } from '../spatial-grid.js';
 import { getFloorHeightAt, getSectorAt } from './queries.js';
 import { getThingCollisionRadius } from '../things/geometry.js';
-import { asMovementActor, assertMovementActor } from '../actors/adapter.js';
+import { asMovementActor, assertMovementActor } from '../entity/interop.js';
 
 function crossesLinedef(newX, newY, _radius, wall) {
     const dx = wall.end.x - wall.start.x;
     const dy = wall.end.y - wall.start.y;
 
-    const oldSide = (player.x - wall.start.x) * dy - (player.y - wall.start.y) * dx;
+    const oldSide = (marine().x - wall.start.x) * dy - (marine().y - wall.start.y) * dx;
     const newSide = (newX - wall.start.x) * dy - (newY - wall.start.y) * dx;
 
     if ((oldSide > 0) === (newSide > 0)) return false;
@@ -26,7 +28,7 @@ function crossesLinedef(newX, newY, _radius, wall) {
 function canMoveToRaw(newX, newY, radius, currentFloorHeight, maxDropHeight = Infinity, excludeThing = null) {
     if (debug.noclip) return true;
 
-    const playerTop = currentFloorHeight + (player.height ?? PLAYER_HEIGHT);
+    const playerTop = currentFloorHeight + (marine().height ?? PLAYER_HEIGHT);
     let blocked = false;
     forEachWallInAABB(newX - radius, newY - radius, newX + radius, newY + radius, wall => {
         const doorEntry = getDoorEntry(wall);
@@ -47,10 +49,22 @@ function canMoveToRaw(newX, newY, radius, currentFloorHeight, maxDropHeight = In
     });
     if (blocked) return false;
 
+    for (let i = 1, ac = state.actors.length; i < ac; i++) {
+        const thing = state.actors[i];
+        if (!thing || thing.collected || thing === excludeThing) continue;
+        const thingRadius = getThingCollisionRadius(thing);
+        if (thingRadius === null) continue;
+        const deltaX = newX - thing.x;
+        const deltaY = newY - thing.y;
+        const combinedRadius = radius + thingRadius;
+        if (deltaX * deltaX + deltaY * deltaY < combinedRadius * combinedRadius) {
+            return false;
+        }
+    }
     const things = state.things;
     for (let i = 0, thingCount = things.length; i < thingCount; i++) {
         const thing = things[i];
-        if (thing.collected || thing === excludeThing) continue;
+        if (!thing || thing.collected || thing === excludeThing) continue;
         const thingRadius = getThingCollisionRadius(thing);
         if (thingRadius === null) continue;
         const deltaX = newX - thing.x;
@@ -128,7 +142,7 @@ export function rayHitPoint(originX, originY, directionX, directionY, maxDistanc
     let closestHitDistance = maxDistance;
     const endX = originX + directionX * maxDistance;
     const endY = originY + directionY * maxDistance;
-    const eyeZ = player.floorHeight + EYE_HEIGHT;
+    const eyeZ = marine().floorHeight + EYE_HEIGHT;
 
     forEachWallInAABB(
         Math.min(originX, endX), Math.min(originY, endY),

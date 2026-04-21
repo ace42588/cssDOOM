@@ -1,11 +1,11 @@
 /**
  * WebMCP tools for driving whatever body the local session controls. Each tool
- * either reads server-replicated state (`player`, possession pose), or feeds
+ * either reads server-replicated state (marine via `getMarine()`, possession pose), or feeds
  * the client's input pipeline (`../input-source.js`). No tool directly mutates
  * authoritative game state; the server sees inputs on the next `sendInputFrame()`.
  */
 
-import { player, state } from '../../game/state.js';
+import { getMarine, state } from '../../game/state.js';
 import { ENEMIES } from '../../game/constants.js';
 import { pressUse, requestWeaponSwitch, requestBodySwap } from '../../net/client.js';
 import {
@@ -18,6 +18,7 @@ import {
     turnTo,
     moveTo,
 } from '../input-source.js';
+import { normalizePossessTargetId } from '../../game/entity/id.js';
 
 function textContent(obj) {
     return { content: [{ type: 'text', text: JSON.stringify(obj) }] };
@@ -34,19 +35,6 @@ function isLiveEnemy(thing) {
     return Boolean(thing.ai) && ENEMIES.has(thing.type);
 }
 
-function normalizePossessTargetId(raw) {
-    if (raw == null) return null;
-    const s = String(raw).trim();
-    if (!s) return null;
-    const lower = s.toLowerCase();
-    if (lower === 'marine' || lower === 'player') return 'player';
-    const thingM = /^thing:(\d+)$/i.exec(s);
-    if (thingM) return `thing:${thingM[1]}`;
-    const doorM = /^door:(\d+)$/i.exec(s);
-    if (doorM) return `door:${doorM[1]}`;
-    return null;
-}
-
 export function registerActorTools() {
     navigator.modelContext.registerTool({
         name: 'actor.get-state',
@@ -57,21 +45,21 @@ export function registerActorTools() {
             const pose = getControlledPose();
             return textContent({
                 marine: {
-                    x: player.x,
-                    y: player.y,
-                    z: player.z,
-                    angle: player.angle,
-                    health: player.health,
-                    armor: player.armor,
-                    armorType: player.armorType,
-                    ammo: { ...player.ammo },
-                    maxAmmo: { ...player.maxAmmo },
-                    currentWeapon: player.currentWeapon,
-                    ownedWeapons: [...player.ownedWeapons],
-                    collectedKeys: [...player.collectedKeys],
-                    powerups: { ...player.powerups },
-                    isDead: Boolean(player.isDead),
-                    isFiring: Boolean(player.isFiring),
+                    x: getMarine().x,
+                    y: getMarine().y,
+                    z: getMarine().z,
+                    angle: getMarine().viewAngle,
+                    health: getMarine().hp,
+                    armor: getMarine().armor,
+                    armorType: getMarine().armorType,
+                    ammo: { ...getMarine().ammo },
+                    maxAmmo: { ...getMarine().maxAmmo },
+                    currentWeapon: getMarine().currentWeapon,
+                    ownedWeapons: [...getMarine().ownedWeapons],
+                    collectedKeys: [...getMarine().collectedKeys],
+                    powerups: { ...getMarine().powerups },
+                    isDead: getMarine().deathMode === 'gameover',
+                    isFiring: Boolean(getMarine().isFiring),
                 },
                 controlled: {
                     kind: pose.kind,
@@ -245,11 +233,25 @@ export function registerActorTools() {
             required: ['targetId'],
         },
         async execute(args) {
-            const tid = normalizePossessTargetId(args?.targetId);
+            const parsed = normalizePossessTargetId(args?.targetId);
+            const tid = parsed?.bodySwap ?? null;
             if (!tid) return textContent({ ok: false, reason: 'invalid targetId' });
-            if (tid === 'player') {
-                requestBodySwap('player');
-                return ok({ requested: 'player' });
+            if (tid === 'actor:0' || tid === 'player') {
+                requestBodySwap('actor:0');
+                return ok({ requested: tid });
+            }
+            if (tid.startsWith('actor:')) {
+                const id = Number(tid.slice('actor:'.length));
+                if (!Number.isInteger(id) || id <= 0) {
+                    return textContent({ ok: false, reason: 'invalid actor index' });
+                }
+                const thing = state.actors[id];
+                if (!thing) return textContent({ ok: false, reason: 'not found' });
+                if (!isLiveEnemy(thing)) {
+                    return textContent({ ok: false, reason: 'enemy not live/possessable from client view' });
+                }
+                requestBodySwap(tid);
+                return ok({ requested: tid });
             }
             if (tid.startsWith('thing:')) {
                 const id = Number(tid.slice('thing:'.length));

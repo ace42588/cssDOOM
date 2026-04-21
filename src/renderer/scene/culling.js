@@ -11,9 +11,9 @@
  * partially overlap the view.
  */
 
-import { state, player } from '../../game/state.js';
+import { state, getMarine } from '../../game/state.js';
 import { sceneState } from '../dom.js';
-import { MAX_RENDER_DISTANCE } from '../../game/constants.js';
+import { ACTOR_DOM_KEY_OFFSET, MAX_RENDER_DISTANCE } from '../../game/constants.js';
 import { spectatorActive } from '../../ui/spectator.js';
 import { getControlledEye } from '../../game/possession.js';
 import { computeVisibleSectors } from './pvs.js';
@@ -235,7 +235,8 @@ export function debugSkyTrace(wallId) {
     const el = sceneState.wallElements.find(e => e.id === wallId);
     if (!el) { console.log(`Wall ${wallId} not found in wallElements`); return; }
 
-    const playerX = player.x, playerY = player.y;
+    const m = getMarine();
+    const playerX = m.x, playerY = m.y;
     const x = el._midX, y = el._midY;
     const z = el._wall ? el._wall.topHeight : 0;
     const dx = x - playerX, dy = y - playerY;
@@ -502,7 +503,11 @@ export function updateCulling() {
         // Skip dead/collected things — but ensure visibility is restored
         // so death/explosion animations can play even if the thing was
         // previously culled offscreen.
-        const gameEntry = t.gameId !== undefined ? state.things[t.gameId] : null;
+        const gameEntry = t.gameId !== undefined
+            ? (t.gameId >= ACTOR_DOM_KEY_OFFSET
+                ? (state.actors[t.gameId - ACTOR_DOM_KEY_OFFSET] ?? null)
+                : (state.things[t.gameId] ?? null))
+            : null;
         if (gameEntry?.collected) {
             setCulled(t.element, false);
             continue;

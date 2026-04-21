@@ -13,6 +13,7 @@
  */
 
 import { state } from '../../game/state.js';
+import { getSessionIdControlling } from '../../game/possession.js';
 import { pressUse, requestDoorDecision } from '../../net/client.js';
 
 function textContent(obj) {
@@ -32,7 +33,7 @@ function snapshotDoor(entry) {
         open: Boolean(entry.open),
         passable: Boolean(entry.passable),
         keyRequired: entry.keyRequired ?? null,
-        operatorSessionId: doorEntity?.__sessionId ?? null,
+        sessionId: getSessionIdControlling(doorEntity) ?? null,
         camera: doorEntity
             ? { x: doorEntity.x, y: doorEntity.y, z: doorEntity.z, viewAngle: doorEntity.viewAngle ?? 0 }
             : null,

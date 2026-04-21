@@ -29,7 +29,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { config as loadEnv } from 'dotenv';
-import { player } from '../../src/game/state.js';
+import { getMarine } from '../../src/game/state.js';
 
 loadEnv({
     path: join(dirname(fileURLToPath(import.meta.url)), '../../.env'),
@@ -124,27 +124,27 @@ function snapshotPlayer(session) {
         id: userName,
         schemas: [SCIM_CORE_USER_SCHEMA, PLAYER_SCHEMA],
         userName,
-        active: !player.isDead,
+        active: getMarine().deathMode !== 'gameover',
         sessionId: session.sessionId,
         correlationId,
         mapName: currentMapName,
         displayName: session.displayName || 'Doom Marine',
-        position: { x: player.x, y: player.y, z: player.z, angle: player.angle },
+        position: { x: getMarine().x, y: getMarine().y, z: getMarine().z, angle: getMarine().viewAngle },
         vitals: {
-            health: player.health,
-            armor: player.armor,
-            armorType: player.armorType,
-            isDead: Boolean(player.isDead),
+            health: getMarine().hp,
+            armor: getMarine().armor,
+            armorType: getMarine().armorType,
+            isDead: getMarine().deathMode === 'gameover',
         },
-        ammo: { ...player.ammo },
-        maxAmmo: { ...player.maxAmmo },
+        ammo: { ...getMarine().ammo },
+        maxAmmo: { ...getMarine().maxAmmo },
         inventory: {
-            hasBackpack: Boolean(player.hasBackpack),
-            currentWeapon: player.currentWeapon,
-            ownedWeapons: toSortedArray(player.ownedWeapons),
-            collectedKeys: toSortedArray(player.collectedKeys),
+            hasBackpack: Boolean(getMarine().hasBackpack),
+            currentWeapon: getMarine().currentWeapon,
+            ownedWeapons: toSortedArray(getMarine().ownedWeapons),
+            collectedKeys: toSortedArray(getMarine().collectedKeys),
         },
-        powerups: Object.entries(player.powerups).map(([name, remainingSeconds]) => ({
+        powerups: Object.entries(getMarine().powerups).map(([name, remainingSeconds]) => ({
             name, remainingSeconds,
         })),
         updatedAt: nowIsoString(),

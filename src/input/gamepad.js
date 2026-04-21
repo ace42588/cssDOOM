@@ -21,7 +21,7 @@
 
 import 'gamecontroller.js';
 import { input } from './index.js';
-import { player } from '../game/state.js';
+import { getMarine } from '../game/state.js';
 import { isMenuOpen, toggleMenu } from '../ui/menu.js';
 import { registerInputProvider } from './index.js';
 import { pressUse, requestWeaponSwitch } from '../net/client.js';
@@ -146,14 +146,14 @@ function setupGamepad(gamepad) {
 // ============================================================================
 
 function cycleWeapon(direction) {
-    const owned = [...player.ownedWeapons].sort((a, b) => a - b);
-    const currentIndex = owned.indexOf(player.currentWeapon);
+    const owned = [...getMarine().ownedWeapons].sort((a, b) => a - b);
+    const currentIndex = owned.indexOf(getMarine().currentWeapon);
     const nextIndex = (currentIndex + direction + owned.length) % owned.length;
     requestWeaponSwitch(owned[nextIndex]);
 }
 
 function handleDeadRestart() {
-    if (!player.isDead) return false;
+    if (getMarine().deathMode !== 'gameover') return false;
     if (shouldOfferRespawnReload()) {
         location.reload();
     }

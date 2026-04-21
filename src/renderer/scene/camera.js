@@ -36,7 +36,7 @@
  * --player-z) and avoids JavaScript reflow overhead.
  */
 
-import { player } from '../../game/state.js';
+import { getMarine } from '../../game/state.js';
 import { getControlled, getControlledEye } from '../../game/possession.js';
 import { getRenderedPlayerPose } from '../../net/client.js';
 import { dom } from '../dom.js';
@@ -49,7 +49,7 @@ import { dom } from '../dom.js';
  * With body-swap, the "view" tracks whichever actor is currently under
  * user control — the normal player character or a possessed monster.
  *
- * Multiplayer: the marine (`player`) has its own world position/angle
+ * Multiplayer: the marine (`getMarine()`) has its own world position/angle
  * independent of the viewer's eye. We expose `--marine-*` vars so the
  * third-person `#player` sprite can be drawn at the marine's real world
  * location whenever the local viewer isn't the marine themselves.
@@ -97,7 +97,8 @@ export function updateCamera() {
     setVarIfChanged(viewportStyle, '--marine-floor', marine.floor || 0, 'mf');
     setVarIfChanged(viewportStyle, '--marine-angle', marine.angle, 'ma');
 
-    const showMarine = getControlled() !== player && !player.isDead;
+    const m = getMarine();
+    const showMarine = getControlled() !== m && m.deathMode !== 'gameover';
     if (showMarine !== lastShowMarine) {
         lastShowMarine = showMarine;
         document.body.classList.toggle('show-marine', showMarine);
@@ -105,7 +106,7 @@ export function updateCamera() {
 
     const marker = document.querySelector('#player > .marker');
     if (marker) {
-        marker.classList.toggle('firing', player.isFiring);
+        marker.classList.toggle('firing', m.isFiring);
     }
 
     if (showMarine) {

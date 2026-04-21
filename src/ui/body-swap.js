@@ -9,7 +9,7 @@
 
 import { listAvailableBodies, onPossessionChange } from '../game/possession.js';
 import { requestBodySwap } from '../net/client.js';
-import { player } from '../game/state.js';
+import { getMarine } from '../game/state.js';
 import { getThingIndex } from '../game/things/registry.js';
 
 const overlay = document.createElement('div');
@@ -111,7 +111,7 @@ function renderBodies() {
 
 function targetIdForBody(body) {
     if (body.kind === 'door') return `door:${body.sectorIndex}`;
-    if (body.entity === player) return 'player';
+    if (body.entity === getMarine()) return 'player';
     const idx = getThingIndex(body.entity);
     return idx >= 0 ? `thing:${idx}` : null;
 }

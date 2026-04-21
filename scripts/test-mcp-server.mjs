@@ -20,16 +20,16 @@ import {
 } from '../server/world.js';
 import { getConnection } from '../server/connections.js';
 import { createSgnlServices } from '../server/sgnl/index.js';
-import { state, player } from '../src/game/state.js';
+import { state, getMarine } from '../src/game/state.js';
 import { ENEMIES } from '../src/game/constants.js';
-import { getThingIndex } from '../src/game/things/registry.js';
+import { getActorIndex } from '../src/game/things/registry.js';
 import { buildMcpServerForNewSession } from '../server/mcp/index.js';
 import { openMcpSession, closeMcpSession } from '../server/mcp/sessions.js';
 import { tickIdleChecks } from '../server/idle.js';
 import { emptyInput } from '../server/net.js';
-import { updateMovementFor } from '../src/game/movement/player.js';
+import { updateMovementFor } from '../src/game/movement/system.js';
 import { getControlledFor } from '../src/game/possession.js';
-import { poseOf } from '../server/mcp/snapshot.js';
+import { poseOf } from '../src/game/entity/caps.js';
 import { rolePromptFor } from '../server/mcp/role.js';
 import { normalizeAngle } from '../src/game/math/angle.js';
 
@@ -159,10 +159,11 @@ async function main() {
 
     console.log('── 4b. yaw normalizes to [-pi, pi] after a movement tick ──');
     const sid = conn.sessionId;
-    if (getControlledFor(sid) === player) {
-        player.angle = 100;
+    const m = getMarine();
+    if (getControlledFor(sid) === m) {
+        m.viewAngle = 100;
         updateMovementFor(sid, emptyInput(), 1 / 35, 0);
-        const poseAng = poseOf(player).angle;
+        const poseAng = poseOf(m).angle;
         assert.ok(poseAng >= -Math.PI - 1e-5 && poseAng <= Math.PI + 1e-5, `pose angle in [-pi,pi]: ${poseAng}`);
         assert.ok(Math.abs(poseAng - normalizeAngle(100)) < 1e-5, `pose matches normalizeAngle: ${poseAng}`);
     } else {
@@ -198,16 +199,16 @@ async function main() {
     assert.equal(typeof enemies.count, 'number', 'count is a number');
     console.log(`  enemies.count=${enemies.count}`);
 
-    console.log('── 9. actor-possess queues bodySwap with thing:N ──');
-    const livingEnemy = state.things.find((t) => t && t.ai && ENEMIES.has(t.type) && (t.hp ?? 0) > 0 && !t.collected);
+    console.log('── 9. actor-possess queues bodySwap with actor:N ──');
+    const livingEnemy = state.actors.find((t) => t && t.ai && ENEMIES.has(t.type) && (t.hp ?? 0) > 0 && !t.collected);
     if (livingEnemy) {
-        const idx = getThingIndex(livingEnemy);
+        const idx = getActorIndex(livingEnemy);
         conn.input.bodySwap = null;
-        const res = await callTool(client, 'actor-possess', { targetId: `thing:${idx}` });
+        const res = await callTool(client, 'actor-possess', { targetId: `actor:${idx}` });
         assert.equal(res.ok, true, 'possess accepted');
         assert.ok(res.role && res.role.kind === 'enemy', 'role hints for enemy');
-        assert.deepEqual(conn.input.bodySwap, { targetId: `thing:${idx}` }, 'bodySwap queued');
-        console.log(`  possess thing:${idx} queued.`);
+        assert.deepEqual(conn.input.bodySwap, { targetId: `actor:${idx}` }, 'bodySwap queued');
+        console.log(`  possess actor:${idx} queued.`);
     } else {
         console.log('  (no living enemy in E1M1 — skipped)');
     }
@@ -222,7 +223,7 @@ async function main() {
     const rel = await callTool(client, 'actor-possess', { targetId: 'marine' });
     assert.equal(rel.ok, true);
     assert.ok(rel.role && rel.role.kind === 'marine', 'role hints for marine');
-    assert.deepEqual(conn.input.bodySwap, { targetId: 'player' });
+    assert.deepEqual(conn.input.bodySwap, { targetId: 'actor:0' });
     console.log('  release queued.');
 
     console.log('── 12. doors-list never throws on E1M1 ──');

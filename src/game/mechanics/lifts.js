@@ -21,7 +21,9 @@
 
 import { USE_RANGE, LIFT_RAISE_DELAY, LIFT_USE_SPECIAL } from '../constants.js';
 
-import { state, player } from '../state.js';
+import { state, getMarine } from '../state.js';
+
+const marine = () => getMarine();
 import { mapData, currentMap } from '../../data/maps.js';
 import { playSound } from '../../audio/audio.js';
 import * as renderer from '../../renderer/index.js';
@@ -195,7 +197,7 @@ export function checkWalkOverTriggers() {
         // sign > 0 → front side, sign < 0 → back side.
         const dx = trigger.end.x - trigger.start.x;
         const dy = trigger.end.y - trigger.start.y;
-        const side = (player.x - trigger.start.x) * dy - (player.y - trigger.start.y) * dx;
+        const side = (marine().x - trigger.start.x) * dy - (marine().y - trigger.start.y) * dx;
         const currentSide = side > 0;
 
         const previousSide = trigger._previousSide;
@@ -230,10 +232,10 @@ export function checkWalkOverTriggers() {
 export function tryUseLift() {
     if (!liftEntries.length) return;
 
-    const forwardX = -Math.sin(player.angle);
-    const forwardY = Math.cos(player.angle);
-    const checkX = player.x + forwardX * USE_RANGE / 2;
-    const checkY = player.y + forwardY * USE_RANGE / 2;
+    const forwardX = -Math.sin(marine().viewAngle);
+    const forwardY = Math.cos(marine().viewAngle);
+    const checkX = marine().x + forwardX * USE_RANGE / 2;
+    const checkY = marine().y + forwardY * USE_RANGE / 2;
 
     for (const wall of mapData.walls) {
         const linedef = mapData.linedefs[wall.linedefIndex];

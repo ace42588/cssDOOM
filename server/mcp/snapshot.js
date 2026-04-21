@@ -8,14 +8,16 @@
  * snapshot for this session".
  */
 
-import { player, state } from '../../src/game/state.js';
+import { getMarine, state } from '../../src/game/state.js';
 import { ENEMIES } from '../../src/game/constants.js';
-import { getThingIndex } from '../../src/game/things/registry.js';
+import { getThingIndex, getActorIndex } from '../../src/game/things/registry.js';
 import {
     getControlledFor,
+    getSessionIdControlling,
     listHumanControlledEntries,
 } from '../../src/game/possession.js';
 import { entityId } from '../assignment.js';
+import { poseOf } from '../../src/game/entity/caps.js';
 import { listConnections, getConnection } from '../connections.js';
 import { getMapPayload, getCurrentTick } from '../world.js';
 import { normalizeAngle } from '../../src/game/math/angle.js';
@@ -41,59 +43,33 @@ function isLiveEnemy(thing) {
     return (thing.hp ?? 0) > 0;
 }
 
-/** Pose helper that mirrors `src/mcp/input-source.js#getControlledPose`. */
-export function poseOf(entity) {
-    if (!entity) return null;
-    if (entity === player) {
-        return { kind: 'marine', x: player.x, y: player.y, z: player.z, angle: normalizeAngle(player.angle) };
-    }
-    if (entity.__isDoorEntity) {
-        return {
-            kind: 'door',
-            x: entity.x,
-            y: entity.y,
-            z: entity.z ?? 0,
-            angle: normalizeAngle(entity.viewAngle ?? 0),
-        };
-    }
-    const angle = typeof entity.viewAngle === 'number'
-        ? entity.viewAngle
-        : ((entity.facing ?? 0) - Math.PI / 2);
-    return {
-        kind: 'enemy',
-        x: entity.x,
-        y: entity.y,
-        z: entity.z ?? entity.floorHeight ?? 0,
-        angle: normalizeAngle(angle),
-    };
-}
-
 export function snapshotPlayer() {
     return {
-        x: player.x,
-        y: player.y,
-        z: player.z,
-        angle: normalizeAngle(player.angle),
-        floorHeight: player.floorHeight,
-        health: player.health,
-        armor: player.armor,
-        armorType: player.armorType,
-        ammo: { ...player.ammo },
-        maxAmmo: { ...player.maxAmmo },
-        currentWeapon: player.currentWeapon,
-        ownedWeapons: [...player.ownedWeapons],
-        collectedKeys: [...player.collectedKeys],
-        powerups: { ...player.powerups },
-        hasBackpack: Boolean(player.hasBackpack),
-        isDead: Boolean(player.isDead),
-        isAiDead: Boolean(player.isAiDead),
-        isFiring: Boolean(player.isFiring),
-        controllingSessionId: player.__sessionId ?? null,
+        x: getMarine().x,
+        y: getMarine().y,
+        z: getMarine().z,
+        angle: normalizeAngle(getMarine().viewAngle),
+        floorHeight: getMarine().floorHeight,
+        health: getMarine().hp,
+        armor: getMarine().armor,
+        armorType: getMarine().armorType,
+        ammo: { ...getMarine().ammo },
+        maxAmmo: { ...getMarine().maxAmmo },
+        currentWeapon: getMarine().currentWeapon,
+        ownedWeapons: [...getMarine().ownedWeapons],
+        collectedKeys: [...getMarine().collectedKeys],
+        powerups: { ...getMarine().powerups },
+        hasBackpack: Boolean(getMarine().hasBackpack),
+        isDead: getMarine().deathMode === 'gameover',
+        isAiDead: getMarine().deathMode === 'ai',
+        isFiring: Boolean(getMarine().isFiring),
+        controllingSessionId: getSessionIdControlling(getMarine()) ?? null,
     };
 }
 
-export function snapshotEnemy(thing, originX = player.x, originY = player.y) {
-    const idx = getThingIndex(thing);
+export function snapshotEnemy(thing, originX = getMarine().x, originY = getMarine().y) {
+    const aIdx = getActorIndex(thing);
+    const idx = aIdx >= 0 ? aIdx : getThingIndex(thing);
     const dx = (thing.x ?? 0) - originX;
     const dy = (thing.y ?? 0) - originY;
     return {
@@ -108,7 +84,7 @@ export function snapshotEnemy(thing, originX = player.x, originY = player.y) {
         hp: thing.hp ?? null,
         maxHp: thing.maxHp ?? null,
         aiState: thing.ai?.state ?? null,
-        controllingSessionId: thing.__sessionId ?? null,
+        controllingSessionId: getSessionIdControlling(thing) ?? null,
         distanceToOrigin: Math.hypot(dx, dy),
     };
 }
@@ -126,7 +102,7 @@ export function snapshotDoor(entry) {
         open: Boolean(entry.open),
         passable: Boolean(entry.passable),
         keyRequired: entry.keyRequired ?? null,
-        operatorSessionId: doorEntity?.__sessionId ?? null,
+        sessionId: getSessionIdControlling(doorEntity) ?? null,
         camera: doorEntity
             ? {
                 x: doorEntity.x,
@@ -139,10 +115,17 @@ export function snapshotDoor(entry) {
     };
 }
 
-export function listEnemies({ originX = player.x, originY = player.y, maxDistance = Infinity, limit = Infinity } = {}) {
+export function listEnemies({ originX = getMarine().x, originY = getMarine().y, maxDistance = Infinity, limit = Infinity } = {}) {
     const out = [];
+    for (let i = 1; i < state.actors.length; i++) {
+        const thing = state.actors[i];
+        if (!thing || !isLiveEnemy(thing)) continue;
+        const snap = snapshotEnemy(thing, originX, originY);
+        if (snap.distanceToOrigin > maxDistance) continue;
+        out.push(snap);
+    }
     for (const thing of state.things) {
-        if (!isLiveEnemy(thing)) continue;
+        if (!thing || !isLiveEnemy(thing)) continue;
         const snap = snapshotEnemy(thing, originX, originY);
         if (snap.distanceToOrigin > maxDistance) continue;
         out.push(snap);

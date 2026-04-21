@@ -27,7 +27,7 @@ import {
     buildDeltasForTick,
     emptyBaseline,
 } from '../server/world.js';
-import { state, player } from '../src/game/state.js';
+import { state, getMarine } from '../src/game/state.js';
 import { createSgnlServices } from '../server/sgnl/index.js';
 
 installEngineHosts();
@@ -49,19 +49,22 @@ const capturedY = sampleThing.y;
 const capturedHp = sampleThing.hp;
 const capturedId = sampleThing.id;
 
-assert.ok(deltaA.player, 'expected player snapshot');
-const capturedPlayerHealth = deltaA.player.health;
-const capturedAmmoRef = deltaA.player.ammo;
-const capturedClipsForBullets = deltaA.player.ammo.bullets;
+assert.ok(deltaA.actors?.spawn, 'expected actors snapshot');
+const marineSnap = deltaA.actors.spawn.find((r) => r.id === 0);
+assert.ok(marineSnap, 'expected marine (actor:0) in actors.spawn');
+const capturedPlayerHealth = marineSnap.health;
+const capturedAmmoRef = marineSnap.ammo;
+const capturedClipsForBullets = marineSnap.ammo.bullets;
 
 const liveThing = state.things.find((t) => t.thingIndex === capturedId);
 assert.ok(liveThing, 'live thing for captured id must exist');
 liveThing.x += 9999;
 liveThing.y -= 9999;
 if (typeof liveThing.hp === 'number') liveThing.hp = Math.max(0, liveThing.hp - 5);
-player.health = Math.max(0, (player.health || 0) - 17);
-if (player.ammo && typeof player.ammo.bullets === 'number') {
-    player.ammo.bullets = Math.max(0, player.ammo.bullets - 3);
+const m = getMarine();
+m.hp = Math.max(0, (m.hp || 0) - 17);
+if (m.ammo && typeof m.ammo.bullets === 'number') {
+    m.ammo.bullets = Math.max(0, m.ammo.bullets - 3);
 }
 
 const buildB = buildDeltasForTick();
@@ -72,9 +75,9 @@ assert.equal(sampleThing.x, capturedX, 'tick A spawned record must keep its x af
 assert.equal(sampleThing.y, capturedY, 'tick A spawned record must keep its y after tick B rebuilds _current');
 assert.equal(sampleThing.hp, capturedHp, 'tick A spawned record must keep its hp after tick B rebuilds _current');
 
-assert.equal(deltaA.player.health, capturedPlayerHealth, 'tick A player.health snapshot must not alias _current.player');
-assert.strictEqual(deltaA.player.ammo, capturedAmmoRef, 'ammo reference identity should be stable inside the captured delta');
-assert.equal(deltaA.player.ammo.bullets, capturedClipsForBullets, 'tick A player.ammo.bullets must not alias the live ammo object');
+assert.equal(marineSnap.health, capturedPlayerHealth, 'tick A marine health snapshot must not alias live marine');
+assert.strictEqual(marineSnap.ammo, capturedAmmoRef, 'ammo reference identity should be stable inside the captured delta');
+assert.equal(marineSnap.ammo.bullets, capturedClipsForBullets, 'tick A marine ammo.bullets must not alias the live ammo object');
 
 console.log('snapshot reuse safety: ok');
 console.log(`  tick A captured thing#${capturedId} x=${capturedX} y=${capturedY} hp=${capturedHp}`);

@@ -13,7 +13,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { emptyInput, ROLE } from './net.js';
-import { emptyBaseline } from './world.js';
+import { emptyBaseline } from './world/snapshots.js';
 
 /**
  * @typedef {Object} Connection

@@ -19,7 +19,7 @@
  *                                  | 'crusher' | 'pickup'. `id` is the
  *                                  canonical asset id (matches what the
  *                                  SGNL gRPC adapter emits), e.g.
- *                                  `door:E1M1:42` or `player:<session>`.
+ *                                  `door:42` (sector index) or `player:<session>`.
  *   markPlayerDirty(sessionId?) — convenience wrapper for the connected
  *                                  player's SCIM resource.
  *   markMapChanged(name)        — the engine loaded a new map; the host

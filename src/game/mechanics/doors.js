@@ -20,20 +20,22 @@
 
 import { USE_RANGE, DOOR_CLOSE_DELAY } from '../constants.js';
 
-import { state, player } from '../state.js';
-import { mapData, currentMap } from '../../data/maps.js';
+import { state, getMarine } from '../state.js';
+
+const marine = () => getMarine();
+import { mapData } from '../../data/maps.js';
 import { getSectorAt } from '../physics/queries.js';
 import { playSound } from '../../audio/audio.js';
 import * as renderer from '../../renderer/index.js';
 import { markEntityDirty, evaluateAccess } from '../services.js';
 
-/** Canonical asset id for a door — matches the `id` emitted by the
- *  SGNL gRPC adapter in `server/sgnl/adapter/interactables.js`. */
+/** Canonical runtime / SGNL asset id for a door (no map qualifier). */
 export function doorAssetId(sectorIndex) {
-    return `door:${currentMap || 'unknown'}:${sectorIndex}`;
+    return `door:${sectorIndex}`;
 }
 import {
     getControlled,
+    getSessionIdControlling,
     isHumanControlled,
     describeInteractor,
     onPossessionChange,
@@ -67,7 +69,7 @@ const DOOR_PASSABLE_DELAY = 0.8; // seconds — slightly before fully open to al
  */
 function getRequestingController(controller) {
     if (!controller) return null;
-    return controller.__sessionId || 'local';
+    return getSessionIdControlling(controller) || 'local';
 }
 
 /**
@@ -225,7 +227,7 @@ export async function toggleDoor(sectorIndex, requestedBy) {
     // the marine's collected keys since the key inventory lives on `player`.
     // Based on: linuxdoom-1.10/p_doors.c:EV_VerticalDoor()
     if (doorEntry.keyRequired && !doorEntry.open) {
-        if (!player.collectedKeys.has(doorEntry.keyRequired)) {
+        if (!marine().collectedKeys.has(doorEntry.keyRequired)) {
             playSound('DSOOF');
             return;
         }
@@ -306,7 +308,7 @@ function closeDoor(sectorIndex) {
     if (!doorEntry || !doorEntry.open) return;
 
     // Check if the player is inside the door sector — if so, reverse
-    const playerSector = getSectorAt(player.x, player.y);
+    const playerSector = getSectorAt(marine().x, marine().y);
     if (playerSector && playerSector.sectorIndex === sectorIndex) {
         // Player is in the doorway — keep open and retry closing later
         doorEntry.timer = setTimeout(() => closeDoor(sectorIndex), DOOR_CLOSE_DELAY);
@@ -336,11 +338,11 @@ export async function tryOpenDoor(requestedBy) {
     if (!state.doorState.size) return;
 
     const controller = requestedBy || getControlled();
-    const originX = controller?.x ?? player.x;
-    const originY = controller?.y ?? player.y;
-    const originAngle = controller === player
-        ? player.angle
-        : (controller?.viewAngle ?? controller?.facing ?? player.angle);
+    const originX = controller?.x ?? marine().x;
+    const originY = controller?.y ?? marine().y;
+    const originAngle = controller === marine()
+        ? marine().viewAngle
+        : (controller?.viewAngle ?? controller?.facing ?? marine().viewAngle);
 
     // Calculate a check point in front of the controller (halfway to USE_RANGE)
     const forwardX = -Math.sin(originAngle);

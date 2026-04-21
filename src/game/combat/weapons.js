@@ -2,7 +2,9 @@
  * Player weapon equipping, firing, hit detection, and rocket projectiles.
  */
 
-import { state, player } from '../state.js';
+import { state, getMarine } from '../state.js';
+
+const marine = () => getMarine();
 import {
     WEAPONS, SHOOTABLE, EYE_HEIGHT, ENEMIES, ENEMY_PROJECTILES,
     PLAYER_ROCKET_SPEED, PLAYER_ROCKET_RADIUS,
@@ -11,8 +13,8 @@ import {
 import { getFloorHeightAt } from '../physics/queries.js';
 import { rayHitPoint } from '../physics/collision.js';
 import { hasLineOfSight } from '../physics/line-of-sight.js';
-import { damagePlayer } from '../player/damage.js';
-import { hasPowerup } from '../player/pickups.js';
+import { damageActor } from './damage.js';
+import { hasPowerup } from '../actor/pickups.js';
 import { playSound } from '../../audio/audio.js';
 import { setEnemyState } from '../ai/state.js';
 import { damageEnemy } from './enemy.js';
@@ -24,6 +26,7 @@ import { getHorizontalDistance, randomDoomSpreadAngleRadians } from '../geometry
 import { distance2 } from '../actors/math.js';
 import { markPlayerDirty } from '../services.js';
 import { getControlled, isControllingPlayer, isHumanControlled, getControlledFor, LOCAL_SESSION } from '../possession.js';
+import { canFire } from '../entity/caps.js';
 
 // ============================================================================
 // Weapon Loading & Equipping
@@ -35,10 +38,10 @@ import { getControlled, isControllingPlayer, isHumanControlled, getControlledFor
  */
 export function equipWeapon(slot) {
     const weapon = WEAPONS[slot];
-    if (!weapon || !player.ownedWeapons.has(slot)) return;
+    if (!weapon || !marine().ownedWeapons.has(slot)) return;
 
-    player.isFiring = false;
-    player.currentWeapon = slot;
+    marine().isFiring = false;
+    marine().currentWeapon = slot;
     renderer.switchWeapon(weapon.name, weapon.fireRate);
     markPlayerDirty();
 }
@@ -73,7 +76,7 @@ let automaticFireInterval = null;
  *    that the fire animation has completed before allowing re-fire.
  */
 export function fireWeapon() {
-    if (player.isDead || player.isFiring || renderer.isWeaponSwitching()) return;
+    if (marine().hp <= 0 || marine().deathMode || marine().isFiring || renderer.isWeaponSwitching()) return;
 
     // Body-swap: if the user is possessing a monster, trigger its built-in
     // attack (melee/hitscan/projectile) instead of the player weapon path.
@@ -82,16 +85,14 @@ export function fireWeapon() {
         return;
     }
 
-    const weapon = WEAPONS[player.currentWeapon];
+    if (!canFire(marine())) return;
+    const weapon = WEAPONS[marine().currentWeapon];
     if (!weapon) return;
 
-    // Check ammo availability (some weapons like the fist have no ammo type)
-    if (weapon.ammoType && player.ammo[weapon.ammoType] < weapon.ammoPerShot) return;
-
     // Deduct ammo cost for this shot
-    if (weapon.ammoType) player.ammo[weapon.ammoType] -= weapon.ammoPerShot;
+    if (weapon.ammoType) marine().ammo[weapon.ammoType] -= weapon.ammoPerShot;
     markPlayerDirty();
-    player.isFiring = true;
+    marine().isFiring = true;
 
     playSound(weapon.sound);
 
@@ -109,11 +110,11 @@ export function fireWeapon() {
     if (weapon.continuous && input.fireHeld) {
         stopAutoFire();
         automaticFireInterval = setInterval(() => {
-            if (!input.fireHeld || player.isDead || (weapon.ammoType && player.ammo[weapon.ammoType] < weapon.ammoPerShot)) {
+            if (!input.fireHeld || marine().hp <= 0 || marine().deathMode || (weapon.ammoType && marine().ammo[weapon.ammoType] < weapon.ammoPerShot)) {
                 stopAutoFire();
                 return;
             }
-            if (weapon.ammoType) player.ammo[weapon.ammoType] -= weapon.ammoPerShot;
+            if (weapon.ammoType) marine().ammo[weapon.ammoType] -= weapon.ammoPerShot;
             markPlayerDirty();
             playSound(weapon.sound);
             checkWeaponHit();
@@ -123,7 +124,7 @@ export function fireWeapon() {
         // Non-continuous weapons: re-allow firing after the fire rate elapses.
         // If the fire button is still held, immediately fire again.
         setTimeout(() => {
-            player.isFiring = false;
+            marine().isFiring = false;
             if (input.fireHeld) fireWeapon();
         }, weapon.fireRate);
     }
@@ -138,7 +139,7 @@ export function stopAutoFire() {
         clearInterval(automaticFireInterval);
         automaticFireInterval = null;
         renderer.stopFiring();
-        player.isFiring = false;
+        marine().isFiring = false;
     }
 }
 
@@ -207,15 +208,32 @@ function findHitscanTarget(dirX, dirY, range) {
     let closestDistance = Infinity;
     let closestThing = null;
 
-    const allThings = state.things;
-    for (let index = 0, length = allThings.length; index < length; index++) {
-        const thing = allThings[index];
-        if (thing.collected) continue;
+    for (let index = 1, length = state.actors.length; index < length; index++) {
+        const thing = state.actors[index];
+        if (!thing || thing.collected) continue;
         if (!SHOOTABLE.has(thing.type)) continue;
 
-        const deltaX = thing.x - player.x;
-        const deltaY = thing.y - player.y;
-        const distance = Math.sqrt(distance2(player, thing));
+        const deltaX = thing.x - marine().x;
+        const deltaY = thing.y - marine().y;
+        const distance = Math.sqrt(distance2(marine(), thing));
+        if (distance > range) continue;
+
+        const dotProduct = (deltaX * dirX + deltaY * dirY) / distance;
+        if (dotProduct < 0.99) continue;
+
+        if (distance < closestDistance) {
+            closestDistance = distance;
+            closestThing = thing;
+        }
+    }
+    for (let index = 0, length = state.things.length; index < length; index++) {
+        const thing = state.things[index];
+        if (!thing || thing.collected) continue;
+        if (!SHOOTABLE.has(thing.type)) continue;
+
+        const deltaX = thing.x - marine().x;
+        const deltaY = thing.y - marine().y;
+        const distance = Math.sqrt(distance2(marine(), thing));
         if (distance > range) continue;
 
         const dotProduct = (deltaX * dirX + deltaY * dirY) / distance;
@@ -244,11 +262,11 @@ function findHitscanTarget(dirX, dirY, range) {
  * - 'rocket' (Rocket Launcher): Spawns a player projectile instead of hitscan.
  */
 function checkWeaponHit() {
-    const weapon = WEAPONS[player.currentWeapon];
+    const weapon = WEAPONS[marine().currentWeapon];
     if (!weapon) return;
 
-    const forwardX = -Math.sin(player.angle);
-    const forwardY = Math.cos(player.angle);
+    const forwardX = -Math.sin(marine().viewAngle);
+    const forwardY = Math.cos(marine().viewAngle);
 
     if (weapon.damageType === 'rocket') {
         // Rocket launcher spawns a projectile instead of hitscan
@@ -264,16 +282,16 @@ function checkWeaponHit() {
         // (random - random) to approximate DOOM's (P_Random()-P_Random()).
         for (let pellet = 0; pellet < weapon.pellets; pellet++) {
             const spreadAngle = randomDoomSpreadAngleRadians(22.5);
-            const pelletAngle = player.angle + spreadAngle;
+            const pelletAngle = marine().viewAngle + spreadAngle;
             const pelletDirX = -Math.sin(pelletAngle);
             const pelletDirY = Math.cos(pelletAngle);
 
             const target = findHitscanTarget(pelletDirX, pelletDirY, weapon.range);
-            if (target && hasLineOfSight(player, target)) {
+            if (target && hasLineOfSight(marine(), target)) {
                 spawnPuff(target.x, target.y, getFloorHeightAt(target.x, target.y));
-                damageEnemy(target, rollWeaponDamage('hitscan'), player);
+                damageEnemy(target, rollWeaponDamage('hitscan'), marine());
             } else {
-                const wallHit = rayHitPoint(player.x, player.y, pelletDirX, pelletDirY, weapon.range);
+                const wallHit = rayHitPoint(marine().x, marine().y, pelletDirX, pelletDirY, weapon.range);
                 if (wallHit) spawnPuff(wallHit.x, wallHit.y);
             }
         }
@@ -283,15 +301,15 @@ function checkWeaponHit() {
     // Melee and single-ray hitscan weapons
     const target = findHitscanTarget(forwardX, forwardY, weapon.range);
 
-    if (target && hasLineOfSight(player, target)) {
+    if (target && hasLineOfSight(marine(), target)) {
         if (weapon.hitscan) spawnPuff(target.x, target.y, getFloorHeightAt(target.x, target.y));
-        damageEnemy(target, rollWeaponDamage(weapon.damageType), player);
+        damageEnemy(target, rollWeaponDamage(weapon.damageType), marine());
         return;
     }
 
     // No target or target behind a wall — spawn wall puff
     if (weapon.hitscan) {
-        const wallHitPoint = rayHitPoint(player.x, player.y, forwardX, forwardY, weapon.range);
+        const wallHitPoint = rayHitPoint(marine().x, marine().y, forwardX, forwardY, weapon.range);
         if (wallHitPoint) spawnPuff(wallHitPoint.x, wallHitPoint.y);
     }
 }
@@ -311,9 +329,9 @@ function checkWeaponHit() {
  * fixed-point P_MobjThinker().
  */
 function spawnPlayerRocket(forwardX, forwardY) {
-    const spawnX = player.x;
-    const spawnY = player.y;
-    const spawnZ = player.floorHeight + EYE_HEIGHT * 0.8;
+    const spawnX = marine().x;
+    const spawnY = marine().y;
+    const spawnZ = marine().floorHeight + EYE_HEIGHT * 0.8;
 
     const lifetime = 5;
 
@@ -338,7 +356,7 @@ function spawnPlayerRocket(forwardX, forwardY) {
         speed: PLAYER_ROCKET_SPEED,
         damage: rollWeaponDamage('rocket'),
         hitSound: 'DSBAREXP',
-        source: player,
+        source: marine(),
         lifetime,
         isPlayerRocket: true,
         spawnTime: performance.now() / 1000,
@@ -356,11 +374,11 @@ function spawnPlayerRocket(forwardX, forwardY) {
 export function rocketExplosion(impactX, impactY) {
     const impact = { x: impactX, y: impactY };
     forEachRadiusDamageTarget(impact, ROCKET_SPLASH_DAMAGE, (target, damage) => {
-        if (target === player) {
-            damagePlayer(damage);
+        if (target === marine()) {
+            damageActor(marine(), damage, null);
             return;
         }
-        damageEnemy(target, damage, player);
+        damageEnemy(target, damage, marine());
     });
 }
 
@@ -375,10 +393,10 @@ export function rocketExplosion(impactX, impactY) {
  */
 function spawnPuff(hitX, hitY, hitFloorHeight) {
     // Pull back 8 units toward the player so the puff doesn't clip into the wall
-    const distanceToPlayer = getHorizontalDistance({ x: hitX, y: hitY }, player);
+    const distanceToPlayer = getHorizontalDistance({ x: hitX, y: hitY }, marine());
     if (distanceToPlayer > 1) {
-        const toPlayerX = player.x - hitX;
-        const toPlayerY = player.y - hitY;
+        const toPlayerX = marine().x - hitX;
+        const toPlayerY = marine().y - hitY;
         hitX += (toPlayerX / distanceToPlayer) * 8;
         hitY += (toPlayerY / distanceToPlayer) * 8;
     }
@@ -416,7 +434,8 @@ function spawnPuff(hitX, hitY, hitFloorHeight) {
 export function fireWeaponFor(sessionId) {
     const entity = getControlledFor(sessionId);
     if (!entity) return;
-    if (entity === player) {
+    if (!canFire(entity)) return;
+    if (entity === marine()) {
         fireWeapon();
     } else {
         fireMonsterAttack(entity);
@@ -432,7 +451,7 @@ function fireMonsterAttack(explicitMonster) {
     if (now - (monster.ai.lastAttack || 0) < cooldownMs) return;
     monster.ai.lastAttack = now;
     // Briefly flash the monster into its attack sprite. We deliberately
-    // do NOT touch `player.isFiring` here — that flag is the marine's UI
+    // do NOT touch `marine().isFiring` here — that flag is the marine's UI
     // state and is broadcast to every client via snapshots; mutating it
     // from a possessed-monster attack would flicker the marine HUD and
     // (when a stale setTimeout fires after the monster has died or been
@@ -549,10 +568,25 @@ function findShootableInCone(source, dirX, dirY, range) {
     let closestDistance = Infinity;
     let closest = null;
 
-    const candidates = state.things;
-    for (let i = 0; i < candidates.length; i++) {
-        const thing = candidates[i];
-        if (thing === source) continue;
+    for (let i = 1; i < state.actors.length; i++) {
+        const thing = state.actors[i];
+        if (!thing || thing === source) continue;
+        if (thing.collected) continue;
+        if (!SHOOTABLE.has(thing.type)) continue;
+        const dx = thing.x - source.x;
+        const dy = thing.y - source.y;
+        const d = Math.sqrt(dx * dx + dy * dy);
+        if (d === 0 || d > range) continue;
+        const dot = (dx * dirX + dy * dirY) / d;
+        if (dot < 0.92) continue;
+        if (d < closestDistance) {
+            closestDistance = d;
+            closest = thing;
+        }
+    }
+    for (let i = 0; i < state.things.length; i++) {
+        const thing = state.things[i];
+        if (!thing || thing === source) continue;
         if (thing.collected) continue;
         if (!SHOOTABLE.has(thing.type)) continue;
         const dx = thing.x - source.x;
@@ -567,16 +601,15 @@ function findShootableInCone(source, dirX, dirY, range) {
         }
     }
 
-    // The normal player character is also a valid target when it's AI-driven.
-    if (!player.isDead && !player.isAiDead) {
-        const dx = player.x - source.x;
-        const dy = player.y - source.y;
+    if (marine().hp > 0 && !marine().deathMode && marine() !== source) {
+        const dx = marine().x - source.x;
+        const dy = marine().y - source.y;
         const d = Math.sqrt(dx * dx + dy * dy);
         if (d > 0 && d <= range) {
             const dot = (dx * dirX + dy * dirY) / d;
             if (dot >= 0.92 && d < closestDistance) {
                 closestDistance = d;
-                closest = player;
+                closest = marine();
             }
         }
     }
@@ -585,8 +618,8 @@ function findShootableInCone(source, dirX, dirY, range) {
 }
 
 function applyMonsterDamage(target, damage, source) {
-    if (target === player) {
-        damagePlayer(damage);
+    if (target === marine()) {
+        damageActor(marine(), damage, null);
         return;
     }
     damageEnemy(target, damage, source);

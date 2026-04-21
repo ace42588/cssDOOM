@@ -3,9 +3,9 @@
  *
  * The adapter only exposes entities that matter for access decisions:
  * doors, switches, keys, other pickups, exits, lifts, teleporters and
- * crushers. Each row carries a stable `id` of the form
- * `<kind>:<MAP>:<key>` that matches the `assetId` the engine will send
- * to SGNL Access Evaluations, so decisions correlate cleanly.
+ * crushers. Each row carries a stable short `id` (`door:<sector>`,
+ * `pickup:<thingIndex>`, …) matching runtime `assetId` strings sent to
+ * SGNL Access Evaluations.
  *
  * These builders operate on the raw map JSON only (no engine imports),
  * so the adapter stays decoupled from `src/game/*`.
@@ -143,7 +143,7 @@ export function buildDoors(mapJson) {
     return doors.map((door, index) => {
         const { x, y } = sectorCentroid(mapJson, door.sectorIndex);
         return {
-            id: `door:${name}:${door.sectorIndex}`,
+            id: `door:${door.sectorIndex}`,
             index,
             mapName: name,
             sectorIndex: door.sectorIndex,
@@ -178,7 +178,7 @@ export function buildSwitches(mapJson) {
 
         const { x, y } = wallMidpoint(wall);
         rows.push({
-            id: `switch:${name}:${wall.wallId}`,
+            id: `switch:${wall.wallId}`,
             index: index++,
             mapName: name,
             wallId: wall.wallId,
@@ -203,7 +203,7 @@ export function buildKeys(mapJson) {
         const keyMeta = KEY_THING_TYPES[thing.type];
         if (!keyMeta) continue;
         rows.push({
-            id: `key:${name}:${i}`,
+            id: `key:${i}`,
             index: rows.length,
             thingIndex: i,
             mapName: name,
@@ -229,7 +229,7 @@ export function buildPickups(mapJson) {
         // Keys are emitted by `buildKeys` — don't duplicate them here.
         if (KEY_THING_TYPES[thing.type]) continue;
         rows.push({
-            id: `pickup:${name}:${i}`,
+            id: `pickup:${i}`,
             index: rows.length,
             thingIndex: i,
             mapName: name,
@@ -254,7 +254,7 @@ export function buildExits(mapJson) {
         if (special !== EXIT_SPECIAL && special !== SECRET_EXIT_SPECIAL) continue;
         const { x, y } = lineMidpoint(mapJson, linedef);
         rows.push({
-            id: `exit:${name}:${i}`,
+            id: `exit:${i}`,
             index: rows.length,
             linedefIndex: i,
             mapName: name,
@@ -273,7 +273,7 @@ export function buildLifts(mapJson) {
     return lifts.map((lift, index) => {
         const { x, y } = sectorCentroid(mapJson, lift.sectorIndex);
         return {
-            id: `lift:${name}:${lift.sectorIndex}`,
+            id: `lift:${lift.sectorIndex}`,
             index,
             mapName: name,
             sectorIndex: lift.sectorIndex,
@@ -306,7 +306,7 @@ export function buildTeleporters(mapJson) {
             x = mid.x; y = mid.y;
         }
         return {
-            id: `teleporter:${name}:${index}`,
+            id: `teleporter:${index}`,
             index,
             mapName: name,
             sectorTag: tele.sectorTag ?? null,
@@ -323,7 +323,7 @@ export function buildCrushers(mapJson) {
         const sectorIndex = crusher.sectorIndex ?? crusher.index ?? index;
         const { x, y } = sectorCentroid(mapJson, sectorIndex);
         return {
-            id: `crusher:${name}:${sectorIndex}`,
+            id: `crusher:${sectorIndex}`,
             index,
             mapName: name,
             sectorIndex,

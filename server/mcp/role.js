@@ -3,7 +3,7 @@
  * control after the next tick applies a queued bodySwap).
  */
 
-import { player } from '../../src/game/state.js';
+import { getMarine } from '../../src/game/state.js';
 import { WEAPONS } from '../../src/game/constants.js';
 import { getThingIndex } from '../../src/game/things/registry.js';
 import { enemyLabel } from './snapshot.js';
@@ -18,13 +18,13 @@ const ENEMY_GUIDANCE = {
 };
 
 function weaponLine() {
-    const w = WEAPONS[player.currentWeapon] || WEAPONS[2];
-    const name = w?.name || `slot ${player.currentWeapon}`;
-    return `Equipped weapon slot: ${player.currentWeapon} (${name}). Use \`actor-switch-weapon\` for slots you own; \`actor-fire\` fires it.`;
+    const w = WEAPONS[getMarine().currentWeapon] || WEAPONS[2];
+    const name = w?.name || `slot ${getMarine().currentWeapon}`;
+    return `Equipped weapon slot: ${getMarine().currentWeapon} (${name}). Use \`actor-switch-weapon\` for slots you own; \`actor-fire\` fires it.`;
 }
 
 function keysLine() {
-    const keys = player.collectedKeys?.length ? player.collectedKeys.join(', ') : 'none yet';
+    const keys = getMarine().collectedKeys?.length ? getMarine().collectedKeys.join(', ') : 'none yet';
     return `Keys carried (marine inventory): ${keys}. Key-locked doors check this inventory even while you possess something else.`;
 }
 
@@ -41,7 +41,7 @@ export function rolePromptFor(entity) {
             text: 'No playable body right now. Poll `world-get-state` and `world-poll-events`; when a body frees up you may be reassigned on reconnect or map change.',
         };
     }
-    if (entity === player) {
+    if (entity === getMarine()) {
         return {
             kind: 'marine',
             label: 'Marine',

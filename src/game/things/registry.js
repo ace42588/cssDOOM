@@ -5,14 +5,15 @@
  * Renderer DOM maps and gameplay systems must use these helpers so ownership of
  * `thingIndex` allocation and lookup stays centralized.
  *
- * Actor adapters (`game/actors/adapter.js`) consume this registry for
- * stable actor IDs during the signature unification migration.
+ * `entity/id.js` and movement/damage interop use this registry for stable
+ * `thing:<index>` ids until a full entity store replaces array indices.
  *
  * Migration gate: preserve stable `thingIndex` identity until a full entity
  * store replaces array-index addressing end-to-end.
  */
 
-import { state } from "../state.js";
+import { ACTOR_DOM_KEY_OFFSET } from '../constants.js';
+import { state } from '../state.js';
 
 /**
  * Allocates a stable thing index and stores the entry in game state.
@@ -24,6 +25,19 @@ export function registerThingEntry(entry) {
   entry.thingIndex = thingIndex;
   state.things.push(entry);
   return thingIndex;
+}
+
+/**
+ * Registers a non-marine actor (enemy). `thingIndex` is set to a stable DOM key
+ * disjoint from pickup/barrel indices in `state.things`.
+ * @returns {number} actorIndex (≥ 1; slot 0 is the marine)
+ */
+export function registerActorEntry(entry) {
+  const actorIndex = state.actors.length;
+  entry.actorIndex = actorIndex;
+  entry.thingIndex = ACTOR_DOM_KEY_OFFSET + actorIndex;
+  state.actors.push(entry);
+  return actorIndex;
 }
 
 /**
@@ -40,4 +54,10 @@ export function getThingIndex(thing) {
     thing.thingIndex = index;
   }
   return index;
+}
+
+/** Actor slot in `state.actors`, or `-1`. */
+export function getActorIndex(entity) {
+  if (!entity || typeof entity.actorIndex !== 'number') return -1;
+  return entity.actorIndex;
 }

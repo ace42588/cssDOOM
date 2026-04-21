@@ -21,22 +21,12 @@
 
 import {
     addHeadlessConnection,
-    removeConnection,
     getConnection,
 } from '../connections.js';
 import {
-    assignOnJoin,
-    releaseOnDisconnect,
-} from '../assignment.js';
-import {
-    registerSession,
-    unregisterSession,
-    emitSessionEstablished,
-} from '../sgnl/index.js';
-import {
-    getMapPayload,
-    getTickRateHz,
-} from '../world.js';
+    closeGameSession,
+    initializeGameSession,
+} from '../session-lifecycle.js';
 import { MSG } from '../net.js';
 import { getControlledFor } from '../../src/game/possession.js';
 import { rolePromptFor } from './role.js';
@@ -180,35 +170,18 @@ export function openMcpSession({ displayName, agentIdentity } = {}) {
     conn.agentIdentity = normalizeAgentIdentity(conn.sessionId, agentIdentity);
     ringsBySession.set(conn.sessionId, ring);
 
-    registerSession(conn.sessionId, { displayName: displayName || `mcp:${conn.sessionId}` });
-    emitSessionEstablished(conn.sessionId);
-
     const agentKey = claimKeyFor(conn);
     const claim = peekRecentClaim(agentKey);
     const assignOpts = claim?.controlledEntityId
         ? { preferredControlledId: claim.controlledEntityId }
         : {};
-    const assignment = assignOnJoin(conn, assignOpts);
-    conn.role = assignment.role;
-    conn.controlledId = assignment.controlledId;
-    conn.followTargetId = assignment.followTargetId;
+    initializeGameSession(conn, {
+        displayName: displayName || `mcp:${conn.sessionId}`,
+        assignmentOptions: assignOpts,
+    });
     if (claim && conn.controlledId === claim.controlledEntityId) {
         clearRecentClaim(agentKey);
     }
-
-    const { name: mapName, mapData } = getMapPayload();
-    const welcome = {
-        type: MSG.WELCOME,
-        sessionId: conn.sessionId,
-        role: conn.role,
-        controlledId: conn.controlledId,
-        followTargetId: conn.followTargetId,
-        mapName,
-        tickRateHz: getTickRateHz(),
-        serverTime: Date.now(),
-    };
-    captureMessage(conn.sessionId, welcome);
-    captureMessage(conn.sessionId, { type: MSG.MAP_LOAD, mapName, mapData });
 
     const ringAfter = ringsBySession.get(conn.sessionId);
     if (ringAfter) {
@@ -259,9 +232,7 @@ export function closeMcpSession(sessionId) {
             followTargetId: conn.followTargetId,
         });
     }
-    releaseOnDisconnect(conn);
-    removeConnection(sessionId);
-    unregisterSession(sessionId);
+    closeGameSession(sessionId);
     ringsBySession.delete(sessionId);
     disposeActorSession(sessionId);
 }

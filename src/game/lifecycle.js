@@ -2,7 +2,9 @@
  * Map loading, level transitions, and full/partial game state resets.
  */
 
-import { state, player } from './state.js';
+import { state, getMarine } from './state.js';
+
+const marine = () => getMarine();
 import { MAPS, mapData, currentMap, setMapState } from '../data/maps.js';
 import { equipWeapon } from './combat/weapons.js';
 import { resetPossession } from './possession.js';
@@ -43,7 +45,7 @@ export async function loadMap(name) {
     setMapName(name);
     applyPlayerStart();
 
-    if (isInitialLoad || player.isDead) {
+    if (isInitialLoad || marine().deathMode === 'gameover') {
         resetGameState();
     } else {
         transitionToLevel();
@@ -100,18 +102,32 @@ export async function loadMapHeadless(name, readMapJson, options = {}) {
         if (typeof thing.floorHeight !== 'number') {
             thing.floorHeight = getFloorHeightAt(thing.x, thing.y);
         }
+        if (typeof thing.z !== 'number') {
+            thing.z = thing.floorHeight ?? 0;
+        }
+    }
+    for (let i = 1; i < state.actors.length; i++) {
+        const actor = state.actors[i];
+        if (!actor) continue;
+        if (typeof actor.floorHeight !== 'number') {
+            actor.floorHeight = getFloorHeightAt(actor.x, actor.y);
+        }
+        if (typeof actor.z !== 'number') {
+            actor.z = actor.floorHeight ?? 0;
+        }
     }
     // Player eye height uses the real constant; applyPlayerStart parked the
     // view at +80, which matches the intro-drop final position.
-    player.z = player.floorHeight + 80;
+    marine().z = marine().floorHeight + 80;
 }
 
 function applyPlayerStart() {
-    player.x = mapData.playerStart.x;
-    player.y = mapData.playerStart.y;
-    player.angle = mapData.playerStart.angle - Math.PI / 2;
-    player.floorHeight = mapData.playerStart.floorHeight || 0;
-    player.z = player.floorHeight + 80;
+    marine().x = mapData.playerStart.x;
+    marine().y = mapData.playerStart.y;
+    marine().viewAngle = mapData.playerStart.angle - Math.PI / 2;
+    marine().facing = marine().viewAngle + Math.PI / 2;
+    marine().floorHeight = mapData.playerStart.floorHeight || 0;
+    marine().z = marine().floorHeight + 80;
 }
 
 export function getNextMap() {
@@ -128,19 +144,19 @@ export function getSecretExitMap() {
 // ============================================================================
 
 function clearSceneState() {
-    player.isDead = false;
-    player.isAiDead = false;
-    player.isFiring = false;
-    player.sectorDamageTimer = 0;
+    marine().deathMode = null;
+    marine().isFiring = false;
+    marine().sectorDamageTimer = 0;
     state.things = [];
+    while (state.actors.length > 1) state.actors.pop();
     for (let index = 0; index < state.projectiles.length; index++) {
         renderer.removeProjectile(state.projectiles[index].id);
     }
     state.projectiles = [];
     state.nextProjectileId = 0;
-    for (const name in player.powerups) {
+    for (const name in marine().powerups) {
         renderer.hidePowerup(name);
-        delete player.powerups[name];
+        delete marine().powerups[name];
     }
     renderer.setPlayerDead(false);
     // Return control to the normal player character; clear any player-AI
@@ -151,9 +167,9 @@ function clearSceneState() {
 /** Level transition — keep inventory, clear keys (keys are per-level). */
 export function transitionToLevel() {
     clearSceneState();
-    player.collectedKeys.clear();
+    marine().collectedKeys.clear();
     renderer.clearKeys();
-    equipWeapon(player.currentWeapon);
+    equipWeapon(marine().currentWeapon);
     markMapChanged(currentMap);
     void flushNow();
 }
@@ -161,26 +177,27 @@ export function transitionToLevel() {
 /** Full reset — new game or respawn after death. */
 export function resetGameState() {
     clearSceneState();
-    player.health = 100;
-    player.armor = 0;
-    player.armorType = 0;
-    player.ammo.bullets = 50;
-    player.ammo.shells = 0;
-    player.ammo.rockets = 0;
-    player.ammo.cells = 0;
-    player.maxAmmo.bullets = 200;
-    player.maxAmmo.shells = 50;
-    player.maxAmmo.rockets = 50;
-    player.maxAmmo.cells = 300;
-    player.hasBackpack = false;
-    player.currentWeapon = 2;
-    player.ownedWeapons.clear();
-    player.ownedWeapons.add(1);
-    player.ownedWeapons.add(2);
-    player.collectedKeys.clear();
+    marine().hp = 100;
+    marine().maxHp = 100;
+    marine().armor = 0;
+    marine().armorType = 0;
+    marine().ammo.bullets = 50;
+    marine().ammo.shells = 0;
+    marine().ammo.rockets = 0;
+    marine().ammo.cells = 0;
+    marine().maxAmmo.bullets = 200;
+    marine().maxAmmo.shells = 50;
+    marine().maxAmmo.rockets = 50;
+    marine().maxAmmo.cells = 300;
+    marine().hasBackpack = false;
+    marine().currentWeapon = 2;
+    marine().ownedWeapons.clear();
+    marine().ownedWeapons.add(1);
+    marine().ownedWeapons.add(2);
+    marine().collectedKeys.clear();
     renderer.clearKeys();
     renderer.clearWeaponSlots();
-    equipWeapon(player.currentWeapon);
+    equipWeapon(marine().currentWeapon);
     markMapChanged(currentMap);
     void flushNow();
 }

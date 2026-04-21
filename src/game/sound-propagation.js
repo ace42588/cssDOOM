@@ -13,7 +13,7 @@
 
 import { mapData } from '../data/maps.js';
 import { getSectorAt } from './physics/queries.js';
-import { player, state } from './state.js';
+import { getMarine, state } from './state.js';
 
 const ML_SOUNDBLOCK = 0x40;
 
@@ -133,7 +133,7 @@ export function propagateSound() {
     alertedSectors.clear();
     if (!adjacency) return;
 
-    const playerSector = getSectorAt(player.x, player.y);
+    const playerSector = getSectorAt(getMarine().x, getMarine().y);
     if (!playerSector) return;
 
     const startIndex = playerSector.sectorIndex;

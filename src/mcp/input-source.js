@@ -21,7 +21,9 @@
  */
 
 import { registerInputProvider, input } from '../input/index.js';
-import { player } from '../game/state.js';
+import { getMarine } from '../game/state.js';
+
+const marine = () => getMarine();
 import { getControlledFor, LOCAL_SESSION } from '../game/possession.js';
 
 const intent = {
@@ -138,12 +140,13 @@ export function stopFire() {
 /**
  * Pose of whatever body the local session currently drives (marine, possessed
  * monster, or door camera). Angle is in the player convention (0 = north,
- * CCW positive), matching `updateLocation()` in movement/player.js.
+ * CCW positive), matching `updateLocation()` in movement/system.js.
  */
 export function getControlledPose() {
-    const entity = getControlledFor(LOCAL_SESSION) || player;
-    if (entity === player) {
-        return { entity, x: player.x, y: player.y, angle: player.angle, kind: 'marine' };
+    const entity = getControlledFor(LOCAL_SESSION) || marine();
+    if (entity === marine()) {
+        const m = marine();
+        return { entity, x: m.x, y: m.y, angle: m.viewAngle, kind: 'marine' };
     }
     if (entity.__isDoorEntity) {
         return { entity, x: entity.x, y: entity.y, angle: entity.viewAngle ?? 0, kind: 'door' };

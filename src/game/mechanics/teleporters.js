@@ -17,7 +17,9 @@
 
 import { EYE_HEIGHT, PLAYER_RADIUS, SHOOTABLE, BARREL_RADIUS } from '../constants.js';
 
-import { state, player } from '../state.js';
+import { state, getMarine } from '../state.js';
+
+const marine = () => getMarine();
 import { mapData } from '../../data/maps.js';
 import { getFloorHeightAt } from '../physics/queries.js';
 import * as renderer from '../../renderer/index.js';
@@ -40,7 +42,7 @@ export function checkTeleporters() {
         // Compute which side of the teleporter linedef the player is on
         const dx = tp.end.x - tp.start.x;
         const dy = tp.end.y - tp.start.y;
-        const side = (player.x - tp.start.x) * dy - (player.y - tp.start.y) * dx;
+        const side = (marine().x - tp.start.x) * dy - (marine().y - tp.start.y) * dx;
         const currentSide = side > 0;
 
         const previousSide = tp._previousSide;
@@ -51,35 +53,45 @@ export function checkTeleporters() {
 
         if (previousSide !== currentSide) {
             // Save departure position for fog
-            const departX = player.x;
-            const departY = player.y;
-            const departZ = player.floorHeight;
+            const departX = marine().x;
+            const departY = marine().y;
+            const departZ = marine().floorHeight;
 
             // Telefrag: kill anything shootable at the destination
             // Based on: linuxdoom-1.10/p_map.c:PIT_StompThing()
-            const allThings = state.things;
-            for (let j = 0, len = allThings.length; j < len; j++) {
-                const thing = allThings[j];
-                if (thing.collected) continue;
+            for (let j = 1, alen = state.actors.length; j < alen; j++) {
+                const thing = state.actors[j];
+                if (!thing || thing.collected) continue;
                 if (!SHOOTABLE.has(thing.type)) continue;
                 const thingRadius = thing.ai ? thing.ai.radius : BARREL_RADIUS;
-                const blockDist = (player.radius ?? PLAYER_RADIUS) + thingRadius;
+                const blockDist = (marine().radius ?? PLAYER_RADIUS) + thingRadius;
+                if (Math.abs(thing.x - tp.destX) < blockDist && Math.abs(thing.y - tp.destY) < blockDist) {
+                    damageEnemy(thing, 10000, 'player');
+                }
+            }
+            for (let j = 0, len = state.things.length; j < len; j++) {
+                const thing = state.things[j];
+                if (!thing || thing.collected) continue;
+                if (!SHOOTABLE.has(thing.type)) continue;
+                const thingRadius = thing.ai ? thing.ai.radius : BARREL_RADIUS;
+                const blockDist = (marine().radius ?? PLAYER_RADIUS) + thingRadius;
                 if (Math.abs(thing.x - tp.destX) < blockDist && Math.abs(thing.y - tp.destY) < blockDist) {
                     damageEnemy(thing, 10000, 'player');
                 }
             }
 
             // Teleport the player
-            player.x = tp.destX;
-            player.y = tp.destY;
-            player.angle = (tp.destAngle - 90) * Math.PI / 180;
-            player.floorHeight = getFloorHeightAt(player.x, player.y);
-            player.z = player.floorHeight + EYE_HEIGHT;
+            marine().x = tp.destX;
+            marine().y = tp.destY;
+            marine().viewAngle = (tp.destAngle - 90) * Math.PI / 180;
+            marine().facing = marine().viewAngle + Math.PI / 2;
+            marine().floorHeight = getFloorHeightAt(marine().x, marine().y);
+            marine().z = marine().floorHeight + EYE_HEIGHT;
 
             // Spawn teleport fog at departure and arrival
             // Based on: linuxdoom-1.10/p_telept.c — spawns MT_TFOG at both ends
             renderer.createTeleportFog(departX, departZ, departY);
-            renderer.createTeleportFog(player.x, player.floorHeight, player.y);
+            renderer.createTeleportFog(marine().x, marine().floorHeight, marine().y);
             renderer.triggerFlash('teleport-flash');
             playSound('DSTELEPT');
 

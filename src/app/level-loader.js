@@ -5,7 +5,7 @@
  */
 
 import { EYE_HEIGHT } from "../game/constants.js";
-import { player } from "../game/state.js";
+import { getMarine } from "../game/state.js";
 import { clearSpatialGrid, buildSpatialGrid } from "../game/spatial-grid.js";
 import { initDoors } from "../game/mechanics/doors.js";
 import { initLifts } from "../game/mechanics/lifts.js";
@@ -49,7 +49,8 @@ export async function rebuildLevelScene(isInitialLoad) {
 
 export function scheduleIntroCameraDrop() {
   setTimeout(() => {
-    player.z = player.floorHeight + EYE_HEIGHT;
+    const m = getMarine();
+    m.z = m.floorHeight + EYE_HEIGHT;
   }, 600);
 }
 

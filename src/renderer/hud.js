@@ -8,7 +8,7 @@
  * CSS — JavaScript only touches one DOM element per frame.
  */
 
-import { player, subscribeAmmo, AMMO_TYPES } from '../game/state.js';
+import { getMarine, subscribeAmmo, AMMO_TYPES } from '../game/state.js';
 import { getControlled, isControllingPlayer } from '../game/possession.js';
 import { dom } from './dom.js';
 import { WEAPONS } from '../game/constants.js';
@@ -21,7 +21,7 @@ let prev = {
 // Per-type ammo dirty queue. Seeded with every type so the first frame
 // flushes a complete set of CSS variables for the inventory panel.
 // `subscribeAmmo` adds entries on every mutation thereafter, replacing the
-// per-frame walk that used to read `player.ammo` / `player.maxAmmo` for
+// per-frame walk that used to read `getMarine().ammo` / `getMarine().maxAmmo` for
 // every type whether or not anything changed.
 const ammoDirty = new Set(AMMO_TYPES);
 subscribeAmmo((type) => { ammoDirty.add(type); });
@@ -47,17 +47,17 @@ export function updateHud() {
     // Toggle possessed state on the renderer — CSS hides weapon/ammo rows.
     dom.renderer.classList.toggle('possessed', possessing);
 
-    const weapon = WEAPONS[player.currentWeapon];
-    const currentAmmo = weapon.ammoType ? Math.round(player.ammo[weapon.ammoType]) : 0;
+    const weapon = WEAPONS[getMarine().currentWeapon];
+    const currentAmmo = weapon.ammoType ? Math.round(getMarine().ammo[weapon.ammoType]) : 0;
     const currentHealth = possessing
         ? Math.round(controlled.hp ?? 0)
-        : Math.round(player.health);
+        : Math.round(getMarine().hp);
     // Armor lives only on the marine `player` object. Snapshots always carry
     // marine stats in `snap.player`, so when the camera/body is a monster
     // (possession or spectator follow) we must not show that inventory here.
     const currentArmor = possessing
         ? 0
-        : Math.round(player.armor);
+        : Math.round(getMarine().armor);
 
     if (currentAmmo !== prev.ammo) {
         prev.ammo = currentAmmo;
@@ -87,8 +87,8 @@ export function updateHud() {
 
     if (ammoDirty.size) {
         for (const type of ammoDirty) {
-            style.setProperty(`--ammo-${type}`, Math.round(player.ammo[type]));
-            style.setProperty(`--max-${type}`, player.maxAmmo[type]);
+            style.setProperty(`--ammo-${type}`, Math.round(getMarine().ammo[type]));
+            style.setProperty(`--max-${type}`, getMarine().maxAmmo[type]);
         }
         ammoDirty.clear();
     }
@@ -98,7 +98,7 @@ export function updateHud() {
     for (let weaponSlot = 2; weaponSlot <= 7; weaponSlot++) {
         dom.renderer.classList.toggle(
             WEAPON_CLASSES[weaponSlot],
-            !possessing && player.ownedWeapons.has(weaponSlot),
+            !possessing && getMarine().ownedWeapons.has(weaponSlot),
         );
     }
 }

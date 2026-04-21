@@ -10,8 +10,9 @@
  * `fireWeaponFor` branch on the session's controlled entity.
  */
 
-import { state, player } from '../../game/state.js';
+import { state, getMarine } from '../../game/state.js';
 import { ENEMIES } from '../../game/constants.js';
+import { getSessionIdControlling } from '../../game/possession.js';
 
 const ENEMY_LABELS = {
     3004: 'Zombieman',
@@ -34,8 +35,9 @@ function isLiveEnemy(thing) {
 }
 
 function snapshotEnemy(thing) {
-    const dx = (thing.x ?? 0) - player.x;
-    const dy = (thing.y ?? 0) - player.y;
+    const m = getMarine();
+    const dx = (thing.x ?? 0) - m.x;
+    const dy = (thing.y ?? 0) - m.y;
     return {
         id: thing.thingIndex,
         type: thing.type,
@@ -49,7 +51,7 @@ function snapshotEnemy(thing) {
         maxHp: thing.maxHp ?? null,
         aiState: thing.ai?.state ?? null,
         distanceToMarine: Math.hypot(dx, dy),
-        possessedBySessionId: thing.__sessionId ?? null,
+        possessedBySessionId: getSessionIdControlling(thing) ?? null,
     };
 }
 

@@ -13,7 +13,7 @@ import { getFloorHeightAt } from "../physics/queries.js";
 import {
   getDeltas,
 } from "../geometry.js";
-import { asMovementActor } from '../actors/adapter.js';
+import { asMovementActor } from '../entity/interop.js';
 import {
   integratePlanarMove,
   updateActorFacingFromDelta,

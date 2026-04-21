@@ -14,7 +14,7 @@
  * properties. CSS composes the transform.
  */
 
-import { player } from '../game/state.js';
+import { getMarine } from '../game/state.js';
 import { dom } from '../renderer/dom.js';
 import { getControlled, onPossessionChange } from '../game/possession.js';
 import { getSession } from '../net/client.js';
@@ -77,8 +77,9 @@ let lastPlayerHeading = -1;
 let lastPlayerMirror = -1;
 
 function getFollowAngle() {
-    const body = getControlled() || player;
-    if (body === player) return player.angle;
+    const m = getMarine();
+    const body = getControlled() || m;
+    if (body === m) return m.viewAngle;
     return typeof body.viewAngle === 'number' ? body.viewAngle : (body.facing ?? 0) - Math.PI / 2;
 }
 
