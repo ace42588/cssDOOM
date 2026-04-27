@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 
-import { state } from '../src/game/state.js';
-import { resetLevelWorldState } from '../src/game/state-reset.js';
+import { state } from '../src/engine/state.js';
+import { resetLevelWorldState } from '../src/engine/state-reset.js';
 
 state.things.push({ thingIndex: 0 });
 state.projectiles.push({ id: 1 });

@@ -2,12 +2,12 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
-import { currentMap } from '../../src/data/maps.js';
+import { currentMap } from '../../src/engine/data/maps.js';
 import {
     getNextMap,
     getSecretExitMap,
     loadMapHeadless,
-} from '../../src/game/lifecycle.js';
+} from '../../src/engine/lifecycle.js';
 import {
     assignOnJoin,
 } from '../assignment.js';

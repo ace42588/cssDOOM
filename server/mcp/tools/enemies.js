@@ -17,8 +17,8 @@ import {
     snapshotActor,
     isLiveActor,
 } from '../../views/world.js';
-import { state, getMarineActor } from '../../../src/game/state.js';
-import { getControlledFor } from '../../../src/game/possession.js';
+import { state, getMarineActor } from '../../../src/engine/state.js';
+import { getControlledFor } from '../../../src/engine/possession.js';
 import { textResult, err } from './_helpers.js';
 
 /**

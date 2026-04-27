@@ -8,20 +8,20 @@
  * SGNL Access Evaluations.
  *
  * These builders operate on the raw map JSON only (no engine imports),
- * so the adapter stays decoupled from `src/game/*`.
+ * so the adapter stays decoupled from `src/engine/*`.
  */
 
 // Switch texture prefixes — keep in sync with `SWITCH_ON_PREFIX` /
-// `SWITCH_OFF_PREFIX` in `src/game/constants.js`.
+// `SWITCH_OFF_PREFIX` in `src/engine/constants.js`.
 const SWITCH_PREFIXES = ['SW1', 'SW2'];
 
 // Linedef special types for the two exit lines — keep in sync with
-// `EXIT_SPECIAL` / `SECRET_EXIT_SPECIAL` in `src/game/constants.js`.
+// `EXIT_SPECIAL` / `SECRET_EXIT_SPECIAL` in `src/engine/constants.js`.
 const EXIT_SPECIAL = 11;
 const SECRET_EXIT_SPECIAL = 51;
 
 // DOOM thing type → human-friendly key name. Color + material match
-// `KEY_TYPES` in `src/game/constants.js` (blue / yellow / red).
+// `KEY_TYPES` in `src/engine/constants.js` (blue / yellow / red).
 const KEY_THING_TYPES = {
     5: { color: 'blue', material: 'card', keyName: 'blue-card' },
     6: { color: 'yellow', material: 'card', keyName: 'yellow-card' },
@@ -32,7 +32,7 @@ const KEY_THING_TYPES = {
 };
 
 // All pickup thing types the engine recognises — mirrors
-// `PICKUP_THING_TYPES` in `src/data/things.js`. Keys are listed
+// `PICKUP_THING_TYPES` in `src/engine/data/things.js`. Keys are listed
 // separately above and are filtered out of the general `pickups`
 // entity so a key only shows up once.
 const PICKUP_THING_TYPES = new Set([
@@ -45,7 +45,7 @@ const PICKUP_THING_TYPES = new Set([
 ]);
 
 // Human-friendly pickup names for the non-key pickups. Values come
-// from `THING_NAMES` in `src/data/things.js` plus a small extension
+// from `THING_NAMES` in `src/engine/data/things.js` plus a small extension
 // so the adapter can label every pickup it emits.
 const PICKUP_NAMES = {
     2001: 'shotgun',

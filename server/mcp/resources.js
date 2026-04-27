@@ -21,7 +21,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
-import { getControlledFor } from '../../src/game/possession.js';
+import { getControlledFor } from '../../src/engine/possession.js';
 import { snapshotWorld, listPlayers } from '../views/world.js';
 import { rolePromptFor } from './role.js';
 import { getMapPayload } from '../world.js';

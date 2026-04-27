@@ -28,7 +28,7 @@ import {
     initializeGameSession,
 } from '../session-lifecycle.js';
 import { MSG } from '../net.js';
-import { getControlledFor } from '../../src/game/possession.js';
+import { getControlledFor } from '../../src/engine/possession.js';
 import { rolePromptFor } from './role.js';
 import { disposeActorSession } from './tools/actor.js';
 

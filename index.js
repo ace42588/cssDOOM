@@ -10,40 +10,40 @@
  *   4. renders the scene (camera + HUD + transient events)
  */
 
-import { getPlayerActor } from './src/game/possession.js';
-import { state, getMarineActor } from './src/game/state.js';
-import { mapData } from './src/data/maps.js';
-import { updateCamera, startCullingLoop, updateHud, setRendererHost } from './src/renderer/index.js';
-import { setAudioHost } from './src/audio/audio.js';
-import { createDomRendererHost } from './src/renderer/dom/host.js';
-import { createWebAudioHost } from './src/audio/web-audio.js';
-import { updateMenuSelection } from './src/ui/menu.js';
-import { isBodySwapOpen } from './src/ui/body-swap.js';
-import { isJoinChallengeOpen } from './src/ui/join-challenge.js';
-import { hideInitialOverlay } from './src/ui/overlay.js';
-import { initKeyboardInput } from './src/input/keyboard.js';
-import { initMouseInput } from './src/input/mouse.js';
-import { initTouchInput } from './src/input/touch.js';
-import { initGamepadInput } from './src/input/gamepad.js';
-import { initDebugMenu, updateDebugStats } from './src/ui/debug.js';
-import './src/ui/spectator.js';
-import './src/ui/body-swap.js';
-import './src/ui/join-challenge.js';
-import { updateDoorOperator } from './src/ui/door-operator.js';
+import { getPlayerActor } from './src/engine/possession.js';
+import { state, getMarineActor } from './src/engine/state.js';
+import { mapData } from './src/engine/data/maps.js';
+import { updateCamera, startCullingLoop, updateHud, setRendererHost } from './src/engine/ports/renderer.js';
+import { setAudioHost } from './src/engine/ports/audio.js';
+import { createDomRendererHost } from './src/client/renderer/dom/host.js';
+import { createWebAudioHost } from './src/client/audio/web-audio.js';
+import { updateMenuSelection } from './src/client/ui/menu.js';
+import { isBodySwapOpen } from './src/client/ui/body-swap.js';
+import { isJoinChallengeOpen } from './src/client/ui/join-challenge.js';
+import { hideInitialOverlay } from './src/client/ui/overlay.js';
+import { initKeyboardInput } from './src/client/input/keyboard.js';
+import { initMouseInput } from './src/client/input/mouse.js';
+import { initTouchInput } from './src/client/input/touch.js';
+import { initGamepadInput } from './src/client/input/gamepad.js';
+import { initDebugMenu, updateDebugStats } from './src/client/ui/debug.js';
+import './src/client/ui/spectator.js';
+import './src/client/ui/body-swap.js';
+import './src/client/ui/join-challenge.js';
+import { updateDoorOperator } from './src/client/ui/door-operator.js';
 import {
     connect as connectToServer,
     sendInputFrame,
     getSession,
     prepareForLocalSpawn,
-} from './src/net/client.js';
-import { spawnThings } from './src/game/things/spawner.js';
-import { initMcpInterface } from './src/mcp/index.js';
+} from './src/client/net/client.js';
+import { spawnThings } from './src/engine/things/spawner.js';
+import { initMcpInterface } from './src/client/webmcp/index.js';
 import {
     beginLevelTransition,
     rebuildLevelScene,
     endLevelTransition,
     scheduleIntroCameraDrop,
-} from './src/app/level-loader.js';
+} from './src/client/app/level-loader.js';
 
 let debugEnabled = false;
 let ready = false;

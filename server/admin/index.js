@@ -16,7 +16,7 @@ import {
     getDoorControlMode,
     setDoorControlMode,
 } from '../settings/door-control.js';
-import { DOOR_CONTROL_MODE } from '../../src/game/constants.js';
+import { DOOR_CONTROL_MODE } from '../../src/engine/constants.js';
 
 const DEFAULT_PATH = '/admin';
 

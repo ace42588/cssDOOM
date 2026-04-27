@@ -5,18 +5,18 @@
  * handled via spectator actions after the session is established.
  */
 
-import { getMarineActor, state } from '../src/game/state.js';
+import { getMarineActor, state } from '../src/engine/state.js';
 import {
     ENEMIES,
-} from '../src/game/constants.js';
+} from '../src/engine/constants.js';
 import {
     releaseFor,
     getControlledFor,
-} from '../src/game/possession.js';
-import { getThingIndex, getActorIndex } from '../src/game/things/registry.js';
+} from '../src/engine/possession.js';
+import { getThingIndex, getActorIndex } from '../src/engine/things/registry.js';
 import { ROLE } from './net.js';
-import { formatRuntimeId, resolveRuntimeId } from '../src/game/entity/id.js';
-import { isActorAlive } from '../src/game/entity/caps.js';
+import { formatRuntimeId, resolveRuntimeId } from '../src/engine/actors/ids.js';
+import { isActorAlive } from '../src/engine/actors/capabilities.js';
 
 export const entityId = formatRuntimeId;
 export const resolveEntity = resolveRuntimeId;
@@ -67,7 +67,7 @@ function compareSlotIndexAsc(a, b) {
 }
 
 export function listPossessableActors() {
-    /** @type {Array<import('../src/game/state.js').Player|import('../src/game/state.js').Thing>} */
+    /** @type {Array<import('../src/engine/state.js').Player|import('../src/engine/state.js').Thing>} */
     const out = [];
     const marine = getMarineActor();
     if (marine && marine.hp > 0 && !marine.deathMode) {

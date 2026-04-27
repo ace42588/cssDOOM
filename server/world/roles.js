@@ -1,5 +1,5 @@
-import { getMarineActor } from '../../src/game/state.js';
-import { getControlledFor } from '../../src/game/possession.js';
+import { getMarineActor } from '../../src/engine/state.js';
+import { getControlledFor } from '../../src/engine/possession.js';
 import {
     controlledBodyIsAlive,
     demoteToSpectator,

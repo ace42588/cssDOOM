@@ -10,7 +10,7 @@ import { randomUUID } from 'node:crypto';
 import {
     getControlledFor,
     possessFor,
-} from '../src/game/possession.js';
+} from '../src/engine/possession.js';
 import {
     applyDisplacement,
     entityId,

@@ -3,7 +3,7 @@
  *
  * Starts the authoritative world, accepts WS connections, routes inputs
  * into the world's per-session input buffers, and broadcasts snapshots
- * every other tick (~17 Hz). All game logic lives under `../src/game`
+ * every other tick (~17 Hz). All game logic lives under `../src/engine`
  * and runs unchanged here thanks to the renderer/audio/services facades.
  */
 

@@ -8,13 +8,13 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { getMarineActor, state } from '../src/game/state.js';
-import { loadMapHeadless } from '../src/game/lifecycle.js';
+import { getMarineActor, state } from '../src/engine/state.js';
+import { loadMapHeadless } from '../src/engine/lifecycle.js';
 import {
     formatRuntimeId,
     resolveRuntimeId,
     normalizePossessTargetId,
-} from '../src/game/entity/id.js';
+} from '../src/engine/actors/ids.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const mapsDir = path.join(__dirname, '..', 'public', 'maps');

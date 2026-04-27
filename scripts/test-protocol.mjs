@@ -14,7 +14,7 @@ import {
     SnapshotMessageSchema,
     WelcomeMessageSchema,
     sanitizeInput,
-} from '../src/net/protocol.js';
+} from '../src/shared/protocol/messages.js';
 
 const input = sanitizeInput({
     moveX: 99,

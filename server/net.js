@@ -144,4 +144,4 @@ export {
     ROLE,
     emptyInput,
     sanitizeInput,
-} from '../src/net/protocol.js';
+} from '../src/shared/protocol/messages.js';

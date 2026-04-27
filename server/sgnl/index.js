@@ -15,7 +15,7 @@
  *
  * `createSgnlServices()` exposes a flat contract (markEntityDirty,
  * markPlayerDirty, markMapChanged, flushNow, tickHeartbeat,
- * setMapName) that `src/game/services.js` re-exports; individual
+ * setMapName) that `src/engine/services.js` re-exports; individual
  * engine modules don't know which underlying channel handles them.
  */
 

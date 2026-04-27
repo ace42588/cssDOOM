@@ -1,4 +1,4 @@
-import { getSessionIdControlling, possessFor } from '../src/game/possession.js';
+import { getSessionIdControlling, possessFor } from '../src/engine/possession.js';
 import {
     entityId,
     isPossessableActorEntity,

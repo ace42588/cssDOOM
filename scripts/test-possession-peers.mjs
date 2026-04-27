@@ -9,10 +9,10 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { getMarineActor, state } from '../src/game/state.js';
-import { loadMapHeadless } from '../src/game/lifecycle.js';
-import { formatRuntimeId } from '../src/game/entity/id.js';
-import { possessFor, releaseFor, getSessionIdControlling } from '../src/game/possession.js';
+import { getMarineActor, state } from '../src/engine/state.js';
+import { loadMapHeadless } from '../src/engine/lifecycle.js';
+import { formatRuntimeId } from '../src/engine/actors/ids.js';
+import { possessFor, releaseFor, getSessionIdControlling } from '../src/engine/possession.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const mapsDir = path.join(__dirname, '..', 'public', 'maps');

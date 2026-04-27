@@ -1,7 +1,7 @@
 /**
  * MCP tools for driving whatever body the calling session controls.
  *
- * Mirrors `src/mcp/tools/actor.js` (browser WebMCP) but mutates the
+ * Mirrors `src/client/webmcp/tools/actor.js` (browser WebMCP) but mutates the
  * server-side `conn.input` of the agent's own session. Every tool is
  * input-parity with a human player — no engine state is touched directly,
  * so the same validation, key gates, and AI rules apply.
@@ -15,17 +15,17 @@
 
 import { z } from 'zod';
 
-import { getMarineActor, state } from '../../../src/game/state.js';
-import { getControlledFor } from '../../../src/game/possession.js';
-import { getThingIndex } from '../../../src/game/things/registry.js';
+import { getMarineActor, state } from '../../../src/engine/state.js';
+import { getControlledFor } from '../../../src/engine/possession.js';
+import { getThingIndex } from '../../../src/engine/things/registry.js';
 import {
     snapshotActor,
     listActors,
     isLiveActor,
-} from '../../../src/game/snapshot.js';
+} from '../../../src/engine/snapshot.js';
 import { rolePromptFor } from '../role.js';
 import { textResult, ok, err, requireConn } from './_helpers.js';
-import { normalizePossessTargetId } from '../../../src/game/entity/id.js';
+import { normalizePossessTargetId } from '../../../src/engine/actors/ids.js';
 
 function clampUnit(v) {
     const n = Number(v);

@@ -9,8 +9,8 @@
  *   - `__isDoorEntity` → door-camera guidance.
  */
 
-import { WEAPONS, ENEMY_PROJECTILES } from '../../src/game/constants.js';
-import { enemyLabel, kindOfActor, actorIdOf } from '../../src/game/snapshot.js';
+import { WEAPONS, ENEMY_PROJECTILES } from '../../src/engine/constants.js';
+import { enemyLabel, kindOfActor, actorIdOf } from '../../src/engine/snapshot.js';
 
 /**
  * Describe a monster body's attack repertoire purely from its capability

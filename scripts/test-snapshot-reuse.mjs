@@ -27,7 +27,7 @@ import {
     buildDeltasForTick,
     emptyBaseline,
 } from '../server/world.js';
-import { state, getMarineActor } from '../src/game/state.js';
+import { state, getMarineActor } from '../src/engine/state.js';
 import { createSgnlServices } from '../server/sgnl/index.js';
 
 installEngineHosts();

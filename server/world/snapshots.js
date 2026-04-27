@@ -1,6 +1,6 @@
-import { state } from '../../src/game/state.js';
-import { getThingIndex } from '../../src/game/things/registry.js';
-import { getSessionIdControlling } from '../../src/game/possession.js';
+import { state } from '../../src/engine/state.js';
+import { getThingIndex } from '../../src/engine/things/registry.js';
+import { getSessionIdControlling } from '../../src/engine/possession.js';
 
 /** Allocate a fresh, empty baseline for a newly-attached connection. */
 export function emptyBaseline() {

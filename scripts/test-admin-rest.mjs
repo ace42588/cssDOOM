@@ -22,7 +22,7 @@ import { installAdmin } from '../server/admin/index.js';
 import { openWebSocketGameSession } from '../server/session-lifecycle.js';
 import { MSG } from '../server/net.js';
 import { getConnection } from '../server/connections.js';
-import { DOOR_CONTROL_MODE } from '../src/game/constants.js';
+import { DOOR_CONTROL_MODE } from '../src/engine/constants.js';
 
 const TOKEN = 'test-admin-bearer-token-for-ci';
 

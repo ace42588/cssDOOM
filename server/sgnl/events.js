@@ -35,9 +35,9 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { config as loadEnv } from 'dotenv';
-import { state, MARINE_ACTOR_TYPE } from '../../src/game/state.js';
-import { isCombatantActor } from '../../src/game/snapshot.js';
-import { getSessionIdControlling } from '../../src/game/possession.js';
+import { state, MARINE_ACTOR_TYPE } from '../../src/engine/state.js';
+import { isCombatantActor } from '../../src/engine/snapshot.js';
+import { getSessionIdControlling } from '../../src/engine/possession.js';
 
 loadEnv({
     path: join(dirname(fileURLToPath(import.meta.url)), '../../.env'),

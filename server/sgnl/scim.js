@@ -29,9 +29,9 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { config as loadEnv } from 'dotenv';
-import { MARINE_ACTOR_TYPE } from '../../src/game/state.js';
-import { getControlledFor } from '../../src/game/possession.js';
-import { actorIdOf, kindOfActor, labelOfActor } from '../../src/game/snapshot.js';
+import { MARINE_ACTOR_TYPE } from '../../src/engine/state.js';
+import { getControlledFor } from '../../src/engine/possession.js';
+import { actorIdOf, kindOfActor, labelOfActor } from '../../src/engine/snapshot.js';
 
 loadEnv({
     path: join(dirname(fileURLToPath(import.meta.url)), '../../.env'),

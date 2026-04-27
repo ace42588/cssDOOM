@@ -2,7 +2,7 @@
  * Server-side "give me the world right now" view.
  *
  * Record-shaping logic for a single actor lives in
- * [src/game/snapshot.js](../../src/game/snapshot.js) so both the Node server
+ * [src/engine/snapshot.js](../../src/engine/snapshot.js) so both the Node server
  * (MCP tools, admin REST, SGNL push) and the browser bundle (WebMCP
  * tools) produce byte-identical payloads for the same actor. This module
  * layers the server-only concerns on top of the shared helpers:
@@ -13,9 +13,9 @@
  * world right now" reads instead of "what's the latest pushed snapshot".
  */
 
-import { getMarineActor } from '../../src/game/state.js';
-import { getControlledFor } from '../../src/game/possession.js';
-import { poseOf } from '../../src/game/entity/caps.js';
+import { getMarineActor } from '../../src/engine/state.js';
+import { getControlledFor } from '../../src/engine/possession.js';
+import { poseOf } from '../../src/engine/actors/capabilities.js';
 import { listConnections, getConnection } from '../connections.js';
 import { getMapPayload, getCurrentTick } from '../world.js';
 import {
@@ -24,7 +24,7 @@ import {
     listActors,
     listDoors,
     isLiveActor,
-} from '../../src/game/snapshot.js';
+} from '../../src/engine/snapshot.js';
 
 export {
     snapshotActor,

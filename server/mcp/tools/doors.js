@@ -15,7 +15,7 @@
 
 import { z } from 'zod';
 
-import { state } from '../../../src/game/state.js';
+import { state } from '../../../src/engine/state.js';
 import { snapshotDoor, listDoors } from '../../views/world.js';
 import { textResult, ok, err, requireConn } from './_helpers.js';
 

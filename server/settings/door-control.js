@@ -5,7 +5,7 @@
  * validating the mode string.
  */
 
-import { DOOR_CONTROL_MODE } from '../../src/game/constants.js';
+import { DOOR_CONTROL_MODE } from '../../src/engine/constants.js';
 
 const VALID = new Set(Object.values(DOOR_CONTROL_MODE));
 

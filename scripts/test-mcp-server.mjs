@@ -20,18 +20,18 @@ import {
 } from '../server/world.js';
 import { getConnection } from '../server/connections.js';
 import { createSgnlServices } from '../server/sgnl/index.js';
-import { state, getMarineActor } from '../src/game/state.js';
-import { ENEMIES } from '../src/game/constants.js';
-import { getActorIndex } from '../src/game/things/registry.js';
+import { state, getMarineActor } from '../src/engine/state.js';
+import { ENEMIES } from '../src/engine/constants.js';
+import { getActorIndex } from '../src/engine/things/registry.js';
 import { buildMcpServerForNewSession } from '../server/mcp/index.js';
 import { openMcpSession, closeMcpSession } from '../server/mcp/sessions.js';
 import { tickIdleChecks } from '../server/idle.js';
 import { emptyInput } from '../server/net.js';
-import { updateMovementFor } from '../src/game/movement/system.js';
-import { getControlledFor } from '../src/game/possession.js';
-import { poseOf } from '../src/game/entity/caps.js';
+import { updateMovementFor } from '../src/engine/movement/system.js';
+import { getControlledFor } from '../src/engine/possession.js';
+import { poseOf } from '../src/engine/actors/capabilities.js';
 import { rolePromptFor } from '../server/mcp/role.js';
-import { normalizeAngle } from '../src/game/math/angle.js';
+import { normalizeAngle } from '../src/engine/math/angle.js';
 
 class InMemoryTransport {
     constructor(name) {
