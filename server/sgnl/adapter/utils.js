@@ -37,7 +37,7 @@ export function mapToSgnlAttributes(entity, attrMap) {
   return attributes;
 }
 
-export function toAttributeValue(value, expectedType, key) {
+function toAttributeValue(value, expectedType, key) {
   if (value === null || value === undefined) return null;
 
   try {

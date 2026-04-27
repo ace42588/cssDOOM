@@ -1,11 +1,16 @@
 /**
  * Map loading, level transitions, and full/partial game state resets.
+ *
+ * The marine spawns through the normal `spawnThings()` pipeline (see
+ * `src/data/maps.js` which synthesizes a `type: MARINE_ACTOR_TYPE` entry
+ * from the map's `playerStart`). No hook here positions or pre-seeds the
+ * marine — lifecycle just clears the scene, spawns things, and optionally
+ * carries the marine's inventory across level transitions.
  */
 
-import { state, getMarine } from './state.js';
-
-const marine = () => getMarine();
-import { MAPS, mapData, currentMap, setMapState } from '../data/maps.js';
+import { state, getMarineActor } from './state.js';
+import { MAPS, currentMap, setMapState } from '../data/maps.js';
+import { EYE_HEIGHT } from './constants.js';
 import { equipWeapon } from './combat/weapons.js';
 import { resetPossession } from './possession.js';
 import * as renderer from '../renderer/index.js';
@@ -23,47 +28,11 @@ import { getFloorHeightAt } from './physics/queries.js';
 // ============================================================================
 
 /**
- * Fetches a map JSON and applies it to game state: sets player position,
- * resets game/level state, and rebuilds the 3D scene.
- */
-export async function loadMap(name) {
-    const isInitialLoad = !currentMap;
-    // Pull in the DOM-heavy level loader lazily so this module can run
-    // on the server without touching a `document`.
-    const {
-        beginLevelTransition,
-        rebuildLevelScene,
-        scheduleIntroCameraDrop,
-        endLevelTransition,
-    } = await import('../app/level-loader.js');
-
-    await beginLevelTransition(isInitialLoad);
-
-    const response = await fetch(`maps/${name}.json`);
-    const json = await response.json();
-    setMapState(name, json);
-    setMapName(name);
-    applyPlayerStart();
-
-    if (isInitialLoad || marine().deathMode === 'gameover') {
-        resetGameState();
-    } else {
-        transitionToLevel();
-    }
-
-    // Spawn game entities first so the DOM builder can match against them.
-    spawnThings();
-    await rebuildLevelScene(isInitialLoad);
-    scheduleIntroCameraDrop();
-    endLevelTransition(isInitialLoad);
-}
-
-/**
  * Headless map load — for the server (or any environment without a DOM).
- * Performs the pure-data portion of `loadMap`: read JSON, apply player start,
- * reset/transition game state, spawn things, initialize doors/lifts/crushers,
- * build spatial queries, and wire sound adjacency. Does not touch the renderer
- * or UI; callers install a renderer host (no-op or recording) beforehand.
+ * Reads map JSON, reset/transition game state, spawns things (including the
+ * marine), initializes doors/lifts/crushers, builds spatial queries, and
+ * wires sound adjacency. Does not touch the renderer or UI; callers install
+ * a renderer host (no-op or recording) beforehand.
  *
  * @param {string} name Map identifier (e.g. 'E1M1')
  * @param {(name: string) => Promise<object>} readMapJson Async loader that
@@ -78,14 +47,15 @@ export async function loadMap(name) {
 export async function loadMapHeadless(name, readMapJson, options = {}) {
     const { fullReset = true } = options;
     const json = await readMapJson(name);
+
+    // Capture inventory from the previous-level marine *before* the scene is
+    // wiped; `spawnThings()` below will rebuild it with default gear and we
+    // re-apply the carry-over for level transitions.
+    const carryInventory = fullReset ? null : snapshotMarineInventory();
+
     setMapState(name, json);
     setMapName(name);
-    applyPlayerStart();
-    if (fullReset) {
-        resetGameState();
-    } else {
-        transitionToLevel();
-    }
+    clearSceneState();
     spawnThings();
     clearSpatialGrid();
     initDoors();
@@ -93,6 +63,7 @@ export async function loadMapHeadless(name, readMapJson, options = {}) {
     initCrushers();
     buildSpatialGrid();
     buildSectorAdjacency();
+
     // Sample the floor under each spawned thing now that the spatial grid
     // is ready. AI entities re-sample every tick during movement, but static
     // pickups / barrels / decorations need this baseline so the snapshot
@@ -106,7 +77,7 @@ export async function loadMapHeadless(name, readMapJson, options = {}) {
             thing.z = thing.floorHeight ?? 0;
         }
     }
-    for (let i = 1; i < state.actors.length; i++) {
+    for (let i = 0; i < state.actors.length; i++) {
         const actor = state.actors[i];
         if (!actor) continue;
         if (typeof actor.floorHeight !== 'number') {
@@ -116,18 +87,23 @@ export async function loadMapHeadless(name, readMapJson, options = {}) {
             actor.z = actor.floorHeight ?? 0;
         }
     }
-    // Player eye height uses the real constant; applyPlayerStart parked the
-    // view at +80, which matches the intro-drop final position.
-    marine().z = marine().floorHeight + 80;
-}
 
-function applyPlayerStart() {
-    marine().x = mapData.playerStart.x;
-    marine().y = mapData.playerStart.y;
-    marine().viewAngle = mapData.playerStart.angle - Math.PI / 2;
-    marine().facing = marine().viewAngle + Math.PI / 2;
-    marine().floorHeight = mapData.playerStart.floorHeight || 0;
-    marine().z = marine().floorHeight + 80;
+    const marine = getMarineActor();
+    if (marine) {
+        marine.floorHeight = getFloorHeightAt(marine.x, marine.y);
+        // Spawn at natural eye height; the intro "fall" is a client-only
+        // camera offset driven by `scheduleIntroCameraDrop` (see
+        // `src/app/level-loader.js`) so each viewer drops their own camera
+        // without perturbing the broadcast actor pose.
+        marine.z = marine.floorHeight + EYE_HEIGHT;
+        if (carryInventory) {
+            applyMarineInventory(marine, carryInventory);
+        }
+        equipWeapon(marine.currentWeapon);
+    }
+
+    markMapChanged(currentMap);
+    void flushNow();
 }
 
 export function getNextMap() {
@@ -140,64 +116,63 @@ export function getSecretExitMap() {
 }
 
 // ============================================================================
-// Scene / level lifecycle (called on map change)
+// Scene / level lifecycle
 // ============================================================================
 
 function clearSceneState() {
-    marine().deathMode = null;
-    marine().isFiring = false;
-    marine().sectorDamageTimer = 0;
-    state.things = [];
-    while (state.actors.length > 1) state.actors.pop();
+    // Hide any lingering powerup indicators before their owning marine is
+    // dropped; the renderer tracks them as CSS classes, not entity state.
+    const outgoingMarine = getMarineActor();
+    if (outgoingMarine) {
+        for (const name in outgoingMarine.powerups) {
+            renderer.hidePowerup(name);
+        }
+    }
+    state.things.length = 0;
+    state.actors.length = 0;
     for (let index = 0; index < state.projectiles.length; index++) {
         renderer.removeProjectile(state.projectiles[index].id);
     }
     state.projectiles = [];
     state.nextProjectileId = 0;
-    for (const name in marine().powerups) {
-        renderer.hidePowerup(name);
-        delete marine().powerups[name];
-    }
+    state.doorState.clear();
+    state.liftState.clear();
+    state.crusherState.clear();
     renderer.setPlayerDead(false);
-    // Return control to the normal player character; clear any player-AI
-    // state and the AI-dead flag carried over from a previous level.
+    renderer.clearKeys();
+    renderer.clearWeaponSlots();
     resetPossession();
 }
 
-/** Level transition — keep inventory, clear keys (keys are per-level). */
-export function transitionToLevel() {
-    clearSceneState();
-    marine().collectedKeys.clear();
-    renderer.clearKeys();
-    equipWeapon(marine().currentWeapon);
-    markMapChanged(currentMap);
-    void flushNow();
+/**
+ * Snapshot the marine's inventory into a plain object the caller can hold
+ * across a scene wipe and re-apply to the next spawned marine.
+ */
+function snapshotMarineInventory() {
+    const m = getMarineActor();
+    if (!m) return null;
+    return {
+        hp: m.hp,
+        maxHp: m.maxHp,
+        armor: m.armor,
+        armorType: m.armorType,
+        ammo: { ...m.ammo },
+        maxAmmo: { ...m.maxAmmo },
+        hasBackpack: m.hasBackpack,
+        currentWeapon: m.currentWeapon,
+        ownedWeapons: new Set(m.ownedWeapons),
+        // Keys are intentionally dropped at level transitions.
+    };
 }
 
-/** Full reset — new game or respawn after death. */
-export function resetGameState() {
-    clearSceneState();
-    marine().hp = 100;
-    marine().maxHp = 100;
-    marine().armor = 0;
-    marine().armorType = 0;
-    marine().ammo.bullets = 50;
-    marine().ammo.shells = 0;
-    marine().ammo.rockets = 0;
-    marine().ammo.cells = 0;
-    marine().maxAmmo.bullets = 200;
-    marine().maxAmmo.shells = 50;
-    marine().maxAmmo.rockets = 50;
-    marine().maxAmmo.cells = 300;
-    marine().hasBackpack = false;
-    marine().currentWeapon = 2;
-    marine().ownedWeapons.clear();
-    marine().ownedWeapons.add(1);
-    marine().ownedWeapons.add(2);
-    marine().collectedKeys.clear();
-    renderer.clearKeys();
-    renderer.clearWeaponSlots();
-    equipWeapon(marine().currentWeapon);
-    markMapChanged(currentMap);
-    void flushNow();
+function applyMarineInventory(marine, saved) {
+    marine.hp = saved.hp;
+    marine.maxHp = saved.maxHp;
+    marine.armor = saved.armor;
+    marine.armorType = saved.armorType;
+    for (const k of Object.keys(saved.ammo)) marine.ammo[k] = saved.ammo[k];
+    for (const k of Object.keys(saved.maxAmmo)) marine.maxAmmo[k] = saved.maxAmmo[k];
+    marine.hasBackpack = saved.hasBackpack;
+    marine.currentWeapon = saved.currentWeapon;
+    marine.ownedWeapons = new Set(saved.ownedWeapons);
 }

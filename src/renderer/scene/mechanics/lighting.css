@@ -53,8 +53,8 @@ body.sector-lights {
 body.light-falloff {
     .wall, .floor, .ceiling, .enemy, .barrel, .pickup, .decoration {
         --view-depth: calc(
-            (var(--x) - var(--player-x)) * var(--camera-forward-x) +
-            (var(--y) - var(--player-y)) * var(--camera-forward-y)
+            (var(--x) - var(--view-x)) * var(--camera-forward-x) +
+            (var(--y) - var(--view-y)) * var(--camera-forward-y)
         );
 
         --light-falloff: clamp(0.15, calc(1 - var(--view-depth) / 1500), 1);

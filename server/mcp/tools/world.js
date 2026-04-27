@@ -11,7 +11,7 @@
 
 import { z } from 'zod';
 
-import { snapshotWorld, listPlayers } from '../snapshot.js';
+import { snapshotWorld, listPlayers } from '../../views/world.js';
 import { getRing, drainLog } from '../sessions.js';
 import { getMapPayload } from '../../world.js';
 import { textResult } from './_helpers.js';
@@ -22,7 +22,7 @@ export function registerWorldTools(server, ctx) {
         {
             title: 'Get world state',
             description:
-                'Return a JSON snapshot of the authoritative game world from this session\'s perspective: marine stats, alive enemies, doors, other connected players, and what this session is currently controlling.',
+                "Return a JSON snapshot of the authoritative game world from this session's perspective: `actors` (marine + monsters in a unified record shape), `doors`, `players`, and `self` (your role + the controlled actor snapshot).",
             inputSchema: {},
         },
         async () => textResult(snapshotWorld(ctx.getSessionId()), ctx.getSessionId()),
@@ -69,7 +69,7 @@ export function registerWorldTools(server, ctx) {
         {
             title: 'Poll events',
             description:
-                "Drain this session's pending event log (role changes, map loads, disconnect notices). Returns events since the last call and clears the log.",
+                "Drain this session's pending event log (role changes, map loads, disconnect notices, joinChallenge, notices). Returns events since the last call and clears the log.",
             inputSchema: {},
         },
         async () => textResult({ events: drainLog(ctx.getSessionId()) }, ctx.getSessionId()),

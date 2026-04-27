@@ -49,7 +49,7 @@ function pruneExpiredClaims(now = Date.now()) {
 }
 
 /** Key for sticky body reassignment after MCP reconnect (same agent identity). */
-export function claimKeyFor(conn) {
+function claimKeyFor(conn) {
     const a = conn.agentIdentity;
     if (!a || typeof a !== 'object') return null;
     if (a.source === 'client' && a.agentId) return `agent:${a.agentId}`;
@@ -57,7 +57,7 @@ export function claimKeyFor(conn) {
     return null;
 }
 
-export function peekRecentClaim(agentKey) {
+function peekRecentClaim(agentKey) {
     if (!agentKey) return null;
     pruneExpiredClaims();
     const v = recentAgentClaims.get(agentKey);
@@ -72,7 +72,7 @@ export function peekRecentClaim(agentKey) {
     };
 }
 
-export function recordRecentClaim(agentKey, claim) {
+function recordRecentClaim(agentKey, claim) {
     if (!agentKey || !claim.controlledEntityId) return;
     recentAgentClaims.set(agentKey, {
         controlledEntityId: claim.controlledEntityId,
@@ -82,7 +82,7 @@ export function recordRecentClaim(agentKey, claim) {
     });
 }
 
-export function clearRecentClaim(agentKey) {
+function clearRecentClaim(agentKey) {
     if (agentKey) recentAgentClaims.delete(agentKey);
 }
 
@@ -145,6 +145,18 @@ function captureMessage(sessionId, message) {
             break;
         case MSG.BYE:
             pushLog(ring, { kind: 'bye', reason: message.reason });
+            break;
+        case MSG.JOIN_CHALLENGE:
+            pushLog(ring, {
+                kind: 'joinChallenge',
+                challengeId: message.challengeId,
+                targetEntityId: message.targetEntityId,
+                targetAgent: message.targetAgent,
+                defense: message.defense,
+                defenseState: message.defenseState,
+                expiresAt: message.expiresAt,
+                autoResolved: message.autoResolved,
+            });
             break;
         default:
             break;

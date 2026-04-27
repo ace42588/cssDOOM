@@ -51,17 +51,23 @@ export const MAX_FRAME_DELTA_TIME = 0.05; // 50 ms = minimum 20 FPS equivalent
 // ============================================================================
 
 export const USE_RANGE = 64; // Max distance (map units) for activating a switch or door
-export const WALK_TRIGGER_RANGE = 32; // How close the player must be to a walk-over linedef to trigger it
 
 export const SWITCH_ON_PREFIX = "SW1"; // Texture prefix for an inactive (ready-to-press) switch
 export const SWITCH_OFF_PREFIX = "SW2"; // Texture prefix for an already-activated switch
 
 export const EXIT_SPECIAL = 11; // Linedef special type: normal level exit
 export const SECRET_EXIT_SPECIAL = 51; // Linedef special type: secret level exit
-export const LIFT_USE_SPECIAL = 62; // Linedef special type: SR Lower Lift Wait Raise (use-activated)
 
 export const LIFT_RAISE_DELAY = 3000; // Milliseconds a lift waits at the bottom before rising back up
 export const DOOR_CLOSE_DELAY = 4000; // Milliseconds a door stays open before auto-closing
+export const DOOR_CLOSE_TRAVEL_MS = 1000; // Milliseconds for door close animation travel (CSS door panel transition)
+
+/** How door opens are gated (server-owned via `getDoorControlMode()` in `services.js`). */
+export const DOOR_CONTROL_MODE = Object.freeze({
+    STANDARD: 'standard',
+    SGNL: 'sgnl',
+    PLAYER: 'player',
+});
 
 // ============================================================================
 // Thing Classification Sets
@@ -241,8 +247,10 @@ export const WEAPONS = {
     damageType: "melee",
     range: 80,
   },
-  // Intrinsic monster slots — shape parity with marine `currentWeapon` / `ownedWeapons`.
-  // Possessed fire still uses `fireMonsterAttack` + `monster.ai` until stage 2 unifies `fire`.
+  // Intrinsic monster slots — shape parity with marine `currentWeapon` /
+  // `ownedWeapons`. `performAttack` still reads `monster.ai` directly
+  // (via `buildMonsterAttackDescriptor`) so these entries are mostly a
+  // HUD/UX placeholder today, kept so body-swap code can branch on slot.
   101: {
     name: "MONSTER_ZOMBIE",
     ammoType: null,
@@ -345,14 +353,11 @@ export const BARREL_RADIUS = 16; // Collision radius (map units)
 // Enemies and barrels are handled separately (ENEMY_AI_STATS.radius and BARREL_RADIUS).
 export const SOLID_THING_RADIUS = SHARED_SOLID_THING_RADIUS;
 export const BARREL_EXPLOSION_RADIUS = 128; // Blast damage radius (map units)
-export const BARREL_EXPLOSION_DAMAGE = 128; // Maximum damage at point-blank; falls off linearly with distance
 
 // Player rocket projectile properties.
 // Based on: linuxdoom-1.10/info.c:mobjinfo[MT_ROCKET] and p_mobj.c
 // Accuracy: Approximation — speed converted from fixed-point map units per tic.
 export const PLAYER_ROCKET_SPEED = 700; // Map units per second (DOOM: 20 * FRACUNIT per tic ≈ 700/s)
-export const PLAYER_ROCKET_RADIUS = 11; // Collision radius (DOOM: 11 * FRACUNIT)
-export const ROCKET_SPLASH_RADIUS = 128; // Blast radius (DOOM: 128 map units)
 export const ROCKET_SPLASH_DAMAGE = 128; // Max splash damage at center (DOOM: 128)
 
 // ============================================================================

@@ -1,6 +1,6 @@
 /* Scene */
 
-@property --player-z {
+@property --view-z {
     syntax: "<number>";
     inherits: true;
     initial-value: 0;
@@ -56,7 +56,7 @@
 #scene .barrel,
 #scene .pickup,
 #scene .decoration,
-#player {
+#avatar {
     transform-style: preserve-3d;
 }
 

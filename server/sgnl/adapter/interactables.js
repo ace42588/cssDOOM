@@ -137,7 +137,7 @@ function mapName(mapJson) {
 
 // ── Builders ──────────────────────────────────────────────────────────
 
-export function buildDoors(mapJson) {
+function buildDoors(mapJson) {
     const doors = Array.isArray(mapJson.doors) ? mapJson.doors : [];
     const name = mapName(mapJson);
     return doors.map((door, index) => {
@@ -156,7 +156,7 @@ export function buildDoors(mapJson) {
     });
 }
 
-export function buildSwitches(mapJson) {
+function buildSwitches(mapJson) {
     const walls = Array.isArray(mapJson.walls) ? mapJson.walls : [];
     const linedefs = Array.isArray(mapJson.linedefs) ? mapJson.linedefs : [];
     const name = mapName(mapJson);
@@ -194,7 +194,7 @@ export function buildSwitches(mapJson) {
     return rows;
 }
 
-export function buildKeys(mapJson) {
+function buildKeys(mapJson) {
     const things = Array.isArray(mapJson.things) ? mapJson.things : [];
     const name = mapName(mapJson);
     const rows = [];
@@ -219,7 +219,7 @@ export function buildKeys(mapJson) {
     return rows;
 }
 
-export function buildPickups(mapJson) {
+function buildPickups(mapJson) {
     const things = Array.isArray(mapJson.things) ? mapJson.things : [];
     const name = mapName(mapJson);
     const rows = [];
@@ -244,7 +244,7 @@ export function buildPickups(mapJson) {
     return rows;
 }
 
-export function buildExits(mapJson) {
+function buildExits(mapJson) {
     const linedefs = Array.isArray(mapJson.linedefs) ? mapJson.linedefs : [];
     const name = mapName(mapJson);
     const rows = [];
@@ -267,7 +267,7 @@ export function buildExits(mapJson) {
     return rows;
 }
 
-export function buildLifts(mapJson) {
+function buildLifts(mapJson) {
     const lifts = Array.isArray(mapJson.lifts) ? mapJson.lifts : [];
     const name = mapName(mapJson);
     return lifts.map((lift, index) => {
@@ -286,7 +286,7 @@ export function buildLifts(mapJson) {
     });
 }
 
-export function buildTeleporters(mapJson) {
+function buildTeleporters(mapJson) {
     const teleporters = Array.isArray(mapJson.teleporters) ? mapJson.teleporters : [];
     const name = mapName(mapJson);
     return teleporters.map((tele, index) => {
@@ -316,7 +316,7 @@ export function buildTeleporters(mapJson) {
     });
 }
 
-export function buildCrushers(mapJson) {
+function buildCrushers(mapJson) {
     const crushers = Array.isArray(mapJson.crushers) ? mapJson.crushers : [];
     const name = mapName(mapJson);
     return crushers.map((crusher, index) => {

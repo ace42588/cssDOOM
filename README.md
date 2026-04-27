@@ -83,6 +83,20 @@ Smoke test:
 npm run test:mcp:server   # in-process: boots the world, drives every tool over an in-memory transport
 ```
 
+## Admin REST API
+
+Human/ops JSON API on the same HTTP port (not MCP). Until `ADMIN_BEARER_TOKEN` is set, every `/admin/*` request returns **503**; with it set, send `Authorization: Bearer <token>`.
+
+- `GET /admin/world` — full world snapshot (no per-session `self` block)
+- `GET /admin/players`, `GET /admin/entities` — roster and live bodies + doors
+- `POST /admin/reset` — reload the current map with `fullReset: true` (keeps connections)
+- `DELETE /admin/sessions/:sessionId` — force-close a WebSocket or MCP HTTP peer
+- `GET /admin/door-control-mode`, `PUT /admin/door-control-mode` — body `{ "mode": "standard" | "sgnl" | "player" }`
+
+```bash
+npm run test:admin
+```
+
 
 ## How it works
 
@@ -123,7 +137,7 @@ DOOM's coordinate system doesn't map directly to CSS 3D. DOOM uses a top-down 2D
 
 Once we've built our scene we run a game loop in JavaScript that tracks the game state — player position, input, collisions, enemy AI. This game loop is the least interesting part of this project, as it is basically a recreation of the original code in JavaScript.
 
-There is a strict separation between the game loop in JavaScript and the rendering in CSS. JavaScript sets a limited number of CSS custom properties such as `--player-x`, `--player-y`, `--player-z` and `--player-angle` which determine the location of the player in our scene.
+There is a strict separation between the game loop in JavaScript and the rendering in CSS. JavaScript sets a limited number of CSS custom properties such as `--view-x`, `--view-y`, `--view-z` and `--view-angle` which determine the location of the local session's view in our scene.
 
 CSS does the rest — it moves the entire world in the opposite direction of the player, since CSS doesn't have a camera:
 
@@ -131,11 +145,11 @@ CSS does the rest — it moves the entire world in the opposite direction of the
 #scene {
     translate: 0 0 var(--perspective);
     transform:
-        rotateY(calc(var(--player-angle) * -1rad))
+        rotateY(calc(var(--view-angle) * -1rad))
         translate3d(
-            calc(var(--player-x) * -1px),
-            calc(var(--player-z) * 1px),
-            calc(var(--player-y) * 1px)
+            calc(var(--view-x) * -1px),
+            calc(var(--view-z) * 1px),
+            calc(var(--view-y) * 1px)
         );
 }
 ```
@@ -147,7 +161,7 @@ Moving and looking around is just updating four custom properties.
 
 The game supports mouse, keyboard, touch, and gamepad input, all funnelled through a unified input system that combines contributions from each source every frame.
 
-Mouse-look uses the **Pointer Lock API**, which activates automatically when entering fullscreen using the ICON top right (not F11). Raw `movementX` deltas from `mousemove` are multiplied by a sensitivity constant and accumulated as a `turnDelta` each frame. The game loop adds that delta directly to `--player-angle`, bypassing the rate-based turning used by keyboard and gamepad so the camera tracks the mouse exactly.
+Mouse-look uses the **Pointer Lock API**, which activates automatically when entering fullscreen using the ICON top right (not F11). Raw `movementX` deltas from `mousemove` are multiplied by a sensitivity constant and accumulated as a `turnDelta` each frame. The game loop adds that delta directly to the controlled actor's view angle (which camera.js then writes as `--view-angle`), bypassing the rate-based turning used by keyboard and gamepad so the camera tracks the mouse exactly.
 
 Keyboard arrow keys and the gamepad's right stick apply a turn rate scaled by `deltaTime`, giving a constant angular speed regardless of frame rate. Touch controls use a drag gesture on the right half of the screen with half the mouse sensitivity. Left click (or right trigger on gamepad) fires the weapon.
 
@@ -160,7 +174,7 @@ The entire scene is built with `transform-style: preserve-3d`. Wall dimensions u
 
 ### Animating custom properties with `@property`
 
-Thanks to `@property` we can animate and transition CSS custom properties. This is fundamental to how the rendering works — sector lighting is controlled by a `--light` custom property that inherits down to all elements in a sector and can be animated for flickering effects. The `--player-z` property is registered as a number to enable smooth falling transitions when the player walks off a ledge.
+Thanks to `@property` we can animate and transition CSS custom properties. This is fundamental to how the rendering works — sector lighting is controlled by a `--light` custom property that inherits down to all elements in a sector and can be animated for flickering effects. The `--view-z` property is registered as a number to enable smooth falling transitions when the player walks off a ledge.
 
 ### Irregular shapes with `clip-path`
 
@@ -172,7 +186,7 @@ DOOM sprites are combined into spritesheets with frames side by side. CSS animat
 
 ### Projectiles with CSS animations
 
-Projectiles use separate `translate` and `rotate` properties. The position is animated from `--start-x/y/z` to `--end-x/y/z` via a CSS `@keyframes` animation, while `rotate` stays reactive to `--player-angle` so the sprite keeps facing the camera. When a collision is detected, JavaScript removes the element mid-flight and spawns an explosion — a three-frame spritesheet that self-destructs on `animationend`.
+Projectiles use separate `translate` and `rotate` properties. The position is animated from `--start-x/y/z` to `--end-x/y/z` via a CSS `@keyframes` animation, while `rotate` stays reactive to `--view-angle` so the sprite keeps facing the camera. When a collision is detected, JavaScript removes the element mid-flight and spawns an explosion — a three-frame spritesheet that self-destructs on `animationend`.
 
 ### Doors and lifts with CSS `transition`
 
@@ -203,7 +217,7 @@ Walls, floors, and ceilings are darkened by a child `<div class="tint">` with `b
 
 ### Billboarding sprites with `rotateY()`
 
-Enemies, decorations, barrels, and pickups always face the camera via `rotateY(calc(var(--player-angle) * 1rad))`. Because `--player-angle` is inherited from the viewport, all sprites rotate in sync as the player looks around.
+Enemies, decorations, barrels, and pickups always face the camera via `rotateY(calc(var(--view-angle) * 1rad))`. Because `--view-angle` is inherited from the viewport, all sprites rotate in sync as the player looks around.
 
 ### Spectator mode with separate transform properties
 

@@ -10,14 +10,16 @@
  *   4. renders the scene (camera + HUD + transient events)
  */
 
-import { state, getMarine } from './src/game/state.js';
-import { mapData, setMapState } from './src/data/maps.js';
+import { getPlayerActor } from './src/game/possession.js';
+import { state, getMarineActor } from './src/game/state.js';
+import { mapData } from './src/data/maps.js';
 import { updateCamera, startCullingLoop, updateHud, setRendererHost } from './src/renderer/index.js';
 import { setAudioHost } from './src/audio/audio.js';
 import { createDomRendererHost } from './src/renderer/dom/host.js';
 import { createWebAudioHost } from './src/audio/web-audio.js';
 import { updateMenuSelection } from './src/ui/menu.js';
 import { isBodySwapOpen } from './src/ui/body-swap.js';
+import { isJoinChallengeOpen } from './src/ui/join-challenge.js';
 import { hideInitialOverlay } from './src/ui/overlay.js';
 import { initKeyboardInput } from './src/input/keyboard.js';
 import { initMouseInput } from './src/input/mouse.js';
@@ -26,6 +28,7 @@ import { initGamepadInput } from './src/input/gamepad.js';
 import { initDebugMenu, updateDebugStats } from './src/ui/debug.js';
 import './src/ui/spectator.js';
 import './src/ui/body-swap.js';
+import './src/ui/join-challenge.js';
 import { updateDoorOperator } from './src/ui/door-operator.js';
 import {
     connect as connectToServer,
@@ -39,6 +42,7 @@ import {
     beginLevelTransition,
     rebuildLevelScene,
     endLevelTransition,
+    scheduleIntroCameraDrop,
 } from './src/app/level-loader.js';
 
 let debugEnabled = false;
@@ -65,9 +69,11 @@ function frame() {
 
     sendInputFrame();
 
-    if (getMarine().deathMode !== 'gameover' && !isBodySwapOpen()) {
+    const controlled = getPlayerActor();
+    const controlledDead = Boolean(controlled) && (controlled.hp <= 0 || controlled.deathMode);
+    if (!controlledDead && !isBodySwapOpen() && !isJoinChallengeOpen()) {
         updateHud();
-    } else if (isBodySwapOpen()) {
+    } else if (isBodySwapOpen() || isJoinChallengeOpen()) {
         updateHud();
     }
     updateCamera();
@@ -103,6 +109,7 @@ async function applyServerMap(name, _mapData) {
         updateMenuSelection();
         updateHud();
         updateCamera();
+        scheduleIntroCameraDrop();
         await new Promise(resolve => setTimeout(resolve, 600));
         hideInitialOverlay();
         ready = true;
@@ -132,4 +139,4 @@ async function init() {
 init();
 
 // expose for the debug console / spectator UI
-window.__cssdoom = { state, getMarine, session: getSession() };
+window.__cssdoom = { state, getMarineActor, session: getSession() };

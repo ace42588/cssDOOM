@@ -10,7 +10,6 @@ import { THING_SPRITES, THING_NAMES } from '../constants.js';
 import { THING_CATEGORY } from '../../../data/things.js';
 
 import { state } from '../../../game/state.js';
-import { spawnThings } from '../../../game/things/spawner.js';
 import { mapData } from '../../../data/maps.js';
 import { sceneState } from '../../dom.js';
 import { getFloorHeightAt, getSectorAt } from '../../../game/physics/queries.js';
@@ -19,13 +18,13 @@ import { appendToSector } from '../sectors.js';
 export function buildThings() {
     if (!mapData.things) return;
 
-    // Game entries are registered by `spawnThings()` (headless spawner).
-    // If we're called before a spawn pass has run (legacy single-player path),
-    // run it now so the DOM builder can always read a pre-built mapping.
-    let mapThingToIndex = mapData._thingIndexByMapIdx;
+    // `mapData._thingIndexByMapIdx` is produced by `spawnThings()` before the
+    // scene build (browser: index.js applyServerMap; server: loadMapHeadless).
+    const mapThingToIndex = mapData._thingIndexByMapIdx;
     if (!mapThingToIndex) {
-        spawnThings();
-        mapThingToIndex = mapData._thingIndexByMapIdx;
+        throw new Error(
+            'buildThings: spawnThings() must run before buildThings() so thing indices match snapshots.',
+        );
     }
 
     for (let mapIdx = 0; mapIdx < mapData.things.length; mapIdx++) {

@@ -6,7 +6,7 @@
  * and sets custom properties — no transform string composition.
  *
  * Follow mode needs NO JS animation loop — CSS computes the camera position
- * from --player-* properties using sin()/cos(). Only zoom (R/F keys) updates
+ * from --view-* properties using sin()/cos(). Only zoom (R/F keys) updates
  * --follow-height.
  *
  * Top-down mode uses a JS loop for keyboard-driven pan/zoom/rotate, but only
@@ -14,7 +14,7 @@
  * properties. CSS composes the transform.
  */
 
-import { getMarine } from '../game/state.js';
+import { getMarineActor } from '../game/state.js';
 import { dom } from '../renderer/dom.js';
 import { getControlled, onPossessionChange } from '../game/possession.js';
 import { getSession } from '../net/client.js';
@@ -77,14 +77,14 @@ let lastPlayerHeading = -1;
 let lastPlayerMirror = -1;
 
 function getFollowAngle() {
-    const m = getMarine();
+    const m = getMarineActor();
     const body = getControlled() || m;
     if (body === m) return m.viewAngle;
     return typeof body.viewAngle === 'number' ? body.viewAngle : (body.facing ?? 0) - Math.PI / 2;
 }
 
 function updatePlayerSprite(cameraAngle, forceBack = false) {
-    const sprite = document.querySelector('#player > .sprite');
+    const sprite = document.querySelector('#avatar > .sprite');
     if (!sprite) return;
 
     // Determine which of the 8 DOOM rotation angles to show

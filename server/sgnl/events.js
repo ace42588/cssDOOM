@@ -35,7 +35,9 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { config as loadEnv } from 'dotenv';
-import { state } from '../../src/game/state.js';
+import { state, MARINE_ACTOR_TYPE } from '../../src/game/state.js';
+import { isCombatantActor } from '../../src/game/snapshot.js';
+import { getSessionIdControlling } from '../../src/game/possession.js';
 
 loadEnv({
     path: join(dirname(fileURLToPath(import.meta.url)), '../../.env'),
@@ -115,10 +117,24 @@ function parseTrailingInt(id) {
 }
 
 function findThingByMapIndex(mapThingIndex) {
+    for (let i = 0; i < state.actors.length; i++) {
+        const actor = state.actors[i];
+        if (actor && actor.mapThingIndex === mapThingIndex) return actor;
+    }
     for (const thing of state.things) {
-        if (thing.mapThingIndex === mapThingIndex) return thing;
+        if (thing && thing.mapThingIndex === mapThingIndex) return thing;
     }
     return null;
+}
+
+/**
+ * Event-push variant of `isCombatantActor` that also requires a stable
+ * `mapThingIndex` (the SGNL subject key). Covers the marine and every
+ * hostile AI actor.
+ */
+function isEventCombatant(entity) {
+    if (!isCombatantActor(entity)) return false;
+    return Number.isFinite(entity.mapThingIndex);
 }
 
 // ── Entity resolution ──────────────────────────────────────────────────
@@ -233,26 +249,32 @@ function eventPickup(id, thing, kind) {
     return payload;
 }
 
-function eventActor(id, thing) {
-    const thingIndex = Number.isFinite(thing.thingIndex)
-        ? thing.thingIndex
-        : thing.mapThingIndex;
+function eventActor(id, actor) {
+    const thingIndex = Number.isFinite(actor.thingIndex)
+        ? actor.thingIndex
+        : actor.mapThingIndex;
+    const hp = actor.hp ?? 0;
+    const isMarine = actor.type === MARINE_ACTOR_TYPE;
+    const isDead = isMarine
+        ? actor.deathMode === 'gameover'
+        : hp <= 0 || Boolean(actor.collected);
+    const controllingSid = getSessionIdControlling(actor);
     return {
         type: EVENT_TYPE.actor,
         subject: id,
         mapName: currentMapName,
         thingIndex,
-        mapThingIndex: thing.mapThingIndex,
-        actorType: thing.type,
-        x: thing.x,
-        y: thing.y,
-        z: thing.z ?? thing.floorHeight ?? 0,
-        hp: thing.hp,
-        isDead: Boolean(thing.isDead),
-        aiState: thing.aiState || null,
-        possessedBy: thing.possessingSessionId
-            ? `player:${thing.possessingSessionId}`
-            : null,
+        mapThingIndex: actor.mapThingIndex,
+        actorType: actor.type,
+        kind: isMarine ? 'marine' : 'enemy',
+        x: actor.x,
+        y: actor.y,
+        z: actor.z ?? actor.floorHeight ?? 0,
+        hp,
+        maxHp: actor.maxHp ?? null,
+        isDead,
+        aiState: actor.ai?.state ?? null,
+        possessedBy: controllingSid ? `player:${controllingSid}` : null,
     };
 }
 
@@ -415,9 +437,14 @@ export function tickEventsHeartbeat(deltaTime) {
     sweepClock += (deltaTime || 0) * 1000;
     if (sweepClock >= SWEEP_INTERVAL_MS) {
         sweepClock = 0;
+        for (let i = 0; i < state.actors.length; i++) {
+            const actor = state.actors[i];
+            if (!isEventCombatant(actor)) continue;
+            const id = `actor:${currentMapName}:${actor.mapThingIndex}`;
+            ensureEntry('actor', id).dirty = true;
+        }
         for (const thing of state.things) {
-            if (!thing.ai) continue;
-            if (!Number.isFinite(thing.mapThingIndex)) continue;
+            if (!isEventCombatant(thing)) continue;
             const id = `actor:${currentMapName}:${thing.mapThingIndex}`;
             ensureEntry('actor', id).dirty = true;
         }

@@ -44,7 +44,14 @@ entities:
     displayName: Users (player sessions)
     externalId: User
     pushExternalId: User
-    description: SCIM User resource per connected player session. userName = player:<sessionId>.
+    description: >-
+      SCIM User resource per connected player session. userName =
+      player:<sessionId>. User identity is stable per session; the
+      `controlledActorRef` block + nested vitals/position/ammo/inventory
+      describe whichever actor the session is currently driving (marine,
+      possessed monster, or null when spectating). Marine-only fields
+      (ammo, maxAmmo, inventory.ownedWeapons, collectedKeys, powerups)
+      are omitted when the session drives a non-marine body.
     pageSize: 100
     pagesOrderedById: false
     attributes:
@@ -88,6 +95,25 @@ entities:
         externalId: displayName
         pushExternalId: displayName
         type: String
+      - name: controlledActorId
+        externalId: $.controlledActorRef.id
+        pushExternalId: $.controlledActorRef.id
+        type: String
+        indexed: true
+      - name: controlledActorType
+        externalId: $.controlledActorRef.type
+        pushExternalId: $.controlledActorRef.type
+        type: Int64
+        indexed: true
+      - name: controlledActorKind
+        externalId: $.controlledActorRef.kind
+        pushExternalId: $.controlledActorRef.kind
+        type: String
+        indexed: true
+      - name: controlledActorLabel
+        externalId: $.controlledActorRef.label
+        pushExternalId: $.controlledActorRef.label
+        type: String
       - name: positionX
         externalId: $.position.x
         pushExternalId: $.position.x
@@ -109,6 +135,10 @@ entities:
         pushExternalId: $.vitals.health
         type: Int64
         indexed: true
+      - name: maxHealth
+        externalId: $.vitals.maxHealth
+        pushExternalId: $.vitals.maxHealth
+        type: Int64
       - name: armor
         externalId: $.vitals.armor
         pushExternalId: $.vitals.armor

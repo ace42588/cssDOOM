@@ -295,12 +295,17 @@ entities:
         type: String
         indexed: true
 
-  # ─── Actor (AI thing) ────────────────────────────────────────────────
+  # ─── Actor (unified: marine + AI) ─────────────────────────────────────
   ActorState:
     displayName: Actor state
     externalId: ActorState
     pushExternalId: $.type
-    description: AI-actor position / HP / aiState / possession transitions.
+    description: >-
+      Position / HP / aiState / possession transitions for every
+      combatant actor on the map — the marine body and every hostile
+      AI actor. `kind` discriminates marine vs enemy; `possessedBy`
+      carries the controlling session id when a player drives the body
+      (AI-only bodies emit null).
     attributes:
       - name: id
         externalId: $.id
@@ -331,6 +336,10 @@ entities:
         externalId: $.actorType
         type: Int64
         indexed: true
+      - name: kind
+        externalId: $.kind
+        type: String
+        indexed: true
       - name: x
         externalId: $.x
         type: Double
@@ -344,6 +353,9 @@ entities:
         externalId: $.hp
         type: Int64
         indexed: true
+      - name: maxHp
+        externalId: $.maxHp
+        type: Int64
       - name: isDead
         externalId: $.isDead
         type: Bool

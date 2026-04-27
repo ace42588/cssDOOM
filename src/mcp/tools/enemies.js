@@ -1,58 +1,28 @@
 /**
- * WebMCP tools for enemies.
+ * WebMCP tools for enemies — thin convenience wrappers over the unified
+ * actor snapshot.
  *
- * The client is read-only with respect to server-authoritative enemy state:
- * `state.things` is mirrored from each snapshot. Tools here inspect that
- * mirror. To possess an enemy, use `actor.possess` with `targetId: 'thing:N'`.
+ * Mirrors the server tools in `server/mcp/tools/enemies.js`: these delegate
+ * to `listActors({ kind: 'enemy' })` and `snapshotActor(entity)` from the
+ * shared `src/game/snapshot.js`, so records are byte-identical to the
+ * server's `enemies-list` / `enemies-get-state` output.
  *
- * Once possession switches to an enemy, all `actor.*` movement/fire tools
- * drive that body because the server-side `updateMovementFor` and
- * `fireWeaponFor` branch on the session's controlled entity.
+ * To possess an enemy, use `actor.possess` with `targetId: 'actor:N'`
+ * (spawned monster) or `targetId: 'thing:N'` (legacy thing-only hostile).
  */
 
-import { state, getMarine } from '../../game/state.js';
-import { ENEMIES } from '../../game/constants.js';
-import { getSessionIdControlling } from '../../game/possession.js';
+import { state, getMarineActor } from '../../game/state.js';
+import { getControlled } from '../../game/possession.js';
+import { listActors, snapshotActor, isLiveActor } from '../../game/snapshot.js';
 
-const ENEMY_LABELS = {
-    3004: 'Zombieman',
-    9: 'Shotgun Guy',
-    3001: 'Imp',
-    3002: 'Demon',
-    58: 'Spectre',
-    3003: 'Baron of Hell',
-};
-
-function enemyLabel(type) {
-    return ENEMY_LABELS[type] || `Enemy #${type}`;
-}
-
-function isLiveEnemy(thing) {
-    if (!thing) return false;
-    if (thing.collected) return false;
-    if ((thing.hp ?? 0) <= 0) return false;
-    return Boolean(thing.ai) && ENEMIES.has(thing.type);
-}
-
-function snapshotEnemy(thing) {
-    const m = getMarine();
-    const dx = (thing.x ?? 0) - m.x;
-    const dy = (thing.y ?? 0) - m.y;
-    return {
-        id: thing.thingIndex,
-        type: thing.type,
-        label: enemyLabel(thing.type),
-        x: thing.x,
-        y: thing.y,
-        z: thing.z ?? thing.floorHeight ?? 0,
-        facing: thing.facing ?? null,
-        viewAngle: thing.viewAngle ?? null,
-        hp: thing.hp ?? null,
-        maxHp: thing.maxHp ?? null,
-        aiState: thing.ai?.state ?? null,
-        distanceToMarine: Math.hypot(dx, dy),
-        possessedBySessionId: getSessionIdControlling(thing) ?? null,
-    };
+/**
+ * Distance origin for the local session: the actor it drives, or the
+ * marine if the local session is a spectator / pre-assignment.
+ */
+function originForLocalSession() {
+    const anchor = getControlled() || getMarineActor();
+    if (!anchor) return {};
+    return { originX: anchor.x, originY: anchor.y };
 }
 
 function textContent(obj) {
@@ -63,52 +33,62 @@ export function registerEnemyTools() {
     navigator.modelContext.registerTool({
         name: 'enemies.list',
         description:
-            "List currently-alive enemies mirrored from the latest server snapshot. Each entry has a stable `id` (use with enemies.get-state and actor.possess). Sorted by distance to the marine. Optional maxDistance filter in map units.",
+            "Convenience over actor.list({ kind: 'enemy', alive: true }). Each entry has a stable `id`: `actor:<slot>` for spawned monsters or `thing:<idx>` for legacy thing-only hostiles. Use with enemies.get-state and actor.possess. Sorted by distance from the local session's controlled body (marine fallback for spectators).",
         inputSchema: {
             type: 'object',
             properties: {
-                maxDistance: { type: 'number', description: 'Omit enemies farther than this many map units from the marine.' },
+                maxDistance: { type: 'number', description: "Omit enemies farther than this many map units from the local session's controlled body." },
                 limit: { type: 'integer', description: 'Cap on the number of entries returned.' },
             },
         },
         async execute(args) {
             const maxDistance = Number.isFinite(args?.maxDistance) ? Number(args.maxDistance) : Infinity;
             const limit = Number.isInteger(args?.limit) && args.limit > 0 ? args.limit : Infinity;
-
-            const list = [];
-            for (const thing of state.things) {
-                if (!isLiveEnemy(thing)) continue;
-                const snap = snapshotEnemy(thing);
-                if (snap.distanceToMarine > maxDistance) continue;
-                list.push(snap);
-            }
-            list.sort((a, b) => a.distanceToMarine - b.distanceToMarine);
-            if (list.length > limit) list.length = limit;
-            return textContent({ count: list.length, enemies: list });
+            const enemies = listActors({
+                kind: 'enemy',
+                alive: true,
+                ...originForLocalSession(),
+                maxDistance,
+                limit,
+            });
+            return textContent({ count: enemies.length, enemies });
         },
     });
 
     navigator.modelContext.registerTool({
         name: 'enemies.get-state',
-        description: 'Return the latest mirrored state for a single enemy by its thingIndex id.',
+        description:
+            "Return the latest mirrored state for a single enemy by id. Accepts either a string id `actor:<slot>` / `thing:<idx>` or a legacy numeric id (actor slot preferred, falls back to thing index).",
         inputSchema: {
             type: 'object',
             properties: {
-                id: { type: 'integer', description: 'thingIndex of the enemy.' },
+                id: {
+                    oneOf: [
+                        { type: 'string', description: '`actor:<slot>` or `thing:<idx>` as returned by enemies.list' },
+                        { type: 'integer', description: 'Legacy numeric id: actor slot (preferred) or thing index.' },
+                    ],
+                    description: 'Enemy id from enemies.list.',
+                },
             },
             required: ['id'],
         },
         async execute(args) {
-            const id = Number(args?.id);
-            if (!Number.isInteger(id) || id < 0 || id >= state.things.length) {
-                return textContent({ ok: false, reason: 'invalid id' });
+            const raw = args?.id;
+            let entity = null;
+            if (typeof raw === 'string') {
+                if (raw.startsWith('actor:')) {
+                    entity = state.actors[Number(raw.slice('actor:'.length))] || null;
+                } else if (raw.startsWith('thing:')) {
+                    entity = state.things[Number(raw.slice('thing:'.length))] || null;
+                }
+            } else if (Number.isInteger(raw) && raw > 0) {
+                entity = state.actors[raw] || state.things[raw] || null;
             }
-            const thing = state.things[id];
-            if (!thing) return textContent({ ok: false, reason: 'not found' });
+            if (!entity) return textContent({ ok: false, reason: 'not found' });
             return textContent({
                 ok: true,
-                enemy: snapshotEnemy(thing),
-                alive: isLiveEnemy(thing),
+                enemy: snapshotActor(entity, originForLocalSession()),
+                alive: isLiveActor(entity),
             });
         },
     });

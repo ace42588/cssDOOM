@@ -2,19 +2,18 @@
  * Body-swap / possession state — generalized for multi-controller (server).
  *
  * At any point zero or more "controllers" (session ids) are each bound to a
- * single body (the marine `player` in `state.actors[0]`, an enemy in
- * `state.actors[1..]`, a `state.things` entry, or a door entity).
- * A body can be controlled by at most one controller. Bodies not controlled
- * by any human run under AI.
+ * single actor: the marine (an actor with `type === MARINE_ACTOR_TYPE`),
+ * an enemy actor, a `state.things` entry, or a door entity. An entity can
+ * be controlled by at most one session; entities not bound to any session
+ * run under AI.
  *
- * Browser single-player uses the default session id `'local'` and the legacy
- * single-controller API (`getControlled()`, `possess()`, `isControllingPlayer()`)
- * still works exactly as before.
+ * The browser only ever drives one session id (`LOCAL_SESSION` = `'local'`).
+ * Local helpers (`getControlled()`, …) read that id so HUD, camera, and
+ * input code stay session-agnostic in their signatures.
  *
- * Server multiplayer uses the keyed API (`possessFor(sessionId, entity)`,
- * `releaseFor(sessionId)`, `getControlledFor(sessionId)`,
- * `isHumanControlled(entity)`, `listHumanControlledEntities()`) — one entry
- * per connected client that holds a playable body; spectators hold none.
+ * The keyed API (`possessFor`, `releaseFor`, `getControlledFor`, …) is what
+ * the server uses for every connected client; the browser applies the same
+ * bindings for `LOCAL_SESSION` from snapshots (`src/net/snapshot-apply.js`).
  *
  * Every subsystem that needs to know "is this body a human?" should go
  * through `isHumanControlled(entity)`.
@@ -25,13 +24,10 @@ import {
     ENEMIES,
     LINE_OF_SIGHT_CHECK_INTERVAL,
     MOVE_SPEED,
-    PLAYER_HEIGHT,
     PLAYER_RADIUS,
     WEAPONS,
 } from './constants.js';
-import { state, getMarine } from './state.js';
-
-const marine = () => getMarine();
+import { state, getMarineActor, MARINE_ACTOR_TYPE } from './state.js';
 import { getFloorHeightAt } from './physics/queries.js';
 import { getThingIndex } from './things/registry.js';
 import { setEnemyState } from './ai/state.js';
@@ -42,19 +38,29 @@ function isDoorEntity(entity) {
     return Boolean(entity && entity.__isDoorEntity);
 }
 
+function isMarine(entity) {
+    return Boolean(entity) && entity === getMarineActor();
+}
+
 export const LOCAL_SESSION = 'local';
 
 // Optional render-side interpolation hooks. The browser net client wires
 // these in at startup so `getControlledEye()` can return the lerped pose
-// for the local marine and any possessed/spectated thing without forcing
-// `possession.js` to import browser-only modules. Both default to no-ops
+// for the local marine and any possessed/spectated entity without forcing
+// `possession.js` to import browser-only modules. All default to no-ops
 // so server / headless paths see the snapshot-truth fields directly.
 let renderedPlayerPoseFn = null;
 let renderedThingPoseFn = null;
+let renderedActorPoseFn = null;
 
-export function setRenderInterp({ getRenderedPlayerPose, getRenderedThingPose } = {}) {
+export function setRenderInterp({
+    getRenderedPlayerPose,
+    getRenderedThingPose,
+    getRenderedActorPose,
+} = {}) {
     renderedPlayerPoseFn = typeof getRenderedPlayerPose === 'function' ? getRenderedPlayerPose : null;
     renderedThingPoseFn = typeof getRenderedThingPose === 'function' ? getRenderedThingPose : null;
+    renderedActorPoseFn = typeof getRenderedActorPose === 'function' ? getRenderedActorPose : null;
 }
 
 /**
@@ -62,8 +68,7 @@ export function setRenderInterp({ getRenderedPlayerPose, getRenderedThingPose } 
  * server owns every binding, and the first joining client is what
  * claims the marine. The browser populates its own `LOCAL_SESSION`
  * entry when the first server snapshot arrives (see
- * `src/net/client.js#syncLocalPossession`). Legacy single-player
- * helpers below fall back to `player` when no local binding exists.
+ * `src/net/snapshot-apply.js`).
  */
 const controllers = new Map();
 
@@ -93,6 +98,16 @@ export function getControlledFor(sessionId) {
     return controllers.get(sessionId) || null;
 }
 
+/**
+ * Alias of `getControlledFor` named after "the player's actor". Callers
+ * that want to read/update the session's live avatar (HUD, camera, audio
+ * listener) should prefer this name; the returned value is `null` when the
+ * session isn't bound to any body (spectator, pre-assignment, or dead).
+ */
+export function getPlayerActor(sessionId = LOCAL_SESSION) {
+    return controllers.get(sessionId) || null;
+}
+
 /** True if any session currently controls `entity`. */
 export function isHumanControlled(entity) {
     if (!entity) return false;
@@ -116,45 +131,30 @@ export function listHumanControlledEntries() {
     return [...controllers.entries()];
 }
 
-/** List of entities currently controlled by a human session. */
-export function listHumanControlledEntities() {
-    return [...controllers.values()];
-}
-
-// ── Legacy single-controller API (browser) ────────────────────────────
+// ── Local client session (`LOCAL_SESSION`) helpers ────────────────────
 
 /**
- * Returns the entity controlled by the local session. Falls back to the
- * marine for legacy single-player code paths that run before any binding
- * exists (e.g. the browser HUD on the first pre-snapshot frame).
+ * Returns the entity controlled by the local session, or `null` when the
+ * session is unbound (spectator, pre-snapshot, or after a game-over
+ * release). Callers that need a marine-specific read should use
+ * `getMarineActor()`.
  */
 export function getControlled() {
-    return controllers.get(LOCAL_SESSION) || marine();
+    return controllers.get(LOCAL_SESSION) || null;
 }
 
-export function isControllingPlayer() {
+function getControlledEyeHeight() {
     const controlled = controllers.get(LOCAL_SESSION);
-    // No binding means "default view": treat as if controlling the marine.
-    return !controlled || controlled === marine();
-}
-
-export function isPossessing() {
-    const controlled = controllers.get(LOCAL_SESSION);
-    return Boolean(controlled) && controlled !== marine();
-}
-
-export function getControlledEyeHeight() {
-    const controlled = controllers.get(LOCAL_SESSION);
-    if (controlled === marine()) return EYE_HEIGHT;
+    if (isMarine(controlled)) return EYE_HEIGHT;
     return EYE_HEIGHT * 0.9;
 }
 
 /**
  * Derive a Zombieman-shaped AI profile for the normal player character,
- * parameterised by whichever weapon the player has equipped.
+ * parameterised by whichever weapon the marine has equipped.
  */
-function buildPlayerAiProfile() {
-    const weapon = WEAPONS[marine().currentWeapon] || WEAPONS[2];
+function buildPlayerAiProfile(marine) {
+    const weapon = WEAPONS[marine.currentWeapon] || WEAPONS[2];
     const fireRateSeconds = (weapon.fireRate || 543) / 1000;
     return {
         state: 'idle',
@@ -165,8 +165,16 @@ function buildPlayerAiProfile() {
         damageDealt: false,
         reactionTimer: 0,
         ambush: false,
-        target: 'player',
+        // Marine-as-AI picks its target each tick via the main AI loop's
+        // `autoAcquireTarget` branch; seed null so there's no string
+        // sentinel lingering in the field.
+        target: null,
         threshold: 0,
+        // Behavioural capability consumed by `updateAllEnemies`: when
+        // true, the actor scans all living enemies for the closest one
+        // every tick instead of chasing `ai.target` and falling back to
+        // the marine. Only the unpiloted marine flips this on today.
+        autoAcquireTarget: true,
         speed: MOVE_SPEED,
         chaseTics: 4,
         radius: PLAYER_RADIUS,
@@ -185,24 +193,27 @@ function buildPlayerAiProfile() {
     };
 }
 
-/** Install an AI block on `player` so the enemy controller can tick it. */
+/** Install an AI block on the marine so the enemy controller can tick it. */
 export function ensurePlayerAi() {
-    if (!marine().ai) {
-        marine().ai = buildPlayerAiProfile();
+    const marine = getMarineActor();
+    if (!marine) return null;
+    if (!marine.ai) {
+        marine.ai = buildPlayerAiProfile(marine);
     } else {
-        const weapon = WEAPONS[marine().currentWeapon] || WEAPONS[2];
+        const weapon = WEAPONS[marine.currentWeapon] || WEAPONS[2];
         const fireRateSeconds = (weapon.fireRate || 543) / 1000;
-        marine().ai.cooldown = Math.max(0.5, fireRateSeconds);
-        marine().ai.attackDuration = Math.max(0.3, fireRateSeconds);
-        marine().ai.attackRange = weapon.range || 1500;
-        marine().ai.pellets = weapon.pellets || 1;
-        marine().ai.hitscanSound = weapon.sound || 'DSPISTOL';
+        marine.ai.cooldown = Math.max(0.5, fireRateSeconds);
+        marine.ai.attackDuration = Math.max(0.3, fireRateSeconds);
+        marine.ai.attackRange = weapon.range || 1500;
+        marine.ai.pellets = weapon.pellets || 1;
+        marine.ai.hitscanSound = weapon.sound || 'DSPISTOL';
     }
-    return marine().ai;
+    return marine.ai;
 }
 
-export function clearPlayerAi() {
-    marine().ai = null;
+function clearPlayerAi() {
+    const marine = getMarineActor();
+    if (marine) marine.ai = null;
 }
 
 function rehydrateEnemyAi(enemy) {
@@ -212,7 +223,7 @@ function rehydrateEnemyAi(enemy) {
     enemy.ai.damageDealt = false;
     enemy.ai.reactionTimer = 0;
     enemy.ai.threshold = 0;
-    enemy.ai.target = 'player';
+    enemy.ai.target = getMarineActor() ?? null;
     enemy.ai.wakeCheckTimer = 0;
     enemy.ai.rangedLosTimer = 0;
     enemy.ai.moveDir = undefined;
@@ -227,7 +238,7 @@ function hideThingSprite(thing, hide) {
     renderer.setThingVisible(idx, !hide);
 }
 
-// ── Core possession logic (used by both legacy + keyed APIs) ──────────
+// ── Core possession logic ──────────────────────────────────────────────
 
 /**
  * Bind `sessionId` to `entity`. Returns true on success, false if the entity
@@ -236,19 +247,18 @@ function hideThingSprite(thing, hide) {
 export function possessFor(sessionId, entity) {
     if (!entity) return false;
 
-    // Reject if already owned by someone else.
     for (const [sid, controlled] of controllers) {
         if (controlled === entity && sid !== sessionId) return false;
     }
 
     if (isDoorEntity(entity)) {
         // Doors are always available; no hp/collected gate.
-    } else if (entity !== marine()) {
+    } else if (isMarine(entity)) {
+        if (entity.hp <= 0 || entity.deathMode) return false;
+    } else {
         if (!entity.ai) return false;
         if (entity.collected) return false;
         if ((entity.hp ?? 0) <= 0) return false;
-    } else {
-        if (marine().hp <= 0 || marine().deathMode) return false;
     }
 
     const previous = controllers.get(sessionId) || null;
@@ -256,22 +266,22 @@ export function possessFor(sessionId, entity) {
 
     controllers.set(sessionId, entity);
 
-    // If the previous body is no longer controlled by *any* session, rejoin AI.
     if (previous && previous !== entity && !isHumanControlled(previous)) {
-        if (previous !== marine() && !isDoorEntity(previous)) {
+        if (!isMarine(previous) && !isDoorEntity(previous)) {
             rehydrateEnemyAi(previous);
             hideThingSprite(previous, false);
         }
     }
 
-    // Install AI on `player` if the marine is no longer controlled by anyone.
-    if (!isHumanControlled(marine())) {
+    // Install AI on the marine if it's no longer controlled by anyone.
+    const marine = getMarineActor();
+    if (marine && !isHumanControlled(marine)) {
         ensurePlayerAi();
     } else {
         clearPlayerAi();
     }
 
-    if (entity !== marine() && !isDoorEntity(entity)) {
+    if (!isMarine(entity) && !isDoorEntity(entity)) {
         // The controlled monster's sprite is hidden so the camera eye doesn't
         // look at the inside of the sprite it's driving. On the server this
         // is a no-op through the recording host.
@@ -289,7 +299,7 @@ export function releaseFor(sessionId) {
     controllers.delete(sessionId);
 
     if (!isHumanControlled(previous)) {
-        if (previous === marine()) {
+        if (isMarine(previous)) {
             ensurePlayerAi();
         } else if (isDoorEntity(previous)) {
             // no-op
@@ -302,20 +312,13 @@ export function releaseFor(sessionId) {
     notifyChange(sessionId, null);
 }
 
-/** Back-compat alias — possess an entity for the local session. */
-export function possess(entity) {
-    return possessFor(LOCAL_SESSION, entity);
-}
-
-export function possessPlayer() {
-    return possessFor(LOCAL_SESSION, marine());
-}
-
 /**
  * Called when the currently-controlled body dies. Auto-cycles to the next
- * living body (nearest living monster first, falling back to the player
- * character if alive). If nothing is left, fires the normal death/restart
- * flow by marking the player dead.
+ * living body (nearest living monster first, falling back to the marine
+ * if alive). Game-over rendering only fires when the dying body is the
+ * marine and no replacement is available; a dying monster with no
+ * replacement releases the session to spectator without touching the
+ * marine's `deathMode` or any other marine-specific state.
  */
 export function onPossessedDeath(entity) {
     const sid = getSessionIdControlling(entity);
@@ -323,34 +326,36 @@ export function onPossessedDeath(entity) {
 
     const next = findNextLivingBody(entity);
     if (next) {
-        controllers.set(sid, marine()); // allow possessFor to detect the change
+        controllers.delete(sid); // allow possessFor to detect the change
         possessFor(sid, next);
         return;
     }
 
-    // No living body available. For the local session this triggers the
-    // normal game-over flow; for remote sessions the caller should promote
-    // the client to spectator via releaseFor().
-    controllers.set(sid, marine());
-    if (sid === LOCAL_SESSION) {
-        marine().deathMode = 'gameover';
-        marine().hp = 0;
-        marine().deathTime = performance.now();
-        renderer.setPlayerDead(true);
+    // The marine's authoritative `deathMode`/`hp` transition is driven
+    // by `applyDamage` + the server-side `checkMarineLossRestart` loop;
+    // do not write those fields from here. The game-over overlay is a
+    // per-viewer UI concern scoped to the affected session, so we route
+    // through `setViewerPlayerDead` with the session id — the recording
+    // host filters it to that client on replay.
+    if (entity.type === MARINE_ACTOR_TYPE) {
+        renderer.setViewerPlayerDead(true, sid);
+        notifyChange(sid, entity);
+        return;
     }
-    notifyChange(sid, marine());
+
+    releaseFor(sid);
 }
 
 function findNextLivingBody(dyingEntity) {
     const candidates = [];
-    for (let i = 1; i < state.actors.length; i++) {
+    for (let i = 0; i < state.actors.length; i++) {
         const thing = state.actors[i];
         if (!thing || thing === dyingEntity) continue;
         if (!thing.ai) continue;
         if (!ENEMIES.has(thing.type)) continue;
         if (thing.collected) continue;
         if ((thing.hp ?? 0) <= 0) continue;
-        if (isHumanControlled(thing)) continue; // don't steal another session's body
+        if (isHumanControlled(thing)) continue;
         candidates.push(thing);
     }
 
@@ -363,8 +368,9 @@ function findNextLivingBody(dyingEntity) {
 
     if (candidates.length > 0) return candidates[0];
 
-    if (marine().hp > 0 && !marine().deathMode && dyingEntity !== marine() && !isHumanControlled(marine())) {
-        return marine();
+    const marine = getMarineActor();
+    if (marine && marine.hp > 0 && !marine.deathMode && dyingEntity !== marine && !isHumanControlled(marine)) {
+        return marine;
     }
     return null;
 }
@@ -386,21 +392,23 @@ function enemyLabel(type) {
 export function listAvailableBodies() {
     const bodies = [];
     const localControlled = controllers.get(LOCAL_SESSION);
-    if (marine().hp > 0 && !marine().deathMode) {
+    const marine = getMarineActor();
+    if (marine && marine.hp > 0 && !marine.deathMode) {
         bodies.push({
             kind: 'player',
             label: 'You (marine)',
             type: null,
-            hp: Math.round(marine().hp),
+            hp: Math.round(marine.hp),
             maxHp: 100,
-            isControlled: localControlled === marine(),
-            entity: marine(),
+            isControlled: localControlled === marine,
+            entity: marine,
         });
     }
 
-    for (let i = 1; i < state.actors.length; i++) {
+    for (let i = 0; i < state.actors.length; i++) {
         const thing = state.actors[i];
-        if (!thing || !thing.ai) continue;
+        if (!thing || thing === marine) continue;
+        if (!thing.ai) continue;
         if (!ENEMIES.has(thing.type)) continue;
         if (thing.collected) continue;
         if ((thing.hp ?? 0) <= 0) continue;
@@ -441,17 +449,17 @@ export function listAvailableBodies() {
  */
 export function describeInteractor(entity) {
     if (!entity) return { id: 'unknown', label: 'Unknown', details: {} };
-    if (entity === marine()) {
+    if (isMarine(entity)) {
         const sessionId = getSessionIdControlling(entity);
         return {
             id: formatRuntimeId(entity),
             label: sessionId ? 'Marine' : 'Marine (AI)',
             details: {
                 kind: 'marine',
-                health: Math.round(marine().hp),
-                armor: Math.round(marine().armor),
-                keys: [...marine().collectedKeys],
-                weapon: marine().currentWeapon,
+                health: Math.round(entity.hp),
+                armor: Math.round(entity.armor),
+                keys: [...entity.collectedKeys],
+                weapon: entity.currentWeapon,
                 sessionId,
             },
         };
@@ -489,14 +497,19 @@ export function describeInteractor(entity) {
 export function resetPossession() {
     controllers.clear();
     clearPlayerAi();
-    marine().deathMode = null;
     notifyChange(LOCAL_SESSION, null);
 }
 
-/** Position/angle snapshot used by the camera. Default: local session. */
+/**
+ * Position/angle snapshot used by the camera. Default: local session.
+ * Returns `null` when the session has no controlled body (spectator,
+ * pre-assignment, or post-death release); callers must handle that
+ * branch rather than silently borrowing marine geometry.
+ */
 export function getControlledEye(sessionId = LOCAL_SESSION) {
-    const controlled = controllers.get(sessionId) || marine();
-    if (controlled === marine()) {
+    const controlled = controllers.get(sessionId);
+    if (!controlled) return null;
+    if (isMarine(controlled)) {
         const rendered = renderedPlayerPoseFn?.();
         if (rendered) {
             return {
@@ -510,15 +523,14 @@ export function getControlledEye(sessionId = LOCAL_SESSION) {
             };
         }
         return {
-            x: marine().x,
-            y: marine().y,
-            z: marine().z,
-            angle: marine().viewAngle,
-            floorHeight: marine().floorHeight,
+            x: controlled.x,
+            y: controlled.y,
+            z: controlled.z,
+            angle: controlled.viewAngle,
+            floorHeight: controlled.floorHeight,
         };
     }
     if (isDoorEntity(controlled)) {
-        // The security-camera pose is fixed at map-load; only viewAngle moves.
         return {
             x: controlled.x,
             y: controlled.y,
@@ -528,7 +540,11 @@ export function getControlledEye(sessionId = LOCAL_SESSION) {
         };
     }
     const thing = controlled;
-    const rendered = renderedThingPoseFn?.(thing.thingIndex);
+    // Actors (possessed monsters) lerp through the unified actor pose cache;
+    // pickup/barrel things fall back to the thing interp table.
+    const rendered = typeof thing.actorIndex === 'number'
+        ? renderedActorPoseFn?.(thing.actorIndex)
+        : renderedThingPoseFn?.(thing.thingIndex);
     const sx = rendered ? rendered.x : thing.x;
     const sy = rendered ? rendered.y : thing.y;
     // Use the lerped floor when available; the un-lerped fallback comes
@@ -551,20 +567,6 @@ export function getControlledEye(sessionId = LOCAL_SESSION) {
     };
 }
 
-export function getControlledRadius(sessionId = LOCAL_SESSION) {
-    const controlled = controllers.get(sessionId) || marine();
-    if (controlled === marine()) return marine().radius ?? PLAYER_RADIUS;
-    if (isDoorEntity(controlled)) return 0;
-    return controlled.ai?.radius ?? PLAYER_RADIUS;
-}
-
-export function getControlledHeight(sessionId = LOCAL_SESSION) {
-    const controlled = controllers.get(sessionId) || marine();
-    if (controlled === marine()) return marine().height ?? PLAYER_HEIGHT;
-    if (isDoorEntity(controlled)) return 0;
-    return PLAYER_HEIGHT;
-}
-
 /**
  * Floor for the effective move speed of a human-controlled monster, as a
  * fraction of MOVE_SPEED. AI chase speeds (70–175 u/s) feel sluggish under
@@ -574,9 +576,15 @@ export function getControlledHeight(sessionId = LOCAL_SESSION) {
  */
 const POSSESSED_SPEED_FLOOR_RATIO = 0.85;
 
+/**
+ * Effective move speed for the session's controlled body. Returns the
+ * default `MOVE_SPEED` when unbound; `updateMovementFor` early-returns
+ * before this is reached, so the fallback only guards defensively.
+ */
 export function getControlledSpeed(sessionId = LOCAL_SESSION) {
-    const controlled = controllers.get(sessionId) || marine();
-    if (controlled === marine()) return marine().speed;
+    const controlled = controllers.get(sessionId);
+    if (!controlled) return MOVE_SPEED;
+    if (isMarine(controlled)) return controlled.speed;
     if (isDoorEntity(controlled)) return 0;
     const aiSpeed = controlled.ai?.speed ?? MOVE_SPEED;
     return Math.max(aiSpeed, MOVE_SPEED * POSSESSED_SPEED_FLOOR_RATIO);

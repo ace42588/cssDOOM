@@ -7,7 +7,7 @@
  * right, we rotate the whole world left. This is the standard trick for
  * first-person 3D in CSS.
  *
- * The scene transform chain (defined in style.css) is:
+ * The scene transform chain (defined in camera.css) is:
  *
  *   1. translateZ(var(--perspective))
  *      CSS `perspective` places the viewer at z = +perspective relative to the
@@ -17,52 +17,30 @@
  *      would appear too far away, because the perspective vanishing point
  *      would be at the wrong depth.
  *
- *   2. rotateY(calc(var(--player-angle) * -1rad))
- *      Applies the inverse of the player's yaw rotation. The negation is key:
- *      when the player looks right (+angle), the world rotates left (-angle).
+ *   2. rotateY(calc(var(--view-angle) * -1rad))
+ *      Applies the inverse of the session's view yaw rotation.
  *
- *   3. translate3d(-playerX, +playerZ, +playerY)
- *      Applies the inverse of the player's position. Negating X and using the
- *      DOOM-to-CSS coordinate mapping:
- *        - DOOM X (east/west)   → CSS X axis (negate for inverse)
- *        - DOOM Y (north/south) → CSS -Z axis (positive here because inverse)
- *        - DOOM Z (height)      → CSS -Y axis (positive here because CSS Y
- *          points down, but the state already stores the negated value)
+ *   3. translate3d(-viewX, +viewZ, +viewY)
+ *      Applies the inverse of the session's view position.
  *
- * This module passes the player's position and angle to CSS as custom
- * properties (--player-x, --player-y, --player-z, --player-angle), and CSS
- * handles the actual transform composition. This keeps the math in CSS where
- * the browser can optimize transitions (e.g., the falling ease-out on
- * --player-z) and avoids JavaScript reflow overhead.
+ * This module pushes the view pose for the local session into CSS custom
+ * properties (--view-x, --view-y, --view-z, --view-angle). "View" here means
+ * whichever actor the local session currently controls — the marine or a
+ * possessed monster. Per-actor world pose (for the marine's third-person
+ * billboard) lives in --avatar-* on the actor's own DOM node.
  */
 
-import { getMarine } from '../../game/state.js';
-import { getControlled, getControlledEye } from '../../game/possession.js';
+import { getMarineActor } from '../../game/state.js';
+import { LOCAL_SESSION, getControlled, getControlledEye } from '../../game/possession.js';
 import { getRenderedPlayerPose } from '../../net/client.js';
 import { dom } from '../dom.js';
 
-/**
- * Pushes the current view position and viewing angle to CSS custom
- * properties on the viewport element. The CSS transform on #scene reads
- * these properties to compute the inverse camera transform each frame.
- *
- * With body-swap, the "view" tracks whichever actor is currently under
- * user control — the normal player character or a possessed monster.
- *
- * Multiplayer: the marine (`getMarine()`) has its own world position/angle
- * independent of the viewer's eye. We expose `--marine-*` vars so the
- * third-person `#player` sprite can be drawn at the marine's real world
- * location whenever the local viewer isn't the marine themselves.
- */
-// Cache the last value pushed for each CSS custom property so identical
-// frame-to-frame writes (camera held still, marine offscreen, etc.) become
-// no-ops instead of forcing the browser to recompute style on `#viewport`.
 const lastCameraVar = {
-    px: NaN, py: NaN, pz: NaN, pf: NaN, pa: NaN,
-    mx: NaN, my: NaN, mf: NaN, ma: NaN,
+    vx: NaN, vy: NaN, vz: NaN, vf: NaN, va: NaN,
+    ax: NaN, ay: NaN, af: NaN, aa: NaN,
     sa: NaN, ca: NaN, cfx: NaN, cfy: NaN,
 };
-let lastShowMarine = null;
+let lastAvatarVisible = null;
 
 function setVarIfChanged(style, name, value, key) {
     if (lastCameraVar[key] !== value) {
@@ -71,19 +49,55 @@ function setVarIfChanged(style, name, value, key) {
     }
 }
 
+// Session-scoped intro camera drop — a purely visual offset applied to
+// the local viewer's eye height. Other sessions never see it because
+// we never touch the authoritative actor pose.
+let cameraDropStartTime = 0;
+let cameraDropEndTime = 0;
+let cameraDropOffset = 0;
+
+/**
+ * Start a session-local visual drop of the camera. The offset decays
+ * from `heightOffset` to 0 over `durationMs`, ease-out cubic. Because
+ * this is written into `--view-z` on the local viewport only, nobody
+ * else observes the drop.
+ */
+export function beginLocalCameraDrop(heightOffset = 80, durationMs = 1200) {
+    const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+    cameraDropStartTime = now;
+    cameraDropEndTime = now + durationMs;
+    cameraDropOffset = heightOffset;
+}
+
+function currentCameraDropOffset(now) {
+    if (cameraDropOffset === 0) return 0;
+    if (now >= cameraDropEndTime) {
+        cameraDropOffset = 0;
+        return 0;
+    }
+    const span = cameraDropEndTime - cameraDropStartTime;
+    const t = span > 0 ? (now - cameraDropStartTime) / span : 1;
+    const ease = 1 - Math.pow(1 - t, 3);
+    return cameraDropOffset * (1 - ease);
+}
+
 export function updateCamera() {
     const viewportStyle = dom.viewport.style;
     const eye = getControlledEye();
+    if (!eye) return;
 
-    setVarIfChanged(viewportStyle, '--player-x', eye.x, 'px');
-    setVarIfChanged(viewportStyle, '--player-y', eye.y, 'py');
-    setVarIfChanged(viewportStyle, '--player-z', eye.z, 'pz');
-    setVarIfChanged(viewportStyle, '--player-floor', eye.floorHeight || 0, 'pf');
-    setVarIfChanged(viewportStyle, '--player-angle', eye.angle, 'pa');
+    const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+    const dropOffset = currentCameraDropOffset(now);
+
+    setVarIfChanged(viewportStyle, '--view-x', eye.x, 'vx');
+    setVarIfChanged(viewportStyle, '--view-y', eye.y, 'vy');
+    setVarIfChanged(viewportStyle, '--view-z', eye.z + dropOffset, 'vz');
+    setVarIfChanged(viewportStyle, '--view-floor', eye.floorHeight || 0, 'vf');
+    setVarIfChanged(viewportStyle, '--view-angle', eye.angle, 'va');
 
     // Precompute camera trig once per frame so CSS consumers (lighting,
-    // frustum culling, spectator follow cam) and every culled element can
-    // read scalar dot-product inputs instead of re-evaluating sin/cos.
+    // frustum culling, spectator follow cam) can read scalar dot-product
+    // inputs instead of re-evaluating sin/cos per element.
     const sa = Math.sin(eye.angle);
     const ca = Math.cos(eye.angle);
     setVarIfChanged(viewportStyle, '--sin-angle', sa, 'sa');
@@ -91,46 +105,58 @@ export function updateCamera() {
     setVarIfChanged(viewportStyle, '--camera-forward-x', -sa, 'cfx');
     setVarIfChanged(viewportStyle, '--camera-forward-y', ca, 'cfy');
 
-    const marine = getRenderedPlayerPose();
-    setVarIfChanged(viewportStyle, '--marine-x', marine.x, 'mx');
-    setVarIfChanged(viewportStyle, '--marine-y', marine.y, 'my');
-    setVarIfChanged(viewportStyle, '--marine-floor', marine.floor || 0, 'mf');
-    setVarIfChanged(viewportStyle, '--marine-angle', marine.angle, 'ma');
-
-    const m = getMarine();
-    const showMarine = getControlled() !== m && m.deathMode !== 'gameover';
-    if (showMarine !== lastShowMarine) {
-        lastShowMarine = showMarine;
-        document.body.classList.toggle('show-marine', showMarine);
+    // The marine's world pose drives its third-person billboard (#avatar
+    // DOM node) — exposed as --avatar-* on the viewport so the #avatar
+    // transform picks them up. When no marine exists (e.g. headless
+    // tests), skip both the pose write and the visibility toggle.
+    const m = getMarineActor();
+    const marinePose = m ? getRenderedPlayerPose() : null;
+    if (marinePose) {
+        setVarIfChanged(viewportStyle, '--avatar-x', marinePose.x, 'ax');
+        setVarIfChanged(viewportStyle, '--avatar-y', marinePose.y, 'ay');
+        setVarIfChanged(viewportStyle, '--avatar-floor', marinePose.floor || 0, 'af');
+        setVarIfChanged(viewportStyle, '--avatar-angle', marinePose.angle, 'aa');
     }
 
-    const marker = document.querySelector('#player > .marker');
+    // Show the marine avatar whenever the local session isn't piloting
+    // it and the marine is still alive — i.e. someone else is driving it
+    // or we're spectating / possessing a monster. Visibility is a per-
+    // actor concern, so we write directly on the #avatar DOM node rather
+    // than via a body class.
+    const marineController = m?.controller?.sessionId;
+    const showAvatar = Boolean(m)
+        && marineController !== LOCAL_SESSION
+        && getControlled() !== m
+        && m.deathMode !== 'gameover';
+    if (showAvatar !== lastAvatarVisible) {
+        lastAvatarVisible = showAvatar;
+        const avatarEl = document.getElementById('avatar');
+        if (avatarEl) avatarEl.classList.toggle('visible', showAvatar);
+    }
+
+    const marker = document.querySelector('#avatar > .marker');
     if (marker) {
-        marker.classList.toggle('firing', m.isFiring);
+        marker.classList.toggle('firing', Boolean(m?.isFiring));
     }
 
-    if (showMarine) {
-        updateMarineSpriteHeading(eye);
+    if (showAvatar) {
+        updateAvatarSpriteHeading(eye);
     }
 }
 
 /**
- * Pick the DOOM rotation row (0..4 + mirror) for the marine sprite based
- * on where the viewer's eye sits relative to the marine's facing. Mirrors
- * the enemy-rotation formula in `src/renderer/scene/entities/sprites.js`
- * so the marine looks consistent with every other actor in the world.
+ * Pick the DOOM rotation row (0..4 + mirror) for the marine avatar sprite
+ * based on where the viewer's eye sits relative to the marine's facing.
  */
-let lastMarineHeading = -1;
-let lastMarineMirror = -1;
+let lastAvatarHeading = -1;
+let lastAvatarMirror = -1;
 
-function updateMarineSpriteHeading(eye) {
-    const sprite = document.querySelector('#player > .sprite');
+function updateAvatarSpriteHeading(eye) {
+    const sprite = document.querySelector('#avatar > .sprite');
     if (!sprite) return;
 
     const marine = getRenderedPlayerPose();
     const angleToViewer = Math.atan2(eye.y - marine.y, eye.x - marine.x);
-    // Enemy convention: `facing = viewAngle + PI/2`. Apply the same offset
-    // so the marine's sheet indexing matches the enemy renderer.
     const marineFacing = marine.angle + Math.PI / 2;
     let rel = angleToViewer - marineFacing;
     rel = ((rel % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
@@ -145,9 +171,9 @@ function updateMarineSpriteHeading(eye) {
         mirrorScale = -1;
     }
 
-    if (sheetRow !== lastMarineHeading || mirrorScale !== lastMarineMirror) {
-        lastMarineHeading = sheetRow;
-        lastMarineMirror = mirrorScale;
+    if (sheetRow !== lastAvatarHeading || mirrorScale !== lastAvatarMirror) {
+        lastAvatarHeading = sheetRow;
+        lastAvatarMirror = mirrorScale;
         sprite.style.setProperty('--heading', sheetRow);
         sprite.style.setProperty('--mirror', mirrorScale);
     }

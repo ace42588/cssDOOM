@@ -118,9 +118,3 @@ export async function startSgnlAdapter() {
     });
 }
 
-/** Gracefully stop the adapter (test / shutdown hook). */
-export function stopSgnlAdapter() {
-    if (!server) return;
-    server.forceShutdown();
-    server = null;
-}

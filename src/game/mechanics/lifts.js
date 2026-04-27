@@ -11,26 +11,31 @@
  * Shaft walls are static geometry spanning the gap between lowerHeight and upperHeight,
  * positioned at upperHeight so they are always visible behind the moving platform.
  *
- * Walk-over triggers use crossing detection: the trigger fires when the player
- * moves from one side of the trigger linedef to the other, matching the original
- * DOOM behaviour (linuxdoom-1.10/p_spec.c:P_CrossSpecialLine).
+ * Walk-over triggers use crossing detection: the trigger fires when an eligible
+ * actor moves from one side of the trigger linedef to the other, matching the
+ * original DOOM behaviour (linuxdoom-1.10/p_spec.c:P_CrossSpecialLine). Eligibility
+ * is gated on `movement.canTriggerWalkOver` — marine defaults true, monsters
+ * default false (matches today's behavior). Per-actor previous-side state is
+ * tracked in `_actorPrevSides` so simultaneous crossings stay sane.
  *
- * Collision edges block the player from walking into the lift shaft from below when
+ * Collision edges block actors from walking into the lift shaft from below when
  * the platform is raised, handled externally by the collision system.
+ *
+ * Lift "ride" behavior is implicit: any actor whose floor sample at `(x, y)`
+ * lies inside the lift sector picks up the lift's `currentHeight` via
+ * `getFloorHeightAt()`. No per-actor attachment bookkeeping required.
  */
 
-import { USE_RANGE, LIFT_RAISE_DELAY, LIFT_USE_SPECIAL } from '../constants.js';
+import { LIFT_RAISE_DELAY } from '../constants.js';
 
-import { state, getMarine } from '../state.js';
-
-const marine = () => getMarine();
+import { state } from '../state.js';
 import { mapData, currentMap } from '../../data/maps.js';
 import { playSound } from '../../audio/audio.js';
 import * as renderer from '../../renderer/index.js';
 import { markEntityDirty } from '../services.js';
 
 /** Canonical asset id for a lift — matches the SGNL adapter output. */
-export function liftAssetId(sectorIndex) {
+function liftAssetId(sectorIndex) {
     return `lift:${currentMap || 'unknown'}:${sectorIndex}`;
 }
 
@@ -140,19 +145,21 @@ function raiseLift(sectorIndex) {
 }
 
 /**
- * Called each frame to interpolate lift heights in sync with the renderer animation.
- * Uses an ease-in-out curve that matches the renderer's easing so that the
- * currentHeight closely tracks the visual position of the animated platform.
+ * Tick lift heights once per frame. Idempotent: lifts interpolate against
+ * `performance.now()`, so calling this multiple times in the same tick (e.g.
+ * once per controlled session in `updateMovementFor`) settles to the same
+ * value. Renderer easing is approximated with a smoothstep curve that closely
+ * tracks the cubic-bezier (0.42, 0, 0.58, 1) the CSS animation uses.
  *
  * NOTE: this used to take the caller's frame timestamp, but the browser ships
  * `performance.now()` (RAF) while the server ships `Date.now()`. Since
  * `activateLift`/`raiseLift` stamp `moveStart` with `performance.now()`, mixing
  * the two clocks made `elapsedSeconds` astronomical and snapped lifts to their
- * target on the very next physics tick — leaving the player walled in by the
+ * target on the very next physics tick — leaving actors walled in by the
  * shaft's collision edges while the visual platform was still animating up.
  * Using `performance.now()` directly keeps both ends honest.
  */
-export function updatePlayerFromLift() {
+export function updateLifts() {
     const currentTimeSeconds = performance.now() / 1000;
     for (let index = 0, count = liftEntries.length; index < count; index++) {
         const { sectorIndex, entry: liftState } = liftEntries[index];
@@ -162,8 +169,6 @@ export function updatePlayerFromLift() {
         const elapsedSeconds = currentTimeSeconds - liftState.moveStart;
         const interpolation = Math.min(1, elapsedSeconds / LIFT_MOVE_DURATION);
 
-        // Renderer uses ease-in-out (cubic-bezier 0.42, 0, 0.58, 1).
-        // Approximate with a cubic that closely matches for physics sync.
         const t = interpolation;
         const easedInterpolation = t * t * (3 - 2 * t);
 
@@ -177,37 +182,46 @@ export function updatePlayerFromLift() {
 }
 
 /**
- * Check all walk-over trigger lines each frame.
- * Uses crossing detection: fires when the player moves from one side of the
- * trigger linedef to the other, matching the original DOOM behaviour
- * (linuxdoom-1.10/p_spec.c:P_CrossSpecialLine).
- * W1 types (10, 53) fire once; WR types (88, 120) fire on every crossing.
+ * Each frame: for every actor whose `movement.canTriggerWalkOver === true`,
+ * check whether it crossed any walk-over trigger linedef. Marine defaults true,
+ * monsters default false — same encounter flow as today, just attribute-gated
+ * so future monster designs can opt in.
+ *
+ * Crossing detection (linuxdoom-1.10/p_spec.c:P_CrossSpecialLine): fires when
+ * the actor moves from one side of the trigger linedef to the other.
+ * W1 types (10, 53, 36) fire once globally; WR types (88, 120) fire on every
+ * crossing. Per-actor previous-side state lives in `trigger._actorPrevSides`.
  */
 export function checkWalkOverTriggers() {
     const triggers = mapData.triggers;
     if (!triggers) return;
 
-    for (let index = 0, count = triggers.length; index < count; index++) {
-        const trigger = triggers[index];
+    for (let actorIdx = 0, alen = state.actors.length; actorIdx < alen; actorIdx++) {
+        const actor = state.actors[actorIdx];
+        if (!actor) continue;
+        if (actor.collected || (actor.hp ?? 0) <= 0) continue;
+        if (!actor.movement?.canTriggerWalkOver) continue;
 
-        // W1 triggers only fire once
-        if (trigger._triggered) continue;
+        for (let index = 0, count = triggers.length; index < count; index++) {
+            const trigger = triggers[index];
 
-        // Compute which side of the trigger linedef the player is on.
-        // sign > 0 → front side, sign < 0 → back side.
-        const dx = trigger.end.x - trigger.start.x;
-        const dy = trigger.end.y - trigger.start.y;
-        const side = (marine().x - trigger.start.x) * dy - (marine().y - trigger.start.y) * dx;
-        const currentSide = side > 0;
+            // W1 triggers only fire once
+            if (trigger._triggered) continue;
 
-        const previousSide = trigger._previousSide;
-        trigger._previousSide = currentSide;
+            const dx = trigger.end.x - trigger.start.x;
+            const dy = trigger.end.y - trigger.start.y;
+            const side = (actor.x - trigger.start.x) * dy - (actor.y - trigger.start.y) * dx;
+            const currentSide = side > 0;
 
-        // First frame: just record the side, don't fire
-        if (previousSide === undefined) continue;
+            if (!trigger._actorPrevSides) trigger._actorPrevSides = new WeakMap();
+            const prevSides = trigger._actorPrevSides;
+            const previousSide = prevSides.get(actor);
+            prevSides.set(actor, currentSide);
 
-        // Fire when the player crosses from one side to the other
-        if (previousSide !== currentSide) {
+            // First frame this actor is observed: just record the side, don't fire
+            if (previousSide === undefined) continue;
+            if (previousSide === currentSide) continue;
+
             // Mark W1 (one-shot) types so they don't fire again
             if (trigger.specialType === 10 || trigger.specialType === 53 || trigger.specialType === 36) {
                 trigger._triggered = true;
@@ -219,46 +233,6 @@ export function checkWalkOverTriggers() {
                     activateLift(liftEntries[liftIndex].sectorIndex);
                 }
             }
-        }
-    }
-}
-
-/**
- * Attempt to activate a lift in front of the player (triggered by the "use" key).
- * Checks nearby walls for linedefs with the lift-use special type (62: SR Lower
- * Lift Wait Raise) and activates any matching lifts.
- * Based on: linuxdoom-1.10/p_map.c:PTR_UseTraverse() → EV_DoPlat()
- */
-export function tryUseLift() {
-    if (!liftEntries.length) return;
-
-    const forwardX = -Math.sin(marine().viewAngle);
-    const forwardY = Math.cos(marine().viewAngle);
-    const checkX = marine().x + forwardX * USE_RANGE / 2;
-    const checkY = marine().y + forwardY * USE_RANGE / 2;
-
-    for (const wall of mapData.walls) {
-        const linedef = mapData.linedefs[wall.linedefIndex];
-        if (!linedef || linedef.specialType !== LIFT_USE_SPECIAL) continue;
-
-        const dx = wall.end.x - wall.start.x;
-        const dy = wall.end.y - wall.start.y;
-        const lenSq = dx * dx + dy * dy;
-        if (lenSq === 0) continue;
-
-        let t = ((checkX - wall.start.x) * dx + (checkY - wall.start.y) * dy) / lenSq;
-        t = Math.max(0, Math.min(1, t));
-        const closestX = wall.start.x + t * dx;
-        const closestY = wall.start.y + t * dy;
-        const dist = Math.sqrt((checkX - closestX) ** 2 + (checkY - closestY) ** 2);
-
-        if (dist < USE_RANGE) {
-            for (let i = 0; i < liftEntries.length; i++) {
-                if (liftEntries[i].entry.tag === linedef.sectorTag) {
-                    activateLift(liftEntries[i].sectorIndex);
-                }
-            }
-            return;
         }
     }
 }

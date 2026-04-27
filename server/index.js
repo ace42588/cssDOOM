@@ -31,6 +31,7 @@ import {
 } from './connections.js';
 import {
     ClientInputMessageSchema,
+    JoinChallengeDecisionMessageSchema,
     LoadMapRequestMessageSchema,
     MSG,
     sanitizeInput,
@@ -40,10 +41,13 @@ import {
     initSgnl,
 } from './sgnl/index.js';
 import { installMcp } from './mcp/index.js';
+import { installAdmin } from './admin/index.js';
 import {
     closeGameSession,
     openWebSocketGameSession,
 } from './session-lifecycle.js';
+import { resolveChallenge } from './join-challenge.js';
+import { getDoorControlMode } from './settings/door-control.js';
 
 const PORT = Number(process.env.PORT) || 8787;
 
@@ -72,16 +76,24 @@ function hasMeaningfulInputActivity(prev, next) {
 
 async function main() {
     installEngineHosts();
-    useGameServices(createSgnlServices());
+    useGameServices({ ...createSgnlServices(), getDoorControlMode });
     await loadMap('E1M1');
     void initSgnl('E1M1');
 
     let mcp = null;
+    let admin = null;
     const httpServer = http.createServer((req, res) => {
         if (req.url === '/healthz') {
             res.writeHead(200, { 'Content-Type': 'text/plain' });
             res.end('ok');
             return;
+        }
+        if (admin && req.url) {
+            const pathname = new URL(req.url, 'http://x').pathname;
+            if (pathname === admin.path || pathname.startsWith(`${admin.path}/`)) {
+                void admin.handleAdminRequest(req, res);
+                return;
+            }
         }
         if (mcp && req.url && new URL(req.url, 'http://x').pathname === mcp.path) {
             void mcp.handleMcpRequest(req, res);
@@ -94,6 +106,7 @@ async function main() {
     const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
     wss.on('connection', handleConnection);
 
+    admin = installAdmin(httpServer);
     mcp = installMcp(httpServer);
 
     startLoop({ onTick: ({ shouldSnapshot }) => {
@@ -102,8 +115,11 @@ async function main() {
     }});
 
     httpServer.listen(PORT, () => {
+        const adminAuth = typeof process.env.ADMIN_BEARER_TOKEN === 'string' && process.env.ADMIN_BEARER_TOKEN.length > 0
+            ? 'auth configured'
+            : 'disabled (set ADMIN_BEARER_TOKEN)';
         // eslint-disable-next-line no-console
-        console.log(`[server] cssDOOM multiplayer listening on :${PORT}  (ws /ws, mcp ${mcp.path}, tickRate ${getTickRateHz()} Hz)`);
+        console.log(`[server] cssDOOM multiplayer listening on :${PORT}  (ws /ws, admin ${admin.path} ${adminAuth}, mcp ${mcp.path}, tickRate ${getTickRateHz()} Hz)`);
     });
 }
 
@@ -147,6 +163,14 @@ function handleConnection(ws) {
             conn.pendingMapLoad = false;
             resetBaseline(conn);
             bumpActivity(conn);
+            return;
+        }
+
+        if (msg.type === MSG.JOIN_CHALLENGE_DECISION) {
+            const parsed = JoinChallengeDecisionMessageSchema.safeParse(msg);
+            if (!parsed.success) return;
+            bumpActivity(conn);
+            resolveChallenge(parsed.data.challengeId, conn, parsed.data.decision, undefined);
             return;
         }
     });

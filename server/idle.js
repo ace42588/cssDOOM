@@ -15,8 +15,8 @@ function readTimeoutMs(envName, fallbackMs) {
     return Number.isFinite(raw) && raw > 0 ? raw : fallbackMs;
 }
 
-export const IDLE_WARNING_MS = readTimeoutMs('IDLE_WARNING_MS', 30000);
-export const IDLE_DROP_MS = readTimeoutMs('IDLE_DROP_MS', 60000);
+const IDLE_WARNING_MS = readTimeoutMs('IDLE_WARNING_MS', 30000);
+const IDLE_DROP_MS = readTimeoutMs('IDLE_DROP_MS', 60000);
 
 export function tickIdleChecks(now, onRoleChange = () => {}) {
     for (const conn of listPlayerConnections()) {
@@ -38,7 +38,7 @@ export function tickIdleChecks(now, onRoleChange = () => {}) {
     }
 }
 
-export function dropIdleController(conn, onRoleChange = () => {}) {
+function dropIdleController(conn, onRoleChange = () => {}) {
     send(conn, {
         type: MSG.NOTICE,
         code: 'idle-drop',
@@ -65,7 +65,7 @@ function closeConnection(conn) {
     }
 }
 
-export function promoteSpectator(onRoleChange = () => {}) {
+function promoteSpectator(onRoleChange = () => {}) {
     const candidates = listSpectatorConnections()
         .slice()
         .sort((a, b) => a.joinedAt - b.joinedAt);

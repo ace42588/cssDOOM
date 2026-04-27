@@ -6,7 +6,7 @@
  * is set once on the container and inherited by all children.
  */
 
-import { LIGHT_MINIMUM_BRIGHTNESS, DOOM_LIGHT_MAX, LIGHT_DISTANCE_OFFSET } from './constants.js';
+import { LIGHT_MINIMUM_BRIGHTNESS, LIGHT_DISTANCE_OFFSET } from './constants.js';
 
 import { mapData } from '../../data/maps.js';
 import { dom, sceneState } from '../dom.js';

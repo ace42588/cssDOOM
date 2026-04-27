@@ -1,20 +1,20 @@
-/* Camera Transform — inverse of player position/angle applied to the scene */
+/* Camera Transform — inverse of the local session's view pose applied to the scene */
 
 #scene {
     translate: 0 0 var(--perspective);
     rotate: x 0deg;
     transform:
-        rotateY(calc(var(--player-angle) * -1rad))
+        rotateY(calc(var(--view-angle) * -1rad))
         translate3d(
-            calc(var(--player-x) * -1px),
-            calc(var(--player-z) * 1px),
-            calc(var(--player-y) * 1px)
+            calc(var(--view-x) * -1px),
+            calc(var(--view-z) * 1px),
+            calc(var(--view-y) * 1px)
         );
 
-    /* All four pose vars (--player-x, --player-y, --player-z,
-       --player-angle) are JS-lerped on the same dt by playerInterp in
-       src/net/client.js. A CSS transition on any of them would fight
-       that lerp and desync the eye from horizontal motion on
+    /* All four pose vars (--view-x, --view-y, --view-z, --view-angle)
+       are JS-lerped on the same dt by the unified actor interp table in
+       src/net/interpolation.js. A CSS transition on any of them would
+       fight that lerp and desync the eye from horizontal motion on
        stairs/lifts — keep this rule transition-free. */
 }
 
@@ -35,11 +35,11 @@
 body.head-bob {
     #scene {
         transform:
-            rotateY(calc(var(--player-angle) * -1rad))
+            rotateY(calc(var(--view-angle) * -1rad))
             translate3d(
-                calc(var(--player-x) * -1px),
-                calc(var(--player-z) * 1px + var(--bob, 0) * 1px),
-                calc(var(--player-y) * 1px)
+                calc(var(--view-x) * -1px),
+                calc(var(--view-z) * 1px + var(--bob, 0) * 1px),
+                calc(var(--view-y) * 1px)
             );
     }
     .moving #scene {

@@ -13,7 +13,7 @@
  */
 
 import { input } from './index.js';
-import { getMarine } from '../game/state.js';
+import { getPlayerActor } from '../game/possession.js';
 import { isMenuOpen } from '../ui/menu.js';
 import { registerInputProvider } from './index.js';
 import { pressUse, requestWeaponSwitch } from '../net/client.js';
@@ -238,14 +238,19 @@ function setupPointerHandlers() {
 // ============================================================================
 
 function cycleWeapon(direction) {
-    const owned = [...getMarine().ownedWeapons].sort((a, b) => a - b);
-    const currentIndex = owned.indexOf(getMarine().currentWeapon);
+    const actor = getPlayerActor();
+    if (!actor?.ownedWeapons) return;
+    const owned = [...actor.ownedWeapons].sort((a, b) => a - b);
+    if (owned.length === 0) return;
+    const currentIndex = owned.indexOf(actor.currentWeapon);
     const nextIndex = (currentIndex + direction + owned.length) % owned.length;
     requestWeaponSwitch(owned[nextIndex]);
 }
 
 function handleDeadRestart() {
-    if (getMarine().deathMode !== 'gameover') return false;
+    const actor = getPlayerActor();
+    const dead = !actor || actor.deathMode === 'gameover' || (actor.hp ?? 0) <= 0;
+    if (!dead) return false;
     if (shouldOfferRespawnReload()) {
         location.reload();
     }

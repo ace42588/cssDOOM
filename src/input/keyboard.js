@@ -21,10 +21,11 @@
  */
 
 import { input } from './index.js';
-import { getMarine } from '../game/state.js';
+import { getPlayerActor } from '../game/possession.js';
 import { WEAPONS } from '../game/constants.js';
 import { isMenuOpen, toggleMenu } from '../ui/menu.js';
 import { isBodySwapOpen, toggleBodySwap } from '../ui/body-swap.js';
+import { isJoinChallengeOpen, dismissJoinChallengeAsSpectate } from '../ui/join-challenge.js';
 import { isDoorOperatorOpen } from '../ui/door-operator.js';
 import { registerInputProvider } from './index.js';
 import { pressUse, requestWeaponSwitch } from '../net/client.js';
@@ -50,12 +51,18 @@ export function initKeyboardInput() {
 
         // Escape closes whichever overlay is open; else toggles the menu.
         if (event.code === 'Escape') {
-            if (isBodySwapOpen()) {
+            if (isJoinChallengeOpen()) {
+                dismissJoinChallengeAsSpectate();
+            } else if (isBodySwapOpen()) {
                 toggleBodySwap(false);
             } else {
                 toggleMenu(!isMenuOpen());
             }
             event.preventDefault();
+            return;
+        }
+
+        if (isJoinChallengeOpen()) {
             return;
         }
 
@@ -77,19 +84,18 @@ export function initKeyboardInput() {
         // Block game input while menu is open
         if (isMenuOpen()) return;
 
-        // When the marine dies AND this client is the one driving the
-        // marine, a key press after the death animation reloads the page
-        // to start a fresh session. Sessions possessing a monster (or
-        // spectating) must not reload just because someone else's marine
-        // died — their own body is unrelated to `player.isDead`.
+        // When this session's controlled avatar dies, a key press after
+        // the death animation reloads the page to start a fresh session.
+        // The gate is strictly scoped to the local session — other
+        // sessions dying in the world must not reload this client.
         if (shouldOfferRespawnReload()) {
             location.reload();
             return;
         }
-        if (getMarine().deathMode === 'gameover') {
-            // Marine is dead but we're not the marine controller — swallow
-            // the keystroke so it doesn't drive a body the local session
-            // doesn't own this frame.
+        if (!getPlayerActor()) {
+            // Session has no controlled body (spectator / pre-assignment
+            // / just-died-awaiting-offer). Swallow the keystroke so it
+            // doesn't drive a body we don't own this frame.
             return;
         }
 
@@ -174,7 +180,7 @@ function getInput() {
     // Suppress gameplay input while the body-swap picker, operator modal,
     // or menu is open so the game pauses rather than leaking held keys
     // under the overlay.
-    if (isBodySwapOpen() || isDoorOperatorOpen() || isMenuOpen()) {
+    if (isJoinChallengeOpen() || isBodySwapOpen() || isDoorOperatorOpen() || isMenuOpen()) {
         return { moveX: 0, moveY: 0, turn: 0, run: false };
     }
 

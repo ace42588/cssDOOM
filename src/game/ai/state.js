@@ -9,6 +9,7 @@
 import { getFloorHeightAt } from '../physics/queries.js';
 import { LINE_OF_SIGHT_CHECK_INTERVAL } from '../constants.js';
 import { getThingIndex } from '../things/registry.js';
+import { getMarineActor } from '../state.js';
 import * as renderer from '../../renderer/index.js';
 
 // ============================================================================
@@ -50,7 +51,7 @@ export function respawnEnemy(enemy) {
     // Reset AI state
     enemy.ai.state = 'idle';
     enemy.ai.stateTime = 0;
-    enemy.ai.target = 'player';
+    enemy.ai.target = getMarineActor() ?? null;
     enemy.ai.threshold = 0;
     enemy.ai.reactionTimer = 0;
     enemy.ai.damageDealt = false;

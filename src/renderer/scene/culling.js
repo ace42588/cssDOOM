@@ -11,7 +11,7 @@
  * partially overlap the view.
  */
 
-import { state, getMarine } from '../../game/state.js';
+import { state } from '../../game/state.js';
 import { sceneState } from '../dom.js';
 import { ACTOR_DOM_KEY_OFFSET, MAX_RENDER_DISTANCE } from '../../game/constants.js';
 import { spectatorActive } from '../../ui/spectator.js';
@@ -230,60 +230,6 @@ function behindSkyWall(x, y, z, sectorIndex, playerX, playerY, skyPlanes) {
     return false;
 }
 
-/** Debug: trace sky culling for a wall by ID. Call via traceSky('ld489'). */
-export function debugSkyTrace(wallId) {
-    const el = sceneState.wallElements.find(e => e.id === wallId);
-    if (!el) { console.log(`Wall ${wallId} not found in wallElements`); return; }
-
-    const m = getMarine();
-    const playerX = m.x, playerY = m.y;
-    const x = el._midX, y = el._midY;
-    const z = el._wall ? el._wall.topHeight : 0;
-    const dx = x - playerX, dy = y - playerY;
-    const totalDist = Math.sqrt(dx * dx + dy * dy);
-    const skyPlanes = sceneState.skyWallPlanes;
-    const skySectors = sceneState.skySectors;
-
-    console.log(`--- traceSky(${wallId}) ---`);
-    console.log(`Player: (${Math.round(playerX)}, ${Math.round(playerY)})`);
-    console.log(`Wall mid: (${Math.round(x)}, ${Math.round(y)}), topHeight: ${z}, sector: ${el._sectorIndex}`);
-    console.log(`Distance: ${Math.round(totalDist)}, sector: ${el._sectorIndex}`);
-    console.log(`Sky planes: ${skyPlanes.length}`);
-
-    let closest = null;
-    for (let i = 0; i < skyPlanes.length; i++) {
-        const plane = skyPlanes[i];
-        const sx = plane.bx - plane.ax, sy = plane.by - plane.ay;
-        const denom = dx * sy - dy * sx;
-        if (denom === 0) continue;
-        const t = ((plane.ax - playerX) * sy - (plane.ay - playerY) * sx) / denom;
-        const u = ((plane.ax - playerX) * dy - (plane.ay - playerY) * dx) / denom;
-
-        const info = {
-            i, t: +t.toFixed(4), u: +u.toFixed(4),
-            from: `${plane.ax},${plane.ay}`, to: `${plane.bx},${plane.by}`,
-            floorZ: plane.floorZ,
-        };
-
-        if (el._sectorIndex === plane.sectorIndex) { info.reason = `same sector ${plane.sectorIndex}`; }
-        else if (t <= 0 || t >= 1) { info.reason = `t out of range`; }
-        else if (u < 0 || u > 1) { info.reason = `u out of range`; }
-        else if (z < plane.floorZ) { info.reason = `z ${z} < floorZ ${plane.floorZ}`; }
-        else {
-            const pastWallDist = (1 - t) * totalDist;
-            info.pastWallDist = Math.round(pastWallDist);
-            if (pastWallDist < SKY_CULL_MARGIN) info.reason = `pastWallDist ${Math.round(pastWallDist)} < margin ${SKY_CULL_MARGIN}`;
-            else info.reason = 'WOULD CULL';
-        }
-
-        if (info.reason !== 't out of range' && info.reason !== 'u out of range') {
-            console.log(info);
-        }
-        if (!closest || Math.abs(t - 0.5) < Math.abs(closest.t - 0.5)) closest = info;
-    }
-    if (!closest) console.log('No sky wall intersections found at all');
-}
-
 /**
  * Run culling checks on all scene elements. Called each frame from the game loop.
  * Elements are hidden/shown by toggling a `culled` class which applies
@@ -304,6 +250,11 @@ function getEyeAndHalfFov() {
     const eye = getControlledEye();
     const halfFov = Math.atan2(window.innerWidth / 2, sceneState.perspectiveValue) + FRUSTUM_MARGIN;
     return { eye, halfFov };
+}
+
+/** True when we have an eye to cull from; callers early-return otherwise. */
+function hasEye(eye) {
+    return eye !== null && eye !== undefined;
 }
 
 /**
@@ -342,8 +293,9 @@ function runPvsPass(eye, halfFov) {
  * with single-frame latency, while the expensive fine pass stays
  * throttled by `CULLING_INTERVAL`.
  */
-export function updatePvs() {
+function updatePvs() {
     const { eye, halfFov } = getEyeAndHalfFov();
+    if (!hasEye(eye)) return;
     runPvsPass(eye, halfFov);
 }
 
@@ -359,6 +311,7 @@ export function updateCulling() {
     let skyCulled = 0;
 
     const { eye, halfFov } = getEyeAndHalfFov();
+    if (!hasEye(eye)) return;
     const playerX = eye.x;
     const playerY = eye.y;
     const distSq = MAX_RENDER_DISTANCE * MAX_RENDER_DISTANCE;

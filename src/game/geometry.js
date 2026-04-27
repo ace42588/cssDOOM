@@ -115,11 +115,6 @@ export function chebyshevDistance(t1, t2, radius) {
     return Math.max(0, Math.max(dx, dy) - radius);
 }
 
-// circular hit detection
-export function targetInRadius(target, source, radius) {
-    return horizontalDistanceSquared(target, source) < radius * radius;
-}
-
 /**
  * Random angular offset in radians, matching DOOM's (P_Random()-P_Random()) spread
  * scaled to ±maxDegrees (triangular distribution in angle space).

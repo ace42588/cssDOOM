@@ -13,7 +13,6 @@ import { getFloorHeightAt } from "../physics/queries.js";
 import {
   getDeltas,
 } from "../geometry.js";
-import { asMovementActor } from '../entity/interop.js';
 import {
   integratePlanarMove,
   updateActorFacingFromDelta,
@@ -70,7 +69,7 @@ function canWalkDir(enemy, dir) {
   const stepSize = (enemy.ai.speed * (enemy.ai.chaseTics || 3)) / 35;
   const testX = enemy.x + stepSize * dirDX[dir];
   const testY = enemy.y + stepSize * dirDY[dir];
-  return canMoveToActor(asMovementActor(enemy), testX, testY, {
+  return canMoveToActor(enemy, testX, testY, {
     maxDropHeight: MAX_STEP_HEIGHT,
     excludeThing: enemy,
   });
@@ -188,9 +187,8 @@ export function moveEnemyToward(enemy, target, deltaTime) {
   if (dir === undefined || dir >= DI_NODIR) return false;
 
   enemy.floorHeight = getFloorHeightAt(enemy.x, enemy.y);
-  const actor = asMovementActor(enemy);
   const movement = integratePlanarMove(
-    actor,
+    enemy,
     { x: dirDX[dir] * enemy.ai.speed, y: dirDY[dir] * enemy.ai.speed },
     deltaTime,
   );
@@ -199,7 +197,7 @@ export function moveEnemyToward(enemy, target, deltaTime) {
   }
 
   updateActorFacingFromDelta(
-    actor,
+    enemy,
     movement.fromX,
     movement.fromY,
     FACING_UPDATE_MIN_DIST_SQ,

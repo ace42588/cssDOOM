@@ -32,21 +32,21 @@
     initial-value: 300;
 }
 
-@property --player-floor {
+@property --view-floor {
     syntax: "<number>";
     inherits: true;
     initial-value: 0;
 }
 
-/* Marine world state — set by camera.js so the #player element can render
-   at the marine's real world position regardless of who's controlling the
-   local viewer's camera. In single-player these mirror --player-*; in
-   multiplayer they diverge when the local viewer possesses an enemy or is
-   spectating. */
-@property --marine-x     { syntax: "<number>"; inherits: true; initial-value: 0; }
-@property --marine-y     { syntax: "<number>"; inherits: true; initial-value: 0; }
-@property --marine-floor { syntax: "<number>"; inherits: true; initial-value: 0; }
-@property --marine-angle { syntax: "<number>"; inherits: true; initial-value: 0; }
+/* Avatar world pose — set by camera.js so the #avatar billboard renders
+   at the marine actor's real world position regardless of who's driving
+   the local viewer's camera. In single-player these mirror --view-*; in
+   multiplayer they diverge when the local viewer possesses an enemy or
+   is spectating. */
+@property --avatar-x     { syntax: "<number>"; inherits: true; initial-value: 0; }
+@property --avatar-y     { syntax: "<number>"; inherits: true; initial-value: 0; }
+@property --avatar-floor { syntax: "<number>"; inherits: true; initial-value: 0; }
+@property --avatar-angle { syntax: "<number>"; inherits: true; initial-value: 0; }
 
 /* Top-down spectator mode: camera looks down at the map */
 body.spectator:not(.follow-mode) #scene {
@@ -55,33 +55,34 @@ body.spectator:not(.follow-mode) #scene {
     transform:
         rotateY(calc(var(--spectator-angle) * 1rad))
         translate3d(
-            calc((var(--player-x) + var(--spectator-offset-x)) * -1px),
+            calc((var(--view-x) + var(--spectator-offset-x)) * -1px),
             calc(var(--spectator-height) * 1px),
-            calc((var(--player-y) + var(--spectator-offset-y)) * 1px)
+            calc((var(--view-y) + var(--spectator-offset-y)) * 1px)
         );
     transition: none;
 }
 
-/* Follow mode: camera behind the player using sin/cos */
+/* Follow mode: camera behind the controlled actor using sin/cos */
 body.spectator.follow-mode #scene {
     --follow-dist: calc(var(--follow-height) * 0.7);
     translate: 0 10vh var(--perspective);
     rotate: x -55deg;
     transform:
-        rotateY(calc(var(--player-angle) * -1rad))
+        rotateY(calc(var(--view-angle) * -1rad))
         translate3d(
-            calc((var(--player-x) + var(--sin-angle) * var(--follow-dist)) * -1px),
-            calc((var(--follow-height) + var(--player-floor)) * 1px),
-            calc((var(--player-y) - var(--cos-angle) * var(--follow-dist)) * 1px)
+            calc((var(--view-x) + var(--sin-angle) * var(--follow-dist)) * -1px),
+            calc((var(--follow-height) + var(--view-floor)) * 1px),
+            calc((var(--view-y) - var(--cos-angle) * var(--follow-dist)) * 1px)
         );
     transition: none;
 }
 
-/* In follow mode, billboard player sprite toward player angle instead of spectator angle */
-body.spectator.follow-mode #player > .sprite {
+/* In follow mode, billboard the avatar sprite toward the view angle
+   instead of the spectator angle. */
+body.spectator.follow-mode #avatar > .sprite {
     transform:
         translateX(-50%)
-        rotateY(calc(var(--player-angle) * 1rad))
+        rotateY(calc(var(--view-angle) * 1rad))
         scaleX(var(--mirror, 1));
 }
 
@@ -102,34 +103,32 @@ body.spectator #weapon {
     transition-delay: 0s;
 }
 
-/* Player container — shared positioning for marker, sprite, and shadow */
-#player {
+/* Avatar container — marker, sprite, and shadow for the marine actor's
+   third-person billboard. Positions from the marine actor's own world
+   coordinates via --avatar-* (DOOM→CSS: X=X, Y=−Z, height=−Y). Hidden
+   by default; camera.js toggles `.visible` when the local session isn't
+   piloting the marine, and spectator mode forces visibility via
+   `body.spectator #avatar`. */
+#avatar {
     display: none;
     top: 0; left: 0; width: 0; height: 0;
     backface-visibility: visible !important;
 
-    /* Position from the marine's own world coordinates (DOOM→CSS: X=X,
-       Y=−Z, height=−Y). In multiplayer --marine-* tracks the real marine
-       position regardless of what body the local viewer is controlling. */
     transform:
         translate3d(
-            calc(var(--marine-x) * 1px),
-            calc(var(--marine-floor) * -1px),
-            calc(var(--marine-y) * -1px)
+            calc(var(--avatar-x) * 1px),
+            calc(var(--avatar-floor) * -1px),
+            calc(var(--avatar-y) * -1px)
         );
 }
 
-/* Show the marine body when the local viewer isn't the marine (another
-   client controls the marine, or the local viewer is a spectator /
-   possessing an enemy). Spectator mode keeps its existing behaviour: it
-   shows #player unconditionally so the follow/top cameras can frame it. */
-body.spectator #player,
-body.show-marine #player {
+body.spectator #avatar,
+#avatar.visible {
     display: block;
 }
 
-body.spectator #player > .sprite,
-body.show-marine #player > .sprite {
+body.spectator #avatar > .sprite,
+#avatar.visible > .sprite {
     animation: sprite-cycle calc(var(--frames) * 150ms) steps(var(--frames)) infinite paused;
     opacity: 1;
     transition: opacity 1s ease 0.5s;
@@ -139,26 +138,19 @@ body.show-marine #player > .sprite {
     }
 }
 
-/* Outside of spectator mode, the marine sprite billboards toward the
-   local camera using the viewer's own yaw (--player-angle is the inverse
-   camera angle applied to #scene, so rotating the sprite by +player-angle
-   cancels out and keeps it face-on). The existing follow-mode billboard
-   rule already uses this same transform inside spectator mode. */
-body.show-marine:not(.spectator) #player > .sprite {
+/* Outside of spectator mode, the avatar sprite billboards toward the
+   local camera using the session's view yaw. --view-angle is the
+   inverse camera angle applied to #scene, so rotating the sprite by
+   +view-angle cancels out and keeps it face-on. */
+body:not(.spectator) #avatar.visible > .sprite {
     transform:
         translateX(-50%)
-        rotateY(calc(var(--player-angle) * 1rad))
+        rotateY(calc(var(--view-angle) * 1rad))
         scaleX(var(--mirror, 1));
-}
-
-/* Keep the walk-cycle animation running when another client is driving
-   the marine — we don't have a remote "moving" flag wired up yet, but
-   looping the walk is a better default than a frozen pose. */
-body.show-marine:not(.spectator) #player > .sprite {
     animation-play-state: running;
 }
 
-body.spectator #player > .marker {
+body.spectator #avatar > .marker {
     opacity: 0.4;
 
     @starting-style {
@@ -166,8 +158,8 @@ body.spectator #player > .marker {
     }
 }
 
-/* Player marker — FOV arc */
-#player > .marker {
+/* Avatar marker — FOV arc */
+#avatar > .marker {
     --marker-color: #fff;
 
     width: 80px;
@@ -181,9 +173,9 @@ body.spectator #player > .marker {
     transform:
         translateY(-10px)
         rotateX(90deg)
-        rotateZ(calc(var(--marine-angle) * -1rad));
+        rotateZ(calc(var(--avatar-angle) * -1rad));
 
-    /* 90° arc centered at top (player facing direction) */
+    /* 90° arc centered at top (actor facing direction) */
     background: conic-gradient(
         from -45deg,
         var(--marker-color) 0deg,
@@ -198,12 +190,12 @@ body.spectator #player > .marker {
     filter: drop-shadow(0 0 8px var(--marker-color));
 }
 
-#player > .marker.firing {
+#avatar > .marker.firing {
     --marker-color: #ff8800;
 }
 
-/* Player sprite — billboard toward spectator camera */
-#player > .sprite {
+/* Avatar sprite — billboard toward spectator camera */
+#avatar > .sprite {
     opacity: 0;
     transition: opacity 0.3s ease 0s;
     bottom: 0;
@@ -220,12 +212,12 @@ body.spectator #player > .marker {
     animation-duration: calc(var(--frames) * 150ms);
 }
 
-#renderer.moving #player > .sprite {
+#renderer.moving #avatar > .sprite {
     animation-play-state: running, running;
 }
 
-/* Player shadow */
-#player::before {
+/* Avatar shadow */
+#avatar::before {
     content: '';
     position: absolute;
     width: 32px;

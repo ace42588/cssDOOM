@@ -1,4 +1,4 @@
-import { getMarine, state } from '../../src/game/state.js';
+import { state } from '../../src/game/state.js';
 import { getThingIndex } from '../../src/game/things/registry.js';
 import { getSessionIdControlling } from '../../src/game/possession.js';
 
@@ -39,19 +39,30 @@ const _seenDoors = new Set();
 const _seenLifts = new Set();
 const _seenCrushers = new Set();
 
-function makeEmptyPlayerRecord() {
+/**
+ * Allocates a record that every actor (marine, enemy, possessed monster)
+ * shares. Optional capability sub-blocks (`loadout`-style ammo/weapons,
+ * inventory-style keys/powerups) default to `null` so diffing can distinguish
+ * "actor does not carry this" from "value cleared".
+ */
+function makeEmptyActorRecord() {
     return {
-        id: 0,
-        x: 0, y: 0, z: 0,
-        angle: 0,
+        id: -1,
+        type: 0,
+        x: 0, y: 0, z: null,
         floorHeight: 0,
-        health: 0,
-        armor: 0,
+        angle: null,
+        facing: null,
+        hp: null,
+        maxHp: null,
+        collected: false,
+        aiState: null,
+        armor: null,
         armorType: null,
         ammo: null,
         maxAmmo: null,
-        currentWeapon: null,
         ownedWeapons: null,
+        currentWeapon: null,
         collectedKeys: null,
         powerups: null,
         hasBackpack: false,
@@ -206,29 +217,14 @@ function sweepStale(map, seen) {
     }
 }
 
-function fillPlayerRecord(rec) {
-    rec.x = getMarine().x;
-    rec.y = getMarine().y;
-    rec.z = getMarine().z;
-    rec.angle = getMarine().viewAngle;
-    rec.floorHeight = getMarine().floorHeight;
-    rec.health = getMarine().hp;
-    rec.armor = getMarine().armor;
-    rec.armorType = getMarine().armorType;
-    rec.ammo = { ...getMarine().ammo };
-    rec.maxAmmo = { ...getMarine().maxAmmo };
-    rec.currentWeapon = getMarine().currentWeapon;
-    rec.ownedWeapons = [...getMarine().ownedWeapons];
-    rec.collectedKeys = [...getMarine().collectedKeys];
-    rec.powerups = { ...getMarine().powerups };
-    rec.hasBackpack = Boolean(getMarine().hasBackpack);
-    rec.isDead = getMarine().deathMode === 'gameover';
-    rec.isAiDead = getMarine().deathMode === 'ai';
-    rec.isFiring = Boolean(getMarine().isFiring);
-    rec.__sessionId = getSessionIdControlling(getMarine()) ?? null;
-    rec.id = 0;
-}
-
+/**
+ * Uniform actor emitter. Every entry in `state.actors` — marine-type or
+ * monster — ships through this function. The actor's runtime id is its
+ * natural slot in `state.actors`; there is no reserved index. Optional
+ * capability blocks (`ammo`, `ownedWeapons`, `collectedKeys`, …) are left
+ * `null` for actors that don't carry them so the diff helper doesn't emit
+ * spurious updates as monsters move.
+ */
 function syncActors(map, seen) {
     seen.clear();
     for (let i = 0; i < state.actors.length; i++) {
@@ -236,17 +232,41 @@ function syncActors(map, seen) {
         if (!a) continue;
         let rec = map.get(i);
         if (!rec) {
-            rec = i === 0 ? makeEmptyPlayerRecord() : makeEmptyThingRecord();
+            rec = makeEmptyActorRecord();
             map.set(i, rec);
         }
-        if (i === 0) {
-            fillPlayerRecord(rec);
-        } else {
-            fillThingRecord(rec, i, a);
-        }
+        fillActorRecord(rec, i, a);
         seen.add(i);
     }
     sweepStale(map, seen);
+}
+
+function fillActorRecord(rec, id, a) {
+    rec.id = id;
+    rec.type = a.type;
+    rec.x = a.x;
+    rec.y = a.y;
+    rec.z = a.z ?? null;
+    rec.floorHeight = a.floorHeight ?? 0;
+    rec.angle = typeof a.viewAngle === 'number' ? a.viewAngle : null;
+    rec.facing = typeof a.facing === 'number' ? a.facing : null;
+    rec.hp = a.hp ?? null;
+    rec.maxHp = a.maxHp ?? null;
+    rec.collected = Boolean(a.collected);
+    rec.aiState = a.ai?.state ?? null;
+    rec.armor = typeof a.armor === 'number' ? a.armor : null;
+    rec.armorType = a.armorType ?? null;
+    rec.ammo = a.ammo ? { ...a.ammo } : null;
+    rec.maxAmmo = a.maxAmmo ? { ...a.maxAmmo } : null;
+    rec.ownedWeapons = a.ownedWeapons ? [...a.ownedWeapons] : null;
+    rec.currentWeapon = typeof a.currentWeapon === 'number' ? a.currentWeapon : null;
+    rec.collectedKeys = a.collectedKeys ? [...a.collectedKeys] : null;
+    rec.powerups = a.powerups ? { ...a.powerups } : null;
+    rec.hasBackpack = Boolean(a.hasBackpack);
+    rec.isDead = a.deathMode === 'gameover';
+    rec.isAiDead = a.deathMode === 'ai';
+    rec.isFiring = Boolean(a.isFiring);
+    rec.__sessionId = getSessionIdControlling(a) ?? null;
 }
 
 function fillThingRecord(rec, id, t) {

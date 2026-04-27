@@ -23,6 +23,15 @@ import { registerEnemyTools } from './tools/enemies.js';
 import { registerDoorTools } from './tools/doors.js';
 import { registerStaticResources } from './resources.js';
 import { registerPrompts } from './prompts.js';
+import { registerSessionTools } from './tools/session.js';
+import {
+    registerMcpServerForSession,
+    unregisterMcpServerForSession,
+} from './server-registry.js';
+import {
+    registerMcpTransportForGameSession,
+    unregisterMcpTransportForGameSession,
+} from './http-transport-by-game.js';
 
 const DEFAULT_PATH = '/mcp';
 
@@ -32,9 +41,11 @@ const SERVER_INFO = {
     version: '0.1.0',
 };
 
-const SERVER_INSTRUCTIONS = `Drive a peer player session in cssDOOM multiplayer.
+const SERVER_INSTRUCTIONS = `Drive a peer actor session in cssDOOM multiplayer.
 
-On connect you are auto-assigned a body — usually the marine if free, otherwise the lowest-index free live enemy, otherwise spectator. Use world-get-state to see what's happening, actor-* to move/turn/fire/use, actor-possess to swap bodies (thing:N, door:N, or marine/player), doors-* and enemies-* for category reads, and players-list / players-peers to find other connected players. Read cssdoom://role/current for role guidance after connect or role changes. All actions are input-parity with a human player; the server enforces the same key gates, AI, and possession rules.
+Every peer — human WS client or MCP agent — controls one *actor*: the marine, any hostile monster, or a door camera. On connect you are auto-assigned whatever actor is free: the map's player-start body (marine) if available, else any live hostile monster you can displace, else spectator. Use world-get-state to read the unified world (self.controlledActor + actors / doors / players), actor-* to drive your body (move/turn/fire/use), actor-possess to swap bodies (actor:N, thing:N, door:N, or marine/player), actor-list / actor-get-state for the authoritative read of any actor, doors-* for door state, and players-list / players-peers to find other connected players. enemies-list / enemies-get-state remain as convenience wrappers over actor-list ({ kind: 'enemy' }). Read cssdoom://role/current for role guidance after connect or role changes. All actions are input-parity with a human player; the server enforces the same key gates, AI, and possession rules.
+
+Join challenge: If a new player would be a spectator while you (MCP) hold a body, the server may send an MCP form elicitation asking you to defend your position. Respond promptly with a short justification. If your client does not advertise elicitation.form, you decline, or the elicitation times out (see env MCP_DEFENSE_TIMEOUT_MS), you are silently bumped to spectator and the joiner takes the body. Joining MCP clients resolve the choice with session-resolve-join after world-poll-events reports joinChallenge. See cssdoom://docs/join-challenge.
 
 HTTP transport: your client MUST echo the Mcp-Session-Id response header on every subsequent POST/GET/DELETE. If the sessionId field in tool JSON responses changes between consecutive calls, your transport is re-initializing — fix your client. On reconnect within ~60s with the same agent identity (initialize metadata / fingerprint), the server tries to re-attach you to your previous controlled body when it is still free.
 
@@ -45,6 +56,7 @@ Read the agent guide first via the resource cssdoom://docs/agent-guide. Other re
   cssdoom://docs/recipes            — copy-pasteable patterns
   cssdoom://docs/gameplay-rules     — what the engine enforces
   cssdoom://docs/tool-index         — full tool list with routing table
+  cssdoom://docs/join-challenge     — MCP displacement when the server is full
   cssdoom://role/current            — current body role + behavior hints
 
 Bootstrapping prompts: play-the-game, hunt-a-peer, operate-a-door.`;
@@ -66,6 +78,7 @@ export function buildMcpServerForNewSession({ displayName, agentIdentity } = {})
             prompts: { listChanged: false },
         },
     });
+    registerMcpServerForSession(sessionId, server);
 
     const ctx = {
         getSessionId: () => sessionId,
@@ -76,6 +89,7 @@ export function buildMcpServerForNewSession({ displayName, agentIdentity } = {})
     registerActorTools(server, ctx);
     registerEnemyTools(server, ctx);
     registerDoorTools(server, ctx);
+    registerSessionTools(server, ctx);
     registerStaticResources(server, ctx);
     registerPrompts(server, ctx);
 
@@ -83,6 +97,7 @@ export function buildMcpServerForNewSession({ displayName, agentIdentity } = {})
         server,
         gameSessionId: sessionId,
         async dispose() {
+            unregisterMcpServerForSession(sessionId);
             try { await server.close(); } catch {}
             closeMcpSession(sessionId);
         },
@@ -205,6 +220,7 @@ async function openHttpSession(req, res, body) {
             const entry = httpSessions.get(id);
             httpSessions.delete(id);
             if (entry) {
+                unregisterMcpTransportForGameSession(entry.mcp?.gameSessionId);
                 try { await entry.mcp.dispose(); } catch {}
             }
         },
@@ -216,12 +232,20 @@ async function openHttpSession(req, res, body) {
         const entry = httpSessions.get(id);
         if (!entry) return;
         httpSessions.delete(id);
+        unregisterMcpTransportForGameSession(entry.mcp?.gameSessionId);
         void entry.mcp.dispose();
     };
 
-    const mcp = buildMcpServerForNewSession({ displayName, agentIdentity });
-    await mcp.server.connect(transport);
-    await transport.handleRequest(req, res, body);
+    let mcp;
+    try {
+        mcp = buildMcpServerForNewSession({ displayName, agentIdentity });
+        registerMcpTransportForGameSession(mcp.gameSessionId, transport);
+        await mcp.server.connect(transport);
+        await transport.handleRequest(req, res, body);
+    } catch (err) {
+        if (mcp?.gameSessionId) unregisterMcpTransportForGameSession(mcp.gameSessionId);
+        throw err;
+    }
 }
 
 async function readJsonBody(req) {
@@ -364,5 +388,3 @@ function buildFingerprint(hints) {
     return createHash('sha256').update(source).digest('hex').slice(0, 16);
 }
 
-/** Convenience export for stdio bridges and tests that want their own transport. */
-export { openMcpSession, closeMcpSession };

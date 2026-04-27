@@ -21,9 +21,9 @@
  */
 
 import { registerInputProvider, input } from '../input/index.js';
-import { getMarine } from '../game/state.js';
+import { getMarineActor } from '../game/state.js';
 
-const marine = () => getMarine();
+const marine = () => getMarineActor();
 import { getControlledFor, LOCAL_SESSION } from '../game/possession.js';
 
 const intent = {

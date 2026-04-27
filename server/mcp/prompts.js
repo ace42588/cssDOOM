@@ -5,7 +5,10 @@
  * seed a play session with a focused goal + the right reference docs
  * pre-loaded as resource references. They are NOT system prompts in the
  * "always-on rules" sense — they're starting points the user picks
- * ("play the marine", "hunt another player", "operate a door").
+ * ("play the game", "hunt another player", "operate a door"). The
+ * controlled body is whichever actor the server hands you on connect —
+ * marine or possessed monster — and each prompt works against that
+ * capability-driven body, not a hardcoded role.
  */
 
 import { z } from 'zod';
@@ -55,9 +58,9 @@ export function registerPrompts(server, _ctx) {
                     userText(
                         [
                             'Loop:',
-                            '  1. world-get-state — observe',
+                            '  1. world-get-state — observe `self.controlledActor` and the `actors` / `doors` / `players` lists',
                             '  2. plan one action',
-                            '  3. invoke actor-* / enemies-list / doors-* and actor-possess when swapping bodies',
+                            '  3. invoke actor-* (driving your body) / actor-list / actor-get-state / doors-* and actor-possess when swapping bodies',
                             '  4. wait ~100ms',
                             '  5. world-get-state — observe again, repeat',
                             '',
@@ -86,7 +89,7 @@ export function registerPrompts(server, _ctx) {
             const switchHint = pref === 'marine'
                 ? 'If you were given an enemy on connect, call actor-possess ({ targetId: "marine" }) to try to take the marine.'
                 : pref === 'enemy'
-                    ? 'If you were given the marine, call enemies-list then actor-possess ({ targetId: "thing:N" }) to take a strong enemy (e.g. baron) instead.'
+                    ? 'If you were given the marine, call actor-list ({ kind: "enemy", alive: true }) then actor-possess ({ targetId: "actor:N" | "thing:N" }) to take a strong enemy (e.g. baron) instead.'
                     : 'Use whichever body the server gave you.';
             return {
                 description: `Hunt a peer with body=${pref}.`,
@@ -96,7 +99,7 @@ export function registerPrompts(server, _ctx) {
                     userText(
                         [
                             'Procedure:',
-                            '  1. world-get-state — confirm what body you control.',
+                            '  1. world-get-state — confirm what body you control (`self.controlledActor`).',
                             `  2. ${switchHint}`,
                             '  3. players-peers ({ onlyControlling: true }) — pick a target.',
                             '  4. Compute the angle to the target (see coordinate-system.md).',
@@ -129,7 +132,7 @@ export function registerPrompts(server, _ctx) {
                         'Procedure:',
                         '  1. doors-list — find a door with pendingRequests, or one likely to attract traffic (key-locked, near spawn).',
                         '  2. actor-possess ({ targetId: "door:N" }) — take operator status (N = sectorIndex from doors-list).',
-                        '  3. world-get-state to confirm controlledKind === "door".',
+                        '  3. world-get-state to confirm self.controlledKind === "door".',
                         '  4. Loop: doors-get-state ({ sectorIndex }) — when pendingRequests is non-empty, decide:',
                         '     - approve known-friendly identifiers via doors-approve-request',
                         '     - deny unknown / hostile via doors-deny-request',

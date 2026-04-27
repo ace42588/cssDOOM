@@ -27,7 +27,7 @@ export function initMouseInput() {
 
     // Fire weapon on left click (outside UI elements)
     document.addEventListener('mousedown', event => {
-        if (event.button === 0 && !spectatorActive && !isTouchDevice && !event.target.closest('#debug-menu, #menu, #hud, #spectator, #touch-controls, #help-overlay, #help-button, #fullscreen-button, #body-swap-overlay, #door-operator-overlay')) {
+        if (event.button === 0 && !spectatorActive && !isTouchDevice && !event.target.closest('#debug-menu, #menu, #hud, #spectator, #touch-controls, #help-overlay, #help-button, #fullscreen-button, #body-swap-overlay, #join-challenge-overlay, #door-operator-overlay')) {
             input.fireHeld = true;
         }
     });

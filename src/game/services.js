@@ -4,9 +4,9 @@
  * (e.g. door opens), per-entity "dirty" notifications for downstream
  * identity/telemetry systems (SCIM push), and heartbeats.
  *
- * Browser default installs no-op stubs (the engine runs fully locally in
- * single-player prototyping). Server installs implementations that talk to
- * SGNL (access evaluations, CAEP, SCIM). Keeping this a facade means the
+ * The browser installs no-op stubs (simulation is server-side; the client has
+ * nothing to push). The server installs implementations that talk to SGNL
+ * (access evaluations, CAEP, SCIM). Keeping this a facade means the
  * engine modules (`src/game/mechanics/doors.js`, `src/game/index.js`,
  * `src/game/lifecycle.js`) never import SGNL clients directly — they run
  * unchanged on both sides.
@@ -28,16 +28,20 @@
  *   tickHeartbeat(deltaTime)    — periodic poll so the host can sweep
  *                                  continuously-changing entities (AI
  *                                  positions, player movement).
+ *
+ * Door access mode (multiplayer / host):
+ *
+ *   getDoorControlMode()        — returns `standard` | `sgnl` | `player`
+ *                                  (see `DOOR_CONTROL_MODE` in constants).
+ *                                  Defaults to `player` when no host hook.
  */
+
+import { DOOR_CONTROL_MODE } from './constants.js';
 
 let services = {};
 
 export function setGameServices(impl) {
     services = impl || {};
-}
-
-export function getGameServices() {
-    return services;
 }
 
 // ── Access ─────────────────────────────────────────────────────────────
@@ -59,6 +63,15 @@ export async function evaluateAccess(controllerId, assetId, action) {
     }
 }
 
+/**
+ * Which door gating path `toggleDoor` uses. Host supplies the server setting;
+ * browser default is `player` (human operator when possessing the door, else open).
+ */
+export function getDoorControlMode() {
+    const mode = services.getDoorControlMode?.();
+    return mode || DOOR_CONTROL_MODE.PLAYER;
+}
+
 // ── SCIM / per-entity push ─────────────────────────────────────────────
 
 /**
@@ -72,7 +85,7 @@ export function markEntityDirty(kind, id) {
 
 /**
  * Convenience wrapper for marking the current player session dirty.
- * `sessionId` is optional; single-player uses a server-wide default.
+ * `sessionId` is optional when the host maps a default session.
  */
 export function markPlayerDirty(sessionId) {
     services.markPlayerDirty?.(sessionId);

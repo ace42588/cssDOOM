@@ -4,29 +4,23 @@
  * resolution, floor height tracking, and the moving state flag for head-bob /
  * weapon-bob.
  *
- * Under normal play the "controlled actor" is the player object. When the
- * user possesses a monster (via body-swap), the same path drives that
- * monster instead — reading the monster's position/facing, applying its AI
- * speed, and syncing its renderer position when it moves.
+ * Under normal play the "controlled actor" is the marine. When the user
+ * possesses a monster (via body-swap), the same path drives that monster
+ * instead — reading the monster's position/facing, applying its AI speed,
+ * and syncing its renderer position when it moves.
  *
- * Multiplayer: `updateMovementFor(sessionId, inputSnapshot, dt, timestamp)`
- * runs the movement for a specific session with a specific input snapshot.
- * The server ticks it once per connected controller; the browser single
- * player path still calls `updateMovement(dt, timestamp)` which wraps the
- * per-session call with the local session + global `input` object.
+ * The authoritative tick calls `updateMovementFor(sessionId, inputSnapshot, dt, timestamp)`
+ * once per session per step (see `src/game/index.js#updateGameMulti`). Tests and
+ * tools may call it directly with synthetic input snapshots.
  */
 
 import { resolveSlidingMoveActor } from '../physics/collision.js';
 import { EYE_HEIGHT, RUN_MULTIPLIER, TURN_SPEED } from '../constants.js';
-import { getMarine } from '../state.js';
-
-const marine = () => getMarine();
+import { MARINE_ACTOR_TYPE } from '../state.js';
 import { getFloorHeightAt, getSectorAt } from '../physics/queries.js';
 import { playSound } from '../../audio/audio.js';
-import { updatePlayerFromLift } from '../mechanics/lifts.js';
+import { updateLifts } from '../mechanics/lifts.js';
 import * as renderer from '../../renderer/index.js';
-import { input, collectInput } from '../../input/index.js';
-import { asMovementActor } from '../entity/interop.js';
 import {
     LOCAL_SESSION,
     getControlledFor,
@@ -35,16 +29,21 @@ import {
 import { getThingIndex } from '../things/registry.js';
 import { normalizeAngle } from '../math/angle.js';
 
-export function integratePlanarMove(actor, moveVec, deltaTime) {
-    const fromX = actor.entity.x;
-    const fromY = actor.entity.y;
+/**
+ * Step `entity` by `moveVec * deltaTime`, applying sliding collision against
+ * walls, things, and lift edges. Mutates `entity.x` / `entity.y` in place and
+ * returns the resolved displacement so callers can react (e.g. update facing).
+ */
+export function integratePlanarMove(entity, moveVec, deltaTime) {
+    const fromX = entity.x;
+    const fromY = entity.y;
     const to = {
         x: fromX + moveVec.x * deltaTime,
         y: fromY + moveVec.y * deltaTime,
     };
-    const resolved = resolveSlidingMoveActor(actor, to);
-    actor.entity.x = resolved.x;
-    actor.entity.y = resolved.y;
+    const resolved = resolveSlidingMoveActor(entity, to);
+    entity.x = resolved.x;
+    entity.y = resolved.y;
     return {
         moved: resolved.moved,
         fromX,
@@ -54,27 +53,25 @@ export function integratePlanarMove(actor, moveVec, deltaTime) {
     };
 }
 
-export function updateActorFacingFromDelta(actor, fromX, fromY, minDistSq = 0.001) {
-    if (actor.kind === 'player') return;
-    const deltaX = actor.entity.x - fromX;
-    const deltaY = actor.entity.y - fromY;
+/**
+ * Turn `entity.facing` toward whichever direction it actually moved. Skipped
+ * for the marine actor: its facing is locked to the camera/input `viewAngle`
+ * (see `setViewAngle`) and the AI marine controller (`updatePlayerFacingForAi`)
+ * sets both fields explicitly before stepping.
+ */
+export function updateActorFacingFromDelta(entity, fromX, fromY, minDistSq = 0.001) {
+    if (entity.type === MARINE_ACTOR_TYPE) return;
+    const deltaX = entity.x - fromX;
+    const deltaY = entity.y - fromY;
     if (deltaX * deltaX + deltaY * deltaY > minDistSq) {
-        actor.entity.facing = Math.atan2(deltaY, deltaX);
+        entity.facing = Math.atan2(deltaY, deltaX);
     }
 }
 
 let wasMoving = false;
 
-/** Browser single-player entry point — uses the local session + global input. */
-export function updateMovement(deltaTime, timestamp) {
-    collectInput();
-    updateMovementFor(LOCAL_SESSION, input, deltaTime, timestamp);
-}
-
 /**
- * Apply an input snapshot to the body controlled by `sessionId`. Called by
- * both the browser (indirectly, via `updateMovement`) and the server (once
- * per connected session per tick).
+ * Apply an input snapshot to the body controlled by `sessionId`.
  */
 export function updateMovementFor(sessionId, inputSnapshot, deltaTime, timestamp) {
     const entity = getControlledFor(sessionId);
@@ -86,7 +83,10 @@ export function updateMovementFor(sessionId, inputSnapshot, deltaTime, timestamp
         return;
     }
     updateLocation(entity, inputSnapshot, deltaTime, sessionId);
-    if (entity === marine()) updatePlayerFromLift();
+    // Lift heights interpolate against `performance.now()`, so calling this
+    // once per session per tick is idempotent. (Lifts freeze if no session is
+    // bound — pre-existing limitation; flagged for the renderer slice.)
+    updateLifts();
     updateHeight(entity);
     if (sessionId === LOCAL_SESSION) updateMovingState(inputSnapshot);
 }
@@ -103,14 +103,11 @@ function updateDoorViewAngle(doorEntity, inputSnapshot, deltaTime) {
 }
 
 /**
- * Returns the current view-angle for the controlled actor. For the player
- * character this is `player.viewAngle` directly. For a possessed monster, the
- * view angle is stored on `thing.viewAngle` (seeded from `thing.facing`
- * when first possessed, kept in the player convention: 0 = north).
+ * View-angle on every controlled body lives at `entity.viewAngle`. The marine
+ * is seeded with one at spawn; possessed monsters get one when first possessed
+ * (kept in the player convention: 0 = north).
  */
 function getViewAngle(entity) {
-    const m = marine();
-    if (entity === m) return m.viewAngle;
     if (typeof entity.viewAngle !== 'number') {
         entity.viewAngle = (entity.facing ?? 0) - Math.PI / 2;
     }
@@ -118,12 +115,6 @@ function getViewAngle(entity) {
 }
 
 function setViewAngle(entity, angle) {
-    const m = marine();
-    if (entity === m) {
-        m.viewAngle = angle;
-        m.facing = angle + Math.PI / 2;
-        return;
-    }
     entity.viewAngle = angle;
     entity.facing = angle + Math.PI / 2;
 }
@@ -148,9 +139,8 @@ function updateLocation(entity, inputSnapshot, deltaTime, sessionId) {
     const strafeX = Math.cos(angle);
     const strafeY = Math.sin(angle);
 
-    const movementActor = asMovementActor(entity);
     integratePlanarMove(
-        movementActor,
+        entity,
         {
             x: forwardX * speed * (inputSnapshot.moveY || 0) + strafeX * speed * (inputSnapshot.moveX || 0),
             y: forwardY * speed * (inputSnapshot.moveY || 0) + strafeY * speed * (inputSnapshot.moveX || 0),
@@ -158,7 +148,7 @@ function updateLocation(entity, inputSnapshot, deltaTime, sessionId) {
         deltaTime,
     );
 
-    if (entity !== marine()) {
+    if (entity.type !== MARINE_ACTOR_TYPE) {
         const idx = getThingIndex(entity);
         entity.floorHeight = getFloorHeightAt(entity.x, entity.y);
         renderer.updateThingPosition(idx, {
@@ -182,13 +172,12 @@ function updateMovingState(inputSnapshot) {
 }
 
 function updateHeight(entity) {
-    const m = marine();
-    if (entity === m) {
-        const prevFloorHeight = m.floorHeight;
-        m.floorHeight = getFloorHeightAt(m.x, m.y);
-        m.z = m.floorHeight + EYE_HEIGHT;
+    if (entity.type === MARINE_ACTOR_TYPE) {
+        const prevFloorHeight = entity.floorHeight;
+        entity.floorHeight = getFloorHeightAt(entity.x, entity.y);
+        entity.z = entity.floorHeight + EYE_HEIGHT;
 
-        if (prevFloorHeight - m.floorHeight > 32) {
+        if (prevFloorHeight - entity.floorHeight > 32) {
             playSound('DSOOF');
         }
     } else {

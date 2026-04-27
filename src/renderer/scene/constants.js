@@ -16,8 +16,6 @@ import {
 // keeps geometry visible and avoids "invisible wall" surprises.
 export const LIGHT_MINIMUM_BRIGHTNESS = 0.12;
 
-export const DOOM_LIGHT_MAX = 255;         // Upper bound of DOOM's sector light range
-
 // DOOM's R_InitLightTables maps sector lightlevel to colormaps (0=bright, 31=black).
 // The formula: startmap = (15 - lightLevel/16) * 4, offset by a medium-distance
 // brightening factor to approximate DOOM's scalelight close-range boost.

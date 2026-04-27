@@ -1,12 +1,17 @@
 /**
- * WebMCP tools for driving whatever body the local session controls. Each tool
- * either reads server-replicated state (marine via `getMarine()`, possession pose), or feeds
- * the client's input pipeline (`../input-source.js`). No tool directly mutates
- * authoritative game state; the server sees inputs on the next `sendInputFrame()`.
+ * WebMCP tools for driving whatever body the local session controls.
+ *
+ * Mirrors `server/mcp/tools/actor.js` (same tool names, identical record
+ * shapes) but operates on the client side: reads the server-replicated
+ * actor state through the shared `src/game/snapshot.js` helper, and
+ * pushes inputs through `../input-source.js` + `src/net/client.js`.
+ * No tool directly mutates authoritative game state; the server sees
+ * inputs on the next `sendInputFrame()`.
  */
 
-import { getMarine, state } from '../../game/state.js';
-import { ENEMIES } from '../../game/constants.js';
+import { getControlled } from '../../game/possession.js';
+import { state, getMarineActor } from '../../game/state.js';
+import { snapshotActor, listActors, isLiveActor } from '../../game/snapshot.js';
 import { pressUse, requestWeaponSwitch, requestBodySwap } from '../../net/client.js';
 import {
     setIntent,
@@ -14,7 +19,6 @@ import {
     nudgeTurnDelta,
     fireForDuration,
     stopFire,
-    getControlledPose,
     turnTo,
     moveTo,
 } from '../input-source.js';
@@ -28,46 +32,77 @@ function ok(extra = {}) {
     return textContent({ ok: true, ...extra });
 }
 
-function isLiveEnemy(thing) {
-    if (!thing) return false;
-    if (thing.collected) return false;
-    if ((thing.hp ?? 0) <= 0) return false;
-    return Boolean(thing.ai) && ENEMIES.has(thing.type);
+/**
+ * Distance origin for the local session: the actor it drives, or the
+ * marine if the local session is a spectator / pre-assignment. Keeps
+ * `distanceToOrigin` meaningful even without a controlled body.
+ */
+function originForLocalSession() {
+    const anchor = getControlled() || getMarineActor();
+    if (!anchor) return {};
+    return { originX: anchor.x, originY: anchor.y };
 }
 
 export function registerActorTools() {
     navigator.modelContext.registerTool({
         name: 'actor.get-state',
         description:
-            'Return the current pose and stats of the marine plus the pose of whichever body the local session is currently driving (marine or possessed monster/door).',
-        inputSchema: { type: 'object', properties: {} },
-        async execute() {
-            const pose = getControlledPose();
-            return textContent({
-                marine: {
-                    x: getMarine().x,
-                    y: getMarine().y,
-                    z: getMarine().z,
-                    angle: getMarine().viewAngle,
-                    health: getMarine().hp,
-                    armor: getMarine().armor,
-                    armorType: getMarine().armorType,
-                    ammo: { ...getMarine().ammo },
-                    maxAmmo: { ...getMarine().maxAmmo },
-                    currentWeapon: getMarine().currentWeapon,
-                    ownedWeapons: [...getMarine().ownedWeapons],
-                    collectedKeys: [...getMarine().collectedKeys],
-                    powerups: { ...getMarine().powerups },
-                    isDead: getMarine().deathMode === 'gameover',
-                    isFiring: Boolean(getMarine().isFiring),
-                },
-                controlled: {
-                    kind: pose.kind,
-                    x: pose.x,
-                    y: pose.y,
-                    angle: pose.angle,
-                },
-            });
+            "Return the unified actor snapshot for a single actor. With no `id`, returns whichever body the local session currently controls (null when spectating). Pass `id: 'actor:<slot>'` or `id: 'thing:<idx>'` to inspect any actor on the map. Record matches the server `actor-get-state` shape: { id, type, kind, label, pose, vitals, loadout?, inventory?, ai?, controller, onDeath, attributes, distanceToOrigin }.",
+        inputSchema: {
+            type: 'object',
+            properties: {
+                id: { type: 'string', description: "Optional: 'actor:<slot>' | 'thing:<idx>' | 'marine' | 'player'." },
+            },
+        },
+        async execute(args) {
+            const rawId = args?.id;
+            let target = null;
+            if (typeof rawId === 'string' && rawId.length > 0) {
+                const lower = rawId.toLowerCase();
+                if (lower === 'marine' || lower === 'player') {
+                    target = getMarineActor();
+                } else if (rawId.startsWith('actor:')) {
+                    target = state.actors[Number(rawId.slice('actor:'.length))] || null;
+                } else if (rawId.startsWith('thing:')) {
+                    target = state.things[Number(rawId.slice('thing:'.length))] || null;
+                } else {
+                    return textContent({ ok: false, reason: 'invalid id (use actor:<slot>, thing:<idx>, marine, or player)' });
+                }
+            } else {
+                target = getControlled();
+            }
+            const actor = target ? snapshotActor(target, originForLocalSession()) : null;
+            return textContent({ actor });
+        },
+    });
+
+    navigator.modelContext.registerTool({
+        name: 'actor.list',
+        description:
+            "List actors matching an optional filter. Filter fields: { kind?: 'marine'|'enemy'|'any', alive?: boolean, hostile?: boolean, controlled?: boolean, maxDistance?: number, limit?: number }. Mirrors `actor-list` server-side. Records are the same unified actor shape returned by `actor.get-state`. Sorted by distance from the local session's controlled body (marine fallback for spectators).",
+        inputSchema: {
+            type: 'object',
+            properties: {
+                kind: { type: 'string', enum: ['marine', 'enemy', 'any'] },
+                alive: { type: 'boolean' },
+                hostile: { type: 'boolean' },
+                controlled: { type: 'boolean' },
+                maxDistance: { type: 'number' },
+                limit: { type: 'integer' },
+            },
+        },
+        async execute(args) {
+            const filter = {
+                ...originForLocalSession(),
+                ...(args?.kind ? { kind: args.kind } : {}),
+                ...(args?.alive !== undefined ? { alive: args.alive } : {}),
+                ...(args?.hostile !== undefined ? { hostile: args.hostile } : {}),
+                ...(args?.controlled !== undefined ? { controlled: args.controlled } : {}),
+                ...(Number.isFinite(args?.maxDistance) ? { maxDistance: Number(args.maxDistance) } : {}),
+                ...(Number.isInteger(args?.limit) && args.limit > 0 ? { limit: args.limit } : {}),
+            };
+            const actors = listActors(filter);
+            return textContent({ count: actors.length, actors });
         },
     });
 
@@ -247,8 +282,8 @@ export function registerActorTools() {
                 }
                 const thing = state.actors[id];
                 if (!thing) return textContent({ ok: false, reason: 'not found' });
-                if (!isLiveEnemy(thing)) {
-                    return textContent({ ok: false, reason: 'enemy not live/possessable from client view' });
+                if (!isLiveActor(thing)) {
+                    return textContent({ ok: false, reason: 'actor not possessable (dead, collected, or non-AI)' });
                 }
                 requestBodySwap(tid);
                 return ok({ requested: tid });
@@ -260,8 +295,8 @@ export function registerActorTools() {
                 }
                 const thing = state.things[id];
                 if (!thing) return textContent({ ok: false, reason: 'not found' });
-                if (!isLiveEnemy(thing)) {
-                    return textContent({ ok: false, reason: 'enemy not live/possessable from client view' });
+                if (!isLiveActor(thing)) {
+                    return textContent({ ok: false, reason: 'actor not possessable (dead, collected, or non-AI)' });
                 }
                 requestBodySwap(tid);
                 return ok({ requested: tid });

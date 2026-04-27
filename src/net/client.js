@@ -34,7 +34,9 @@ import {
     getRenderedThingPose,
 } from './interpolation.js';
 import {
+    JoinChallengeMessageSchema,
     MapLoadMessageSchema,
+    MSG,
     NoticeMessageSchema,
     RoleChangeMessageSchema,
     SnapshotMessageSchema,
@@ -91,6 +93,19 @@ export function requestLoadMap(mapName) {
     } catch {}
 }
 
+export function sendJoinChallengeDecision(challengeId, decision) {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    if (typeof challengeId !== 'string' || !challengeId) return;
+    if (decision !== 'displace' && decision !== 'spectate') return;
+    try {
+        ws.send(JSON.stringify({
+            type: MSG.JOIN_CHALLENGE_DECISION,
+            challengeId,
+            decision,
+        }));
+    } catch {}
+}
+
 function handleMessage(msg) {
     switch (msg.type) {
         case 'welcome':
@@ -115,6 +130,13 @@ function handleMessage(msg) {
                 if (parsed.message) {
                     rendererFacade.showHudMessage(parsed.message, 4000);
                 }
+            });
+            break;
+        case 'joinChallenge':
+            applyParsed(msg, JoinChallengeMessageSchema, (parsed) => {
+                import('../ui/join-challenge.js').then((m) => {
+                    m.handleJoinChallenge(parsed);
+                });
             });
             break;
         case 'bye':

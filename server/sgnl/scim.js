@@ -29,7 +29,9 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { config as loadEnv } from 'dotenv';
-import { getMarine } from '../../src/game/state.js';
+import { MARINE_ACTOR_TYPE } from '../../src/game/state.js';
+import { getControlledFor } from '../../src/game/possession.js';
+import { actorIdOf, kindOfActor, labelOfActor } from '../../src/game/snapshot.js';
 
 loadEnv({
     path: join(dirname(fileURLToPath(import.meta.url)), '../../.env'),
@@ -114,41 +116,98 @@ function ensureSession(sessionId, meta = {}) {
 
 // ── Snapshot builder ───────────────────────────────────────────────────
 
-// Single player snapshot. Nested objects (position, vitals, ammo, …)
-// stay nested because the SoR addresses them via JSONPath
-// (`$.position.x`); `powerups` is a multi-valued nested attribute,
-// modelled as a Powerup child entity in the SoR.
+// One SCIM User payload per connected session. The User identity stays
+// stable per session — `userName`, `sessionId`, `displayName`, and
+// `active` never move when the player body-swaps. `active` tracks the
+// session's own liveness (do we have a body?) rather than the marine's,
+// so a session possessing a live imp is `active: true` even if the
+// marine is dead elsewhere in the world.
+//
+// Marine-only fields (`ammo`, `maxAmmo`, `inventory.ownedWeapons`,
+// `inventory.collectedKeys`, `powerups`) are only emitted when the
+// controlled actor is the marine (`controlledActorRef.type === 1`).
+// Monster bodies omit them entirely — SGNL JSONPath reads like
+// `$.ammo.bullets` simply resolve to null for a non-marine session.
 function snapshotPlayer(session) {
     const userName = `player:${session.sessionId}`;
-    return {
+    const controlled = getControlledFor(session.sessionId);
+    const isMarine = controlled && controlled.type === MARINE_ACTOR_TYPE;
+
+    const base = {
         id: userName,
         schemas: [SCIM_CORE_USER_SCHEMA, PLAYER_SCHEMA],
         userName,
-        active: getMarine().deathMode !== 'gameover',
+        // Session is `active` iff it currently has a controlled body; a
+        // spectator / pre-assignment / post-game-over session is inactive.
+        active: Boolean(controlled),
         sessionId: session.sessionId,
         correlationId,
         mapName: currentMapName,
         displayName: session.displayName || 'Doom Marine',
-        position: { x: getMarine().x, y: getMarine().y, z: getMarine().z, angle: getMarine().viewAngle },
-        vitals: {
-            health: getMarine().hp,
-            armor: getMarine().armor,
-            armorType: getMarine().armorType,
-            isDead: getMarine().deathMode === 'gameover',
-        },
-        ammo: { ...getMarine().ammo },
-        maxAmmo: { ...getMarine().maxAmmo },
-        inventory: {
-            hasBackpack: Boolean(getMarine().hasBackpack),
-            currentWeapon: getMarine().currentWeapon,
-            ownedWeapons: toSortedArray(getMarine().ownedWeapons),
-            collectedKeys: toSortedArray(getMarine().collectedKeys),
-        },
-        powerups: Object.entries(getMarine().powerups).map(([name, remainingSeconds]) => ({
-            name, remainingSeconds,
-        })),
+        controlledActorRef: controlled
+            ? {
+                id: actorIdOf(controlled),
+                type: controlled.type,
+                kind: kindOfActor(controlled),
+                label: labelOfActor(controlled),
+            }
+            : null,
         updatedAt: nowIsoString(),
     };
+
+    if (!controlled) {
+        // Spectator / pre-assignment: no controlled body. Emit the
+        // session identity with null vitals so the SCIM schema is still
+        // satisfied; SGNL policy sees `isDead = true` which matches the
+        // "can't act" semantics of a spectator.
+        base.position = null;
+        base.vitals = {
+            health: 0,
+            maxHealth: 0,
+            armor: 0,
+            armorType: 0,
+            isDead: true,
+        };
+        return base;
+    }
+
+    base.position = {
+        x: controlled.x,
+        y: controlled.y,
+        z: controlled.z ?? controlled.floorHeight ?? 0,
+        angle: controlled.viewAngle ?? controlled.facing ?? 0,
+    };
+    const hp = controlled.hp ?? 0;
+    // `isDead` is purely a function of the controlled body: for marines
+    // we honour their authoritative `deathMode`, for any other actor we
+    // fall back to hp/collected. No cross-session leakage via a global
+    // marine lookup.
+    const isDead = isMarine
+        ? controlled.deathMode === 'gameover' || hp <= 0
+        : hp <= 0 || Boolean(controlled.collected);
+    base.vitals = {
+        health: hp,
+        maxHealth: controlled.maxHp ?? null,
+        armor: controlled.armor ?? 0,
+        armorType: controlled.armorType ?? 0,
+        isDead,
+    };
+
+    if (isMarine) {
+        base.ammo = { ...(controlled.ammo || {}) };
+        base.maxAmmo = { ...(controlled.maxAmmo || {}) };
+        base.inventory = {
+            hasBackpack: Boolean(controlled.hasBackpack),
+            currentWeapon: controlled.currentWeapon ?? 0,
+            ownedWeapons: toSortedArray(controlled.ownedWeapons || []),
+            collectedKeys: toSortedArray(controlled.collectedKeys || []),
+        };
+        base.powerups = Object.entries(controlled.powerups || {}).map(
+            ([name, remainingSeconds]) => ({ name, remainingSeconds }),
+        );
+    }
+
+    return base;
 }
 
 // ── HTTP ───────────────────────────────────────────────────────────────
@@ -289,8 +348,7 @@ async function deletePlayer(entry) {
 
 /**
  * Register a player session so the SCIM module emits a User resource
- * for it. Single-player callers can rely on the default 'local' session
- * installed by `initScimPush`.
+ * for it. `initScimPush` seeds a default session when none are registered yet.
  */
 export function registerScimPlayer(sessionId, meta = {}) {
     if (!sessionId) return;
@@ -364,8 +422,8 @@ export function tickScimHeartbeat(deltaTime) {
  * `SCIM_BEARER_TOKEN` are not set, SCIM is disabled and all dirty
  * calls become no-ops.
  *
- * Installs a default `local` session so single-player runs emit a User
- * resource without explicit registration.
+ * Installs a default `local` session so SCIM bootstrap emits a User resource
+ * before the first WebSocket client registers.
  */
 export async function initScimPush(initialMapName = 'E1M1') {
     scimBaseUrl = normalizeBaseUrl(process.env.SCIM_PUSH_URL || '');

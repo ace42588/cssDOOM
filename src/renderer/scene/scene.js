@@ -15,7 +15,7 @@ import { buildWalls } from './surfaces/walls.js';
 import { buildFloors } from './surfaces/floors.js';
 import { buildCeilings } from './surfaces/ceilings.js';
 import { buildThings } from './entities/things.js';
-import { buildPlayer } from './entities/player.js';
+import { buildAvatar } from './entities/avatar.js';
 
 /**
  * Tears down the current scene, releasing DOM nodes and GPU resources.
@@ -51,7 +51,7 @@ export async function buildScene() {
     buildFloors();
     buildCeilings();
     buildThings();
-    buildPlayer();
+    buildAvatar();
 
     await preloadTextures();
     updateCamera();

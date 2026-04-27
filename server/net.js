@@ -23,6 +23,9 @@
  *
  *   { type: 'pong', t } — reply to a server ping.
  *
+ *   { type: 'joinChallengeDecision', challengeId, decision: 'displace' | 'spectate' }
+ *      Sent by a WebSocket client after receiving `joinChallenge` with autoResolved false.
+ *
  *   { type: 'loadMapRequest', mapName }
  *      Ask the server to switch the world to a specific map. Used by the
  *      menu/level picker. Inventory carries over so the player keeps the
@@ -108,6 +111,11 @@
  *   { type: 'notice', code: 'idle-warning' | 'idle-drop',
  *       message: string, secondsUntilAction?: number }
  *
+ *   { type: 'joinChallenge', challengeId, targetEntityId, targetAgent: { agentId, agentName, runtime },
+ *       defense: { justification, intendedAction? } | null,
+ *       defenseState: 'accepted' | 'declined' | 'timeout' | 'unsupported' | 'error',
+ *       expiresAt, autoResolved?: boolean }
+ *
  * Snapshots are deltas computed per-connection against a server-held
  * `baseline` of the last values sent to that connection. A fresh connection
  * starts with an empty baseline, so its first tick naturally carries the
@@ -120,20 +128,11 @@
  */
 
 export {
-    ALLOWED_MAPS,
-    BodySwapSchema,
     ClientInputMessageSchema,
-    DoorDecisionSchema,
-    InputPayloadSchema,
+    JoinChallengeDecisionMessageSchema,
     LoadMapRequestMessageSchema,
     MSG,
-    MapLoadCompleteMessageSchema,
-    MapLoadMessageSchema,
-    NoticeMessageSchema,
     ROLE,
-    RoleChangeMessageSchema,
-    SnapshotMessageSchema,
-    WelcomeMessageSchema,
     emptyInput,
     sanitizeInput,
 } from '../src/net/protocol.js';

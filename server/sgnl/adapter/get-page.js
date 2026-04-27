@@ -3,7 +3,7 @@ import { listMapJsonFiles, loadMapJson, resolveMapsDir } from './map-sources.js'
 import { INTERACTABLE_BUILDERS } from './interactables.js';
 
 /** Root Map entity `external_id` — must match `public/sgnl/map-sor.yaml`. */
-export const MAP_ENTITY_EXTERNAL_ID = 'map';
+const MAP_ENTITY_EXTERNAL_ID = 'map';
 
 /**
  * Child entity `external_id`s the adapter understands. Anything else

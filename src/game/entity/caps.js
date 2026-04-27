@@ -3,27 +3,13 @@
  * `possession.js` must not import this module (avoid cycles); callers pass entities in.
  */
 
-import { ENEMIES, WEAPONS } from '../constants.js';
-import { getMarine } from '../state.js';
-import { getSessionIdControlling } from '../possession.js';
+import { WEAPONS } from '../constants.js';
+import { getMarineActor } from '../state.js';
 import { normalizeAngle } from '../math/angle.js';
-
-export function kindOf(target) {
-    if (!target || typeof target !== 'object') return 'unknown';
-    if (target === getMarine()) return 'marine';
-    if (target.__isDoorEntity) return 'door';
-    if (target.ai && ENEMIES.has(target.type)) return 'enemy';
-    if (target.ai) return 'monster';
-    return 'thing';
-}
-
-export function sessionIdOf(entity) {
-    return getSessionIdControlling(entity);
-}
 
 export function isActorAlive(actor) {
     if (!actor) return false;
-    if (actor === getMarine()) return actor.hp > 0 && !actor.deathMode;
+    if (actor === getMarineActor()) return actor.hp > 0 && !actor.deathMode;
     if (actor.__isDoorEntity) return true;
     if (!actor.ai) return false;
     if (actor.collected) return false;
@@ -35,14 +21,27 @@ export function isControllableBody(entity) {
     return isActorAlive(entity);
 }
 
-export function canPossess(entity) {
-    return isControllableBody(entity);
+/**
+ * True when the actor's loadout contains more than one weapon slot — so
+ * `ownedWeapons.size > 1`. Monsters with a single intrinsic weapon (or actors
+ * without a weapon loadout at all) fail the check and therefore ignore
+ * `switchWeapon` inputs / HUD weapon slots.
+ */
+export function canSwitchWeapons(entity) {
+    if (!entity) return false;
+    const owned = entity.ownedWeapons;
+    if (!owned) return false;
+    if (owned instanceof Set) return owned.size > 1;
+    if (Array.isArray(owned)) return owned.length > 1;
+    if (typeof owned.size === 'number') return owned.size > 1;
+    if (typeof owned.length === 'number') return owned.length > 1;
+    return false;
 }
 
 export function canFire(entity) {
     if (!entity) return false;
     if (entity.__isDoorEntity) return false;
-    if (entity === getMarine()) {
+    if (entity === getMarineActor()) {
         const w = WEAPONS[entity.currentWeapon];
         if (!w) return false;
         if (!w.ammoType) return true;
@@ -52,25 +51,11 @@ export function canFire(entity) {
     return false;
 }
 
-export function canUse(entity) {
-    if (!entity) return false;
-    if (entity.__isDoorEntity) return true;
-    return entity === getMarine() || Boolean(entity.ai);
-}
-
-export function canMove(entity) {
-    return entity && !entity.__isDoorEntity;
-}
-
-export function canBeFollowed(entity) {
-    return isControllableBody(entity);
-}
-
 /** Pose for MCP / UI (angles normalized to [-pi, pi]). */
 export function poseOf(entity) {
     if (!entity) return null;
-    if (entity === getMarine()) {
-        const m = getMarine();
+    if (entity === getMarineActor()) {
+        const m = getMarineActor();
         return {
             kind: 'marine',
             x: m.x,

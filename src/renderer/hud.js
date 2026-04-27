@@ -8,8 +8,9 @@
  * CSS — JavaScript only touches one DOM element per frame.
  */
 
-import { getMarine, subscribeAmmo, AMMO_TYPES } from '../game/state.js';
-import { getControlled, isControllingPlayer } from '../game/possession.js';
+import { subscribeAmmo, AMMO_TYPES } from '../game/state.js';
+import { getPlayerActor } from '../game/possession.js';
+import { canSwitchWeapons } from '../game/entity/caps.js';
 import { dom } from './dom.js';
 import { WEAPONS } from '../game/constants.js';
 
@@ -20,9 +21,11 @@ let prev = {
 
 // Per-type ammo dirty queue. Seeded with every type so the first frame
 // flushes a complete set of CSS variables for the inventory panel.
-// `subscribeAmmo` adds entries on every mutation thereafter, replacing the
-// per-frame walk that used to read `getMarine().ammo` / `getMarine().maxAmmo` for
-// every type whether or not anything changed.
+// `subscribeAmmo` adds entries on every mutation thereafter, replacing
+// the per-frame walk that used to read the marine's ammo/maxAmmo for
+// every type whether or not anything changed. When the controlled body
+// has no `ammo` proxy (e.g. a possessed monster) the subscription is
+// dormant — nothing dirties, nothing writes.
 const ammoDirty = new Set(AMMO_TYPES);
 subscribeAmmo((type) => { ammoDirty.add(type); });
 
@@ -41,23 +44,22 @@ function ensureHudMessageElement() {
 
 export function updateHud() {
     const style = dom.status.style;
-    const controlled = getControlled();
-    const possessing = !isControllingPlayer();
+    const controlled = getPlayerActor();
+    // `possessed` renderer class hides the weapon / ammo rows via CSS
+    // whenever the controlled actor can't switch weapons — covers
+    // monster possession, spectator, and the pre-assignment window.
+    const hasWeaponSwitching = canSwitchWeapons(controlled);
+    const hasAmmo = Boolean(controlled?.ammo);
+    const hasArmor = typeof controlled?.armor === 'number';
+    dom.renderer.classList.toggle('possessed', !hasWeaponSwitching);
 
-    // Toggle possessed state on the renderer — CSS hides weapon/ammo rows.
-    dom.renderer.classList.toggle('possessed', possessing);
-
-    const weapon = WEAPONS[getMarine().currentWeapon];
-    const currentAmmo = weapon.ammoType ? Math.round(getMarine().ammo[weapon.ammoType]) : 0;
-    const currentHealth = possessing
-        ? Math.round(controlled.hp ?? 0)
-        : Math.round(getMarine().hp);
-    // Armor lives only on the marine `player` object. Snapshots always carry
-    // marine stats in `snap.player`, so when the camera/body is a monster
-    // (possession or spectator follow) we must not show that inventory here.
-    const currentArmor = possessing
-        ? 0
-        : Math.round(getMarine().armor);
+    const weaponSlot = controlled?.currentWeapon;
+    const weapon = typeof weaponSlot === 'number' ? WEAPONS[weaponSlot] : null;
+    const currentAmmo = hasAmmo && weapon?.ammoType
+        ? Math.round(controlled.ammo[weapon.ammoType] ?? 0)
+        : 0;
+    const currentHealth = Math.round(controlled?.hp ?? 0);
+    const currentArmor = hasArmor ? Math.round(controlled.armor) : 0;
 
     if (currentAmmo !== prev.ammo) {
         prev.ammo = currentAmmo;
@@ -68,9 +70,10 @@ export function updateHud() {
         prev.health = currentHealth;
         style.setProperty('--health', currentHealth);
 
-        // Face row is driven by the possessed body's HP when possessing, so
-        // the marine portrait still tracks how hurt "you" are.
-        const pct = possessing && controlled.maxHp
+        // Face-row scales to the controlled actor's own maxHp so the
+        // portrait still tracks "how hurt you are" whether you're the
+        // marine (maxHp=100) or a possessed demon (maxHp=150).
+        const pct = controlled?.maxHp
             ? (currentHealth / controlled.maxHp) * 100
             : currentHealth;
         const faceRow = pct >= 80 ? 0 : pct >= 60 ? 1 : pct >= 40 ? 2 : pct >= 20 ? 3 : 4;
@@ -85,20 +88,21 @@ export function updateHud() {
         style.setProperty('--armor', currentArmor);
     }
 
-    if (ammoDirty.size) {
+    if (hasAmmo && ammoDirty.size) {
         for (const type of ammoDirty) {
-            style.setProperty(`--ammo-${type}`, Math.round(getMarine().ammo[type]));
-            style.setProperty(`--max-${type}`, getMarine().maxAmmo[type]);
+            style.setProperty(`--ammo-${type}`, Math.round(controlled.ammo[type] ?? 0));
+            style.setProperty(`--max-${type}`, controlled.maxAmmo?.[type] ?? 0);
         }
         ammoDirty.clear();
     }
 
-    // Weapon ownership — hide all slots while possessing (monsters don't
-    // own player weapons).
-    for (let weaponSlot = 2; weaponSlot <= 7; weaponSlot++) {
+    // Weapon ownership rows: only mark a slot owned when the controlled
+    // actor actually has a weapon inventory that includes it.
+    const owned = controlled?.ownedWeapons;
+    for (let slot = 2; slot <= 7; slot++) {
         dom.renderer.classList.toggle(
-            WEAPON_CLASSES[weaponSlot],
-            !possessing && getMarine().ownedWeapons.has(weaponSlot),
+            WEAPON_CLASSES[slot],
+            Boolean(owned?.has?.(slot)),
         );
     }
 }

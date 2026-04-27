@@ -1,37 +1,63 @@
 /**
  * Projectile movement, collision detection, and explosion effects.
+ *
+ * Projectiles hit any live actor (marine, monsters, possessed bodies) and
+ * any shootable thing. No source-identity branching — the only actor
+ * excluded from collision is `projectile.source` itself.
  */
 
-import { EYE_HEIGHT } from '../constants.js';
-
-import { state, getMarine } from '../state.js';
-
-const marine = () => getMarine();
+import { state } from '../state.js';
 import { getFloorHeightAt } from '../physics/queries.js';
 import { rayHitPoint } from '../physics/collision.js';
 import { hasLineOfSight } from '../physics/line-of-sight.js';
-import { damageActor } from '../combat/damage.js';
+import { applyDamage } from '../combat/damage.js';
 import { playSound } from '../../audio/audio.js';
-import { damageEnemy } from '../combat/enemy.js';
 import { rocketExplosion } from '../combat/weapons.js';
 import { getThingDamageRadius, isShootableThing } from '../things/geometry.js';
 import * as renderer from '../../renderer/index.js';
-import { getHorizontalDistance, getTotalDistance, horizontalDistanceSquared, targetInRadius } from '../geometry.js';
-import { resolveTargetActor } from '../actors/math.js';
+import {
+    getHorizontalDistance,
+    horizontalDistanceSquared,
+} from '../geometry.js';
 
 // ============================================================================
 // Projectiles
 // ============================================================================
 
-/** Collision radius for projectile-vs-player hit detection (in map units) */
+/** Collision radius for projectile-vs-actor hit detection (map units). */
 const PROJECTILE_HIT_RADIUS = 24;
 
 /**
- * Updates all active projectiles each frame. Position is calculated from
- * elapsed time since spawn (matching the renderer's visual interpolation).
- * The game layer only tracks position for collision detection.
- *
- * Iterates backwards so that splice() during removal doesn't skip elements.
+ * Per-actor hit radius: enemies use their AI radius, barrels their barrel
+ * radius, the marine uses the fallback projectile radius.
+ */
+function actorHitRadius(actor) {
+    if (typeof actor.radius === 'number') return actor.radius;
+    if (actor.ai?.radius) return actor.ai.radius;
+    return PROJECTILE_HIT_RADIUS;
+}
+
+/** True if the projectile can damage `entity` right now. */
+function isProjectileVictim(entity, projectile) {
+    if (!entity) return false;
+    if (entity === projectile.source) return false;
+    if (entity.collected) return false;
+    if (entity.deathMode) return false;
+    if ((entity.hp ?? 0) <= 0) return false;
+    if (entity.ai || typeof entity.currentWeapon === 'number') return true;
+    return isShootableThing(entity);
+}
+
+/** Roll impact damage for an enemy projectile: `(P_Random()%8+1) * missileDamage`. */
+function rollProjectileDamage(projectile) {
+    if (projectile.isPlayerRocket) return projectile.damage || 0;
+    return (Math.floor(Math.random() * 8) + 1) * (projectile.missileDamage || 0);
+}
+
+/**
+ * Advance every active projectile one frame, handling wall / floor / actor
+ * collisions and cleanup. Iterates backwards so `splice()` during removal
+ * doesn't skip elements.
  */
 export function updateProjectiles() {
     const now = performance.now() / 1000;
@@ -40,32 +66,29 @@ export function updateProjectiles() {
         const projectile = state.projectiles[index];
         const elapsed = now - projectile.spawnTime;
 
-        // Remove projectiles that have exceeded their maximum lifetime
         if (elapsed >= projectile.lifetime) {
             renderer.removeProjectile(projectile.id);
             state.projectiles.splice(index, 1);
             continue;
         }
 
-        // Calculate position from elapsed time (matches renderer interpolation)
         const newX = projectile.startX + projectile.directionX * projectile.speed * elapsed;
         const newY = projectile.startY + projectile.directionY * projectile.speed * elapsed;
         const newZ = projectile.startZ + projectile.directionZ * projectile.speed * elapsed;
 
-        // Check wall collision: if line-of-sight from old to new position is
-        // blocked, the projectile has hit a wall. Find the actual impact point
-        // using rayHitPoint so the explosion appears on the wall surface.
+        // Wall collision: line-of-sight break between old → new position means
+        // the projectile hit a wall. Use rayHitPoint to place the explosion
+        // against the wall surface (pulled back 25 units to avoid clipping).
         if (!hasLineOfSight(projectile, { x: newX, y: newY })) {
             const moveDist = getHorizontalDistance(projectile, { x: newX, y: newY });
             const dirX = moveDist > 0 ? (newX - projectile.x) / moveDist : 0;
             const dirY = moveDist > 0 ? (newY - projectile.y) / moveDist : 0;
-            const hitPoint = rayHitPoint(projectile.x, projectile.y, dirX, dirY, moveDist);
-            // Pull the explosion 25 units back from the wall so it doesn't clip into the surface
+            const hitPoint = rayHitPoint(projectile.x, projectile.y, dirX, dirY, moveDist, projectile.z);
             const impactX = hitPoint ? hitPoint.x - dirX * 25 : projectile.x;
             const impactY = hitPoint ? hitPoint.y - dirY * 25 : projectile.y;
             spawnFireballExplosion(impactX, impactY, projectile.z);
             playSound(projectile.hitSound);
-            if (projectile.isPlayerRocket) rocketExplosion(impactX, impactY);
+            if (projectile.isPlayerRocket) rocketExplosion(impactX, impactY, projectile.source);
             renderer.removeProjectile(projectile.id);
             state.projectiles.splice(index, 1);
             continue;
@@ -75,87 +98,54 @@ export function updateProjectiles() {
         projectile.y = newY;
         projectile.z = newZ;
 
-        // Check floor collision: if the projectile has dropped below the floor
-        // at its current position, it has hit the ground.
         const floorHeight = getFloorHeightAt(newX, newY);
         if (newZ <= floorHeight) {
             spawnFireballExplosion(newX, newY, floorHeight);
             playSound(projectile.hitSound);
-            if (projectile.isPlayerRocket) rocketExplosion(newX, newY);
+            if (projectile.isPlayerRocket) rocketExplosion(newX, newY, projectile.source);
             renderer.removeProjectile(projectile.id);
             state.projectiles.splice(index, 1);
             continue;
         }
 
-        // Player rockets skip player collision (can't directly hit yourself,
-        // but splash damage from rocketExplosion can still self-damage)
-        if (!projectile.isPlayerRocket) {
-            // Check player collision using circular hit detection
-            if (targetInRadius(marine(), projectile, PROJECTILE_HIT_RADIUS)) {
-                spawnFireballExplosion(projectile.x, projectile.y, projectile.z);
-                // Roll damage on impact: (P_Random()%8+1) * missileDamage
-                // Based on: linuxdoom-1.10/p_inter.c:P_DamageMobj() missile damage
-                damageActor(marine(), (Math.floor(Math.random() * 8) + 1) * projectile.missileDamage, null);
-                playSound(projectile.hitSound);
-                renderer.removeProjectile(projectile.id);
-                state.projectiles.splice(index, 1);
-                continue;
+        // Actor / thing collision — iterate every entity that could be hit,
+        // excluding the projectile's own source. First live actor / thing
+        // inside its combined hit radius takes the projectile. Infighting
+        // falls out naturally because the hit sourceActor attribution
+        // drives `applyDamage`'s target.ai.threshold retarget logic.
+        let struck = null;
+        for (let i = 0, count = state.actors.length; i < count && !struck; i++) {
+            const actor = state.actors[i];
+            if (!isProjectileVictim(actor, projectile)) continue;
+            const hitRadius = PROJECTILE_HIT_RADIUS + actorHitRadius(actor);
+            if (horizontalDistanceSquared(projectile, actor) < hitRadius * hitRadius) {
+                struck = actor;
             }
         }
-
-        // Check enemy collision — projectiles can hit any enemy except the one
-        // that fired them. This enables infighting: an Imp fireball that misses
-        // the player and hits a Zombieman will cause the Zombieman to retarget
-        // the Imp. Based on: linuxdoom-1.10/p_map.c:PIT_CheckThing()
-        let hitEnemy = false;
-        for (let thingIndex = 1, count = state.actors.length; thingIndex < count; thingIndex++) {
-            const thing = state.actors[thingIndex];
-            if (!thing || thing.collected || thing === projectile.source) continue;
-            if (!isShootableThing(thing)) continue;
-
-            const enemyRadius = getThingDamageRadius(thing);
-            const hitRadius = PROJECTILE_HIT_RADIUS + enemyRadius;
-            if (horizontalDistanceSquared(projectile, thing) < hitRadius * hitRadius) {
-                spawnFireballExplosion(projectile.x, projectile.y, projectile.z);
-                playSound(projectile.hitSound);
-                // Player rockets deal direct hit damage + splash damage in a radius
-                if (projectile.isPlayerRocket) {
-                    damageEnemy(thing, projectile.damage, marine());
-                    rocketExplosion(projectile.x, projectile.y);
-                } else {
-                    // Roll damage on impact: (P_Random()%8+1) * missileDamage
-                    damageEnemy(thing, (Math.floor(Math.random() * 8) + 1) * projectile.missileDamage, projectile.source);
+        if (!struck) {
+            for (let i = 0, count = state.things.length; i < count && !struck; i++) {
+                const thing = state.things[i];
+                if (!isProjectileVictim(thing, projectile)) continue;
+                const hitRadius = PROJECTILE_HIT_RADIUS + getThingDamageRadius(thing);
+                if (horizontalDistanceSquared(projectile, thing) < hitRadius * hitRadius) {
+                    struck = thing;
                 }
-                renderer.removeProjectile(projectile.id);
-                state.projectiles.splice(index, 1);
-                hitEnemy = true;
-                break;
             }
         }
-        if (hitEnemy) continue;
-        for (let thingIndex = 0, count = state.things.length; thingIndex < count; thingIndex++) {
-            const thing = state.things[thingIndex];
-            if (!thing || thing.collected || thing === projectile.source) continue;
-            if (!isShootableThing(thing)) continue;
 
-            const enemyRadius = getThingDamageRadius(thing);
-            const hitRadius = PROJECTILE_HIT_RADIUS + enemyRadius;
-            if (horizontalDistanceSquared(projectile, thing) < hitRadius * hitRadius) {
-                spawnFireballExplosion(projectile.x, projectile.y, projectile.z);
-                playSound(projectile.hitSound);
-                if (projectile.isPlayerRocket) {
-                    damageEnemy(thing, projectile.damage, marine());
-                    rocketExplosion(projectile.x, projectile.y);
-                } else {
-                    damageEnemy(thing, (Math.floor(Math.random() * 8) + 1) * projectile.missileDamage, projectile.source);
-                }
-                renderer.removeProjectile(projectile.id);
-                state.projectiles.splice(index, 1);
-                hitEnemy = true;
-                break;
+        if (struck) {
+            spawnFireballExplosion(projectile.x, projectile.y, projectile.z);
+            playSound(projectile.hitSound);
+            applyDamage(struck, rollProjectileDamage(projectile), projectile.source, {
+                kind: 'projectile',
+            });
+            if (projectile.isPlayerRocket) {
+                rocketExplosion(projectile.x, projectile.y, projectile.source);
             }
+            renderer.removeProjectile(projectile.id);
+            state.projectiles.splice(index, 1);
+            continue;
         }
-        if (hitEnemy) continue;
     }
 }
 
@@ -165,75 +155,10 @@ export function updateProjectiles() {
 
 /**
  * Spawns a fireball explosion effect at the given 3D position. This is the
- * visual impact effect when an enemy projectile hits a wall or the player.
- * The renderer handles the animation and cleanup.
+ * visual impact effect when a projectile hits a wall / floor / actor. The
+ * renderer handles animation and cleanup.
  */
 function spawnFireballExplosion(worldX, worldY, worldZ) {
     renderer.createExplosion(worldX, worldY, worldZ);
 }
 
-/**
- * Spawns an enemy projectile (e.g. Imp fireball, Cacodemon lightning ball).
- * The projectile is created at the enemy's position at chest height and given
- * a 3D velocity vector aimed at the current target (player or infighting enemy).
- * The renderer creates the visual representation; the game layer tracks the
- * projectile in state.projectiles for per-frame movement updates.
- *
- * The `source` field on the projectile tracks which enemy fired it, used for
- * infighting retarget when the projectile hits another enemy.
- */
-export function spawnProjectile(enemy, projectileDefinition) {
-    // Resolve target position — aim at the current AI target (player or enemy)
-    const target = resolveTargetActor(enemy, marine());
-    const targetX = target.x;
-    const targetY = target.y;
-    const targetFloorHeight =
-        target === marine() ? marine().floorHeight : getFloorHeightAt(targetX, targetY);
-
-    // Spawn at enemy position at roughly chest height (80% of eye height)
-    const floorHeight = getFloorHeightAt(enemy.x, enemy.y);
-    const spawnHeight = floorHeight + EYE_HEIGHT * 0.8;
-
-    // Compute 3D direction vector aimed at the target's eye height
-    const targetHeight = targetFloorHeight + EYE_HEIGHT;
-    const deltaHeight = targetHeight - spawnHeight;
-    const totalDistance = getTotalDistance(
-        { x: enemy.x, y: enemy.y, z: spawnHeight },
-        { x: targetX, y: targetY, z: targetHeight },
-    );
-    const inv = totalDistance > 0 ? 1 / totalDistance : 0;
-    const directionX = (targetX - enemy.x) * inv;
-    const directionY = (targetY - enemy.y) * inv;
-    const directionZ = deltaHeight * inv;
-
-    const speed = state.skillLevel === 5 ? projectileDefinition.speed * 2 : projectileDefinition.speed;
-    const lifetime = 5;
-
-    const projectileId = state.nextProjectileId++;
-    renderer.createProjectile(projectileId, {
-        type: 'enemy',
-        width: projectileDefinition.size, height: projectileDefinition.size,
-        sprite: projectileDefinition.sprite,
-        x: enemy.x, y: enemy.y, z: spawnHeight,
-    });
-
-    const projectile = {
-        id: projectileId,
-        startX: enemy.x,
-        startY: enemy.y,
-        startZ: spawnHeight,
-        x: enemy.x,
-        y: enemy.y,
-        z: spawnHeight,
-        directionX, directionY, directionZ,
-        speed,
-        missileDamage: projectileDefinition.missileDamage,
-        hitSound: projectileDefinition.hitSound,
-        source: enemy, // which enemy fired this — used for infighting retarget on hit
-        lifetime,
-        spawnTime: performance.now() / 1000,
-    };
-
-    state.projectiles.push(projectile);
-    playSound(projectileDefinition.sound);
-}

@@ -22,7 +22,7 @@ import { setAudioHost } from '../src/audio/audio.js';
 import { createRecordingAudioHost } from '../src/audio/recording-host.js';
 import { setGameServices } from '../src/game/services.js';
 
-import { getMarine, state } from '../src/game/state.js';
+import { getMarineActor, state } from '../src/game/state.js';
 import { updateGameMulti } from '../src/game/index.js';
 import { getControlledFor } from '../src/game/possession.js';
 
@@ -30,12 +30,17 @@ import { listPlayerConnections } from './connections.js';
 import {
     entityId,
     resolveEntity,
+    setPendingMarinePromotion,
+    clearPendingMarinePromotion,
 } from './assignment.js';
+import { getConnection } from './connections.js';
+import { findMarineControllerSessionId } from './world/roles.js';
 import { equipWeapon } from '../src/game/combat/weapons.js';
 import { fireWeaponFor } from '../src/game/combat/weapons.js';
 import { tryOpenDoor, resolveDoorRequest } from '../src/game/mechanics/doors.js';
 import { tryUseSwitch } from '../src/game/mechanics/switches.js';
 import { possessFor } from '../src/game/possession.js';
+import { canSwitchWeapons } from '../src/game/entity/caps.js';
 import { tickIdleChecks } from './idle.js';
 import {
     handleSwitchExit,
@@ -54,9 +59,14 @@ import {
     resetBaseline,
     serializeCurrentWorld,
 } from './world/snapshots.js';
+import { resetCurrentMap } from './world/maps.js';
 
 export { emptyBaseline, resetBaseline } from './world/snapshots.js';
-export { getMapPayload, loadMap, requestMapLoad } from './world/maps.js';
+export {
+    getMapPayload,
+    loadMap,
+    requestMapLoad,
+} from './world/maps.js';
 export {
     buildRoleChangePayload,
     drainPendingRoleChanges,
@@ -66,12 +76,18 @@ export {
 const TICK_RATE_HZ = 70; // DOOM's native tic rate
 const TICK_MS = 1000 / TICK_RATE_HZ;
 const SNAPSHOT_DIVISOR = 2; // send snapshots at 35 Hz
+const MARINE_LOSS_RESTART_MS = 4000;
 
 let rendererHost = null;
 let audioHost = null;
 let tickNumber = 0;
 let loopTimer = null;
 let lastTickTime = 0;
+// Zero-marine game-over: the server auto-restarts the current map if there
+// is no live marine-type actor for longer than `MARINE_LOSS_RESTART_MS`.
+// Tracks when the loss first became true (null = there's a live marine).
+let marineLossSince = null;
+let marineRestartInFlight = false;
 
 // ── Host installation ─────────────────────────────────────────────────
 
@@ -112,6 +128,7 @@ export function startLoop({ onTick } = {}) {
         updateGameMulti(dt, now, sessionInputs);
         syncPlayerControlledIdsFromPossession();
         reconcileDeadControllers();
+        checkMarineLossRestart(now);
         tickIdleChecks(now, queueRoleChange);
         tickNumber += 1;
 
@@ -129,6 +146,60 @@ export function stopLoop() {
 }
 
 /**
+ * Zero-marine game-over: if no live marine-type actor is present for longer
+ * than `MARINE_LOSS_RESTART_MS`, trigger a full reset of the current map.
+ * Sessions whose controlled actor is also gone have already been demoted by
+ * `reconcileDeadControllers`; the map reload wipes the rest of the world and
+ * `assignOnJoin` hands the marine to whichever connection joins first again.
+ */
+function checkMarineLossRestart(now) {
+    if (marineRestartInFlight) return;
+    const m = getMarineActor();
+    const alive = Boolean(m) && m.hp > 0 && m.deathMode !== 'gameover';
+    if (alive) {
+        marineLossSince = null;
+        return;
+    }
+    if (marineLossSince === null) {
+        marineLossSince = now;
+        return;
+    }
+    if (now - marineLossSince < MARINE_LOSS_RESTART_MS) return;
+
+    // Killer → marine promotion: whoever last damaged the dying marine
+    // (as long as they're still connected and aren't the marine's own
+    // controller — suicide falls back to default policy) gets first dibs
+    // on the marine spot after the map reloads.
+    capturePendingMarinePromotion(m);
+
+    marineRestartInFlight = true;
+    marineLossSince = null;
+    Promise.resolve()
+        .then(() => resetCurrentMap())
+        .catch((err) => {
+            // eslint-disable-next-line no-console
+            console.error('[server] marine-loss restart failed', err);
+        })
+        .finally(() => {
+            marineRestartInFlight = false;
+        });
+}
+
+function capturePendingMarinePromotion(marine) {
+    clearPendingMarinePromotion();
+    if (!marine) return;
+    const killerSid = marine.lastDamagedBySessionId;
+    if (typeof killerSid !== 'string' || !killerSid) return;
+    // Suicide (the marine's own controller killed itself via splash /
+    // barrels / sector damage): no promotion — same session would just
+    // get the marine back under the normal marine-first rule anyway.
+    if (killerSid === findMarineControllerSessionId()) return;
+    // Killer has since disconnected: nothing to promote.
+    if (!getConnection(killerSid)) return;
+    setPendingMarinePromotion(killerSid);
+}
+
+/**
  * Drain one-shot flags off each connection's input before we feed it to
  * the engine. `use`, `bodySwap`, and `switchWeapon` are edge-triggered —
  * they should fire once per packet, not every tick.
@@ -137,7 +208,11 @@ function processConnectionInputs() {
     for (const conn of listPlayerConnections()) {
         const inp = conn.input;
         if (inp.switchWeapon) {
-            if (getControlledFor(conn.sessionId) === getMarine()) {
+            // Only actors with a real weapon loadout (marine-shaped) honor
+            // switch-weapon inputs; intrinsic-weapon monsters carry one slot
+            // so `canSwitchWeapons` returns false for them.
+            const body = getControlledFor(conn.sessionId);
+            if (canSwitchWeapons(body)) {
                 equipWeapon(inp.switchWeapon);
             }
             inp.switchWeapon = null;

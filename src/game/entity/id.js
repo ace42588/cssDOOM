@@ -1,15 +1,20 @@
 /**
  * Canonical runtime id strings: `actor:<slot>`, `thing:<index>`, `door:<sector>`.
- * Marine is always `actor:0`. Legacy alias `player` is still accepted by parsers.
+ *
+ * Every actor — including the marine — formats to its live `actorIndex`
+ * (`actor:<slot>`). The marine is spawned first, so in practice it lands at
+ * `actor:0`, but the id string is derived from the slot, not from a special
+ * marine branch. `'player'` is still accepted as an input alias by
+ * `resolveRuntimeId` / `normalizePossessTargetId` so external callers
+ * (MCP, sticky reconnect) can keep using that spelling.
  */
 
-import { getMarine, state } from '../state.js';
+import { state, getMarineActor } from '../state.js';
 import { getThingIndex, getActorIndex } from '../things/registry.js';
 
-/** Stable id for an entity (marine = `actor:0`, things = `thing:<idx>`, doors = `door:<sector>`). */
+/** Stable id for an entity (`actor:<slot>`, `thing:<index>`, or `door:<sector>`). */
 export function formatRuntimeId(entity) {
     if (!entity) return null;
-    if (entity === getMarine()) return 'actor:0';
     if (entity.__isDoorEntity) return `door:${entity.sectorIndex}`;
     const aIdx = getActorIndex(entity);
     if (aIdx >= 0) return `actor:${aIdx}`;
@@ -19,7 +24,7 @@ export function formatRuntimeId(entity) {
 
 export function resolveRuntimeId(id) {
     if (!id) return null;
-    if (id === 'player') return getMarine();
+    if (id === 'player') return getMarineActor();
     const actorM = /^actor:(\d+)$/i.exec(id);
     if (actorM) {
         const slot = Number(actorM[1]);
@@ -46,7 +51,11 @@ export function normalizePossessTargetId(raw) {
     const s = String(raw).trim();
     if (!s) return null;
     const lower = s.toLowerCase();
-    if (lower === 'marine' || lower === 'player') return { bodySwap: 'actor:0', requested: 'actor:0' };
+    if (lower === 'marine' || lower === 'player') {
+        const marine = getMarineActor();
+        const id = marine ? formatRuntimeId(marine) : null;
+        return id ? { bodySwap: id, requested: id } : null;
+    }
     const thingM = /^thing:(\d+)$/i.exec(s);
     if (thingM) return { bodySwap: `thing:${thingM[1]}`, requested: `thing:${thingM[1]}` };
     const doorM = /^door:(\d+)$/i.exec(s);

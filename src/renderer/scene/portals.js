@@ -98,8 +98,4 @@ export function getPortalsFor(sectorIndex) {
     return portals[sectorIndex] || EMPTY;
 }
 
-export function getSectorCount() {
-    return numSectors;
-}
-
 const EMPTY = [];

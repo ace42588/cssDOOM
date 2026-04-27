@@ -1,9 +1,10 @@
 /**
- * Game update — runs all game systems for a single frame.
+ * Authoritative game tick — runs all game systems for one fixed-step frame.
+ * The server calls `updateGameMulti` each tick with per-session input snapshots.
  */
 
 import { MAX_FRAME_DELTA_TIME } from './constants.js';
-import { updateMovement, updateMovementFor } from './movement/system.js';
+import { updateMovementFor } from './movement/system.js';
 import { checkSectorDamage } from './combat/damage.js';
 import { checkPickups, updatePowerups } from './actor/pickups.js';
 import { updateAllEnemies } from './ai/controller.js';
@@ -12,31 +13,12 @@ import { checkWalkOverTriggers } from './mechanics/lifts.js';
 import { checkTeleporters } from './mechanics/teleporters.js';
 import { updateCrushers } from './mechanics/crushers.js';
 import { tickHeartbeat } from './services.js';
-
-let previousTimestamp = 0;
-
-/** Browser single-player entry — reads the global input object. */
-export function updateGame(timestamp) {
-    const deltaTime = Math.min((timestamp - previousTimestamp) / 1000, MAX_FRAME_DELTA_TIME);
-    previousTimestamp = timestamp;
-
-    updateMovement(deltaTime, timestamp);
-    checkSectorDamage(deltaTime);
-    updateAllEnemies(deltaTime);
-    updateProjectiles(deltaTime);
-    checkWalkOverTriggers();
-    checkTeleporters();
-    updateCrushers(deltaTime);
-    checkPickups();
-    updatePowerups(deltaTime);
-    tickHeartbeat(deltaTime);
-}
+import { state } from './state.js';
 
 /**
- * Multi-session entry — the server calls this once per fixed-step tick with
- * a map of `sessionId → inputSnapshot` for every session that currently
- * holds a controlled body. Each session's movement runs against its own
- * input; world-scoped systems (AI, projectiles, triggers, pickups) run once.
+ * Server tick entry: once per step with `sessionId → inputSnapshot` for every
+ * session that holds a controlled body. Each session's movement runs against
+ * its own input; world-scoped systems (AI, projectiles, triggers, pickups) run once.
  *
  * @param {number} deltaTime Seconds.
  * @param {number} timestamp Milliseconds (server tick timestamp).
@@ -55,7 +37,18 @@ export function updateGameMulti(deltaTime, timestamp, sessionInputs) {
     checkWalkOverTriggers();
     checkTeleporters();
     updateCrushers(dt);
-    checkPickups();
-    updatePowerups(dt);
+
+    // Pickups + powerup tick for every actor. `checkPickups` is itself
+    // gated on `inventory.canCollectPickups === true`, so monsters and
+    // decorations trivially no-op; today only the marine opts in, but
+    // any future actor with the capability inherits the behaviour for
+    // free without re-touching this call site.
+    for (let i = 0, len = state.actors.length; i < len; i++) {
+        const actor = state.actors[i];
+        if (!actor) continue;
+        checkPickups(actor);
+        updatePowerups(actor, dt);
+    }
+
     tickHeartbeat(dt);
 }

@@ -8,7 +8,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { getMarine, state } from '../src/game/state.js';
+import { getMarineActor, state } from '../src/game/state.js';
 import { loadMapHeadless } from '../src/game/lifecycle.js';
 import {
     formatRuntimeId,
@@ -26,7 +26,7 @@ const readMapJson = async (name) => {
 
 await loadMapHeadless('E1M1', readMapJson, { fullReset: true });
 
-assert.equal(formatRuntimeId(getMarine()), 'actor:0');
+assert.equal(formatRuntimeId(getMarineActor()), 'actor:0');
 
 const enemy = state.actors.find((t) => t && t.type === 3001 && t.ai);
 assert.ok(enemy, 'expected imp');
@@ -43,8 +43,8 @@ for (const entry of state.doorState.values()) {
 assert.ok(doorEntity, 'expected at least one door entity');
 assert.equal(formatRuntimeId(doorEntity), `door:${doorEntity.sectorIndex}`);
 
-assert.strictEqual(resolveRuntimeId('actor:0'), getMarine());
-assert.strictEqual(resolveRuntimeId('player'), getMarine());
+assert.strictEqual(resolveRuntimeId('actor:0'), getMarineActor());
+assert.strictEqual(resolveRuntimeId('player'), getMarineActor());
 assert.strictEqual(resolveRuntimeId(`actor:${enemyActorIdx}`), enemy);
 assert.strictEqual(
     resolveRuntimeId(`door:${doorEntity.sectorIndex}`),

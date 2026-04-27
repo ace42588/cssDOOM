@@ -9,7 +9,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { getMarine, state } from '../src/game/state.js';
+import { getMarineActor, state } from '../src/game/state.js';
 import { loadMapHeadless } from '../src/game/lifecycle.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -25,7 +25,7 @@ await loadMapHeadless('E1M1', readMapJson, { fullReset: true });
 const enemy = state.actors.find((t) => t && t.type === 3001 && t.ai);
 assert.ok(enemy, 'expected a spawned imp (thing type 3001)');
 
-const marineKeys = Object.keys(getMarine()).sort();
+const marineKeys = Object.keys(getMarineActor()).sort();
 for (const k of marineKeys) {
     assert.ok(
         Object.prototype.hasOwnProperty.call(enemy, k),
@@ -33,7 +33,7 @@ for (const k of marineKeys) {
     );
 }
 
-const marine = getMarine();
+const marine = getMarineActor();
 assert.equal(marine.kind, 'marine');
 assert.ok(marine.ownedWeapons.has(1), 'marine should own fist slot 1');
 assert.equal(marine.currentWeapon, 2);

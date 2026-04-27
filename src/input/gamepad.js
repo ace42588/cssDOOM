@@ -21,7 +21,7 @@
 
 import 'gamecontroller.js';
 import { input } from './index.js';
-import { getMarine } from '../game/state.js';
+import { getPlayerActor } from '../game/possession.js';
 import { isMenuOpen, toggleMenu } from '../ui/menu.js';
 import { registerInputProvider } from './index.js';
 import { pressUse, requestWeaponSwitch } from '../net/client.js';
@@ -33,8 +33,6 @@ const TURN_SENSITIVITY = 0.04;
 // Module-local analog state
 let moveX = 0, moveY = 0, turnDelta = 0;
 
-let connected = false;
-
 /**
  * Initialise gamepad input. The gamecontroller.js library auto-detects
  * connections; we just need to bind actions when a gamepad appears.
@@ -45,21 +43,14 @@ export function initGamepadInput() {
     registerInputProvider(getInput);
 
     window.gameControl.on('connect', gamepad => {
-        connected = true;
         setupGamepad(gamepad);
     });
 
     window.gameControl.on('disconnect', () => {
-        connected = false;
         moveX = 0;
         moveY = 0;
         turnDelta = 0;
     });
-}
-
-/** Returns true if a gamepad is currently connected. */
-export function isGamepadConnected() {
-    return connected;
 }
 
 // ============================================================================
@@ -146,14 +137,19 @@ function setupGamepad(gamepad) {
 // ============================================================================
 
 function cycleWeapon(direction) {
-    const owned = [...getMarine().ownedWeapons].sort((a, b) => a - b);
-    const currentIndex = owned.indexOf(getMarine().currentWeapon);
+    const actor = getPlayerActor();
+    if (!actor?.ownedWeapons) return;
+    const owned = [...actor.ownedWeapons].sort((a, b) => a - b);
+    if (owned.length === 0) return;
+    const currentIndex = owned.indexOf(actor.currentWeapon);
     const nextIndex = (currentIndex + direction + owned.length) % owned.length;
     requestWeaponSwitch(owned[nextIndex]);
 }
 
 function handleDeadRestart() {
-    if (getMarine().deathMode !== 'gameover') return false;
+    const actor = getPlayerActor();
+    const dead = !actor || actor.deathMode === 'gameover' || (actor.hp ?? 0) <= 0;
+    if (!dead) return false;
     if (shouldOfferRespawnReload()) {
         location.reload();
     }

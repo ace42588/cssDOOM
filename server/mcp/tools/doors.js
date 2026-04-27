@@ -16,7 +16,7 @@
 import { z } from 'zod';
 
 import { state } from '../../../src/game/state.js';
-import { snapshotDoor, listDoors } from '../snapshot.js';
+import { snapshotDoor, listDoors } from '../../views/world.js';
 import { textResult, ok, err, requireConn } from './_helpers.js';
 
 export function registerDoorTools(server, ctx) {

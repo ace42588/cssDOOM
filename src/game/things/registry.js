@@ -28,9 +28,11 @@ export function registerThingEntry(entry) {
 }
 
 /**
- * Registers a non-marine actor (enemy). `thingIndex` is set to a stable DOM key
- * disjoint from pickup/barrel indices in `state.things`.
- * @returns {number} actorIndex (≥ 1; slot 0 is the marine)
+ * Registers an actor (marine or enemy). `thingIndex` is set to a stable DOM
+ * key disjoint from pickup/barrel indices in `state.things`. The marine is
+ * spawned from `mapData.things[0]` (see `src/data/maps.js`) and therefore
+ * always lands at `actorIndex === 0`; other actors append after it.
+ * @returns {number} actorIndex
  */
 export function registerActorEntry(entry) {
   const actorIndex = state.actors.length;

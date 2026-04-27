@@ -20,7 +20,7 @@ import {
 } from '../server/world.js';
 import { getConnection } from '../server/connections.js';
 import { createSgnlServices } from '../server/sgnl/index.js';
-import { state, getMarine } from '../src/game/state.js';
+import { state, getMarineActor } from '../src/game/state.js';
 import { ENEMIES } from '../src/game/constants.js';
 import { getActorIndex } from '../src/game/things/registry.js';
 import { buildMcpServerForNewSession } from '../server/mcp/index.js';
@@ -122,23 +122,25 @@ async function main() {
         'world-get-state', 'world-get-map', 'world-list-players',
         'world-poll-events', 'world-get-latest-snapshot',
         'players-list', 'players-peers', 'players-get-self',
-        'actor-get-state', 'actor-set-move', 'actor-stop',
+        'actor-get-state', 'actor-list', 'actor-set-move', 'actor-stop',
         'actor-turn-by', 'actor-fire', 'actor-stop-fire',
         'actor-use', 'actor-switch-weapon', 'actor-possess',
         'enemies-list', 'enemies-get-state',
         'doors-list', 'doors-get-state', 'doors-open-in-front',
         'doors-approve-request', 'doors-deny-request',
+        'session-resolve-join',
     ].sort();
     assert.deepEqual(names, expected, `tool list mismatch:\n${names.join(',')}\nvs\n${expected.join(',')}`);
     console.log(`  ${names.length} tools registered.`);
 
-    console.log('── 2. world-get-state returns the world ──');
+    console.log('── 2. world-get-state returns the unified actor list ──');
     const world = await callTool(client, 'world-get-state');
-    assert.ok(world.marine, 'world has a marine');
-    assert.ok(Array.isArray(world.enemies), 'world has enemies array');
+    assert.ok(Array.isArray(world.actors), 'world has an actors array');
+    const marineSnap = world.actors.find((a) => a.kind === 'marine');
+    assert.ok(marineSnap, 'actors list contains the marine');
     assert.ok(world.self?.sessionId === sessionId, 'self session is the calling session');
     assert.equal(world.sessionId, sessionId, 'tool JSON includes top-level sessionId');
-    console.log(`  marine HP=${world.marine.health}  enemies=${world.enemies.length}  doors=${world.doors.length}`);
+    console.log(`  marine HP=${marineSnap.vitals.hp}  actors=${world.actors.length}  doors=${world.doors.length}`);
 
     console.log('── 3. actor-set-move mutates conn.input ──');
     await callTool(client, 'actor-set-move', { moveY: 1, run: true });
@@ -159,7 +161,7 @@ async function main() {
 
     console.log('── 4b. yaw normalizes to [-pi, pi] after a movement tick ──');
     const sid = conn.sessionId;
-    const m = getMarine();
+    const m = getMarineActor();
     if (getControlledFor(sid) === m) {
         m.viewAngle = 100;
         updateMovementFor(sid, emptyInput(), 1 / 35, 0);
@@ -272,6 +274,7 @@ async function main() {
         'cssdoom://docs/agent-guide',
         'cssdoom://docs/coordinate-system',
         'cssdoom://docs/gameplay-rules',
+        'cssdoom://docs/join-challenge',
         'cssdoom://docs/recipes',
         'cssdoom://docs/tool-index',
         'cssdoom://world/map',
@@ -301,7 +304,7 @@ async function main() {
     assert.equal(parsedLive.self.kind, 'mcp', 'world state self reports transport kind');
     assert.ok(parsedLive.self.agent, 'world state self includes agent identity metadata');
     assert.equal(parsedLive.self.agent.source, 'fingerprint');
-    console.log(`  live state mapName=${parsedLive.mapName} enemies=${parsedLive.enemies.length}`);
+    console.log(`  live state mapName=${parsedLive.mapName} actors=${parsedLive.actors.length}`);
 
     console.log('── 19b. resources/read on role/current matches rolePromptFor ──');
     const liveRole = await client.readResource({ uri: 'cssdoom://role/current' });

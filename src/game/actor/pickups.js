@@ -1,6 +1,7 @@
 /**
- * Item collection and powerup duration for a marine-shaped actor (inventory
- * on `state.actors[0]` / `getMarine()`).
+ * Item collection and powerup duration. Every exported helper takes an
+ * explicit `actor` — marine defaults are gone. Collection is gated by
+ * `actor.inventory.canCollectPickups` (marine true; monsters false).
  */
 
 import {
@@ -9,13 +10,11 @@ import {
     POWERUP_DURATION,
 } from '../constants.js';
 
-import { state, getMarine } from '../state.js';
+import { state } from '../state.js';
 import { equipWeapon } from '../combat/weapons.js';
 import { playSound } from '../../audio/audio.js';
 import * as renderer from '../../renderer/index.js';
 import { markEntityDirty, markPlayerDirty } from '../services.js';
-
-const marine = () => getMarine();
 
 /** Canonical asset id for a key pickup — matches the SGNL adapter output. */
 function keyAssetId(mapThingIndex) {
@@ -49,17 +48,19 @@ function activatePowerup(actor, name) {
     renderer.showPowerup(name);
 
     if (name === 'berserk') {
-        // Berserk gives +100 health (capped at 100) and auto-switches to fist
+        // Berserk gives +100 health (capped at 100) and auto-switches to fist.
         actor.hp = Math.max(actor.hp, 100);
         equipWeapon(1);
     }
 }
 
 /**
- * Scan map things for pickups in range of `actor` and apply effects to that
- * actor's inventory.
+ * Scan map things for pickups in range of `actor` and apply effects to its
+ * inventory. No-op for actors without `inventory.canCollectPickups`.
  */
-export function checkPickupsFor(actor) {
+export function checkPickups(actor) {
+    if (!actor) return;
+    if (actor.inventory?.canCollectPickups !== true) return;
     if (actor.deathMode === 'gameover') return;
 
     const things = state.things;
@@ -87,22 +88,17 @@ export function checkPickupsFor(actor) {
             const effect = PICKUP_EFFECTS[thing.type];
             if (effect) {
                 if (effect.statType === 'health') {
-                    // Health Bonus (2014) and Soul Sphere (2013) can push health above 100, up to 200
-                    // Based on: linuxdoom-1.10/p_inter.c:P_GiveBody() — bonuses cap at 200
+                    // Health Bonus (2014) and Soul Sphere (2013) can push health above 100, up to 200.
+                    // Based on: linuxdoom-1.10/p_inter.c:P_GiveBody() — bonuses cap at 200.
                     const healthCap = (thing.type === 2013 || thing.type === 2014) ? 200 : MAX_HEALTH;
                     if (actor.hp >= healthCap) continue;
                     actor.hp = Math.min(healthCap, actor.hp + effect.amount);
                 } else if (effect.statType === 'armor') {
                     if (effect.armorClass && effect.armorClass > 0) {
-                        // Green/Blue Armor: P_GiveArmor — skip if current armor >= armorClass * 100
-                        // Green (class 1): skip if armor >= 100
-                        // Blue (class 2): skip if armor >= 200
                         if (actor.armor >= effect.armorClass * 100) continue;
                         actor.armor = effect.amount;
                         actor.armorType = effect.armorClass;
                     } else {
-                        // Armor Bonus (2015): just adds 1 point, caps at MAX_ARMOR (200)
-                        // Gives class 1 if player has no armor type yet
                         if (actor.armor >= MAX_ARMOR) continue;
                         actor.armor = Math.min(MAX_ARMOR, actor.armor + effect.amount);
                         if (!actor.armorType) actor.armorType = 1;
@@ -110,7 +106,7 @@ export function checkPickupsFor(actor) {
                 } else if (effect.statType === 'ammo') {
                     const ammoType = effect.ammoType;
                     if (actor.ammo[ammoType] >= actor.maxAmmo[ammoType]) continue;
-                    // Based on: linuxdoom-1.10/p_inter.c — skill 1 & 5 double ammo pickups
+                    // Based on: linuxdoom-1.10/p_inter.c — skill 1 & 5 double ammo pickups.
                     const amount = (state.skillLevel === 1 || state.skillLevel === 5)
                         ? effect.amount * 2 : effect.amount;
                     actor.ammo[ammoType] = Math.min(actor.maxAmmo[ammoType], actor.ammo[ammoType] + amount);
@@ -139,7 +135,7 @@ export function checkPickupsFor(actor) {
                 }
             }
 
-            // Based on: linuxdoom-1.10/p_inter.c:P_TouchSpecialThing() — backpack
+            // Based on: linuxdoom-1.10/p_inter.c:P_TouchSpecialThing() — backpack.
             // Doubles max ammo capacity and gives one clip of each ammo type.
             if (thing.type === 8) {
                 if (!actor.hasBackpack) {
@@ -165,45 +161,33 @@ export function checkPickupsFor(actor) {
     }
 }
 
-/** Default: marine (`player`). */
-export function checkPickups() {
-    checkPickupsFor(marine());
-}
-
 /**
  * Tick down all active powerup durations on `actor`. Called each frame from
  * the game loop.
  * Based on: linuxdoom-1.10/p_user.c:P_PlayerThink() lines 282-338
  */
-export function updatePowerupsFor(actor, deltaTime) {
-    for (const name in actor.powerups) {
-        if (actor.powerups[name] === Infinity) continue;
-        actor.powerups[name] -= deltaTime;
+export function updatePowerups(actor, deltaTime) {
+    if (!actor) return;
+    const powerups = actor.powerups;
+    if (!powerups) return;
+    for (const name in powerups) {
+        if (powerups[name] === Infinity) continue;
+        powerups[name] -= deltaTime;
 
-        // Flicker warning in the last 4 seconds
-        if (actor.powerups[name] <= 4 && actor.powerups[name] > 0) {
-            const visible = Math.floor(actor.powerups[name] * 8) % 2 === 0;
+        // Flicker warning in the last 4 seconds.
+        if (powerups[name] <= 4 && powerups[name] > 0) {
+            const visible = Math.floor(powerups[name] * 8) % 2 === 0;
             renderer.flickerPowerup(name, visible);
         }
 
-        if (actor.powerups[name] <= 0) {
-            delete actor.powerups[name];
+        if (powerups[name] <= 0) {
+            delete powerups[name];
             renderer.hidePowerup(name);
         }
     }
 }
 
-/** Default: marine (`player`). */
-export function updatePowerups(deltaTime) {
-    updatePowerupsFor(marine(), deltaTime);
-}
-
 /** Returns true if the named powerup is currently active on `actor`. */
-export function hasPowerupFor(actor, name) {
-    return actor.powerups[name] > 0;
-}
-
-/** Default: marine (`player`) — e.g. invisibility vs enemy aim spread. */
-export function hasPowerup(name) {
-    return hasPowerupFor(marine(), name);
+export function hasPowerup(actor, name) {
+    return actor?.powerups?.[name] > 0;
 }

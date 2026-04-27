@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 
 import {
     ClientInputMessageSchema,
+    JoinChallengeDecisionMessageSchema,
+    JoinChallengeMessageSchema,
     LoadMapRequestMessageSchema,
     MSG,
     MapLoadMessageSchema,
@@ -86,6 +88,22 @@ assert.equal(SnapshotMessageSchema.safeParse({
 assert.equal(NoticeMessageSchema.safeParse({
     type: MSG.NOTICE,
     message: 'hello',
+}).success, true);
+
+assert.equal(JoinChallengeMessageSchema.safeParse({
+    type: MSG.JOIN_CHALLENGE,
+    challengeId: 'c1',
+    targetEntityId: 'player',
+    targetAgent: { agentId: 'a', agentName: 'n', runtime: null },
+    defense: { justification: 'keep' },
+    defenseState: 'accepted',
+    expiresAt: Date.now() + 5000,
+}).success, true);
+
+assert.equal(JoinChallengeDecisionMessageSchema.safeParse({
+    type: MSG.JOIN_CHALLENGE_DECISION,
+    challengeId: 'c1',
+    decision: 'displace',
 }).success, true);
 
 console.log('protocol schemas: ok');

@@ -18,7 +18,7 @@ import {
     createPuff, createExplosion, createTeleportFog,
     createProjectile, updateProjectilePosition, removeProjectile,
 } from '../scene/entities/sprites.js';
-import { setPlayerDead, clearKeys, setPlayerMoving, collectKey } from '../scene/entities/player.js';
+import { setPlayerDead, clearKeys, setPlayerMoving, collectKey } from '../scene/entities/avatar.js';
 import { isWeaponSwitching, switchWeapon, startFiring, stopFiring } from '../weapons.js';
 import { buildDoor, setDoorState } from '../scene/mechanics/doors.js';
 import { buildLift, setLiftState } from '../scene/mechanics/lifts.js';

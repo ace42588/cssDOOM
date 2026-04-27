@@ -1,12 +1,19 @@
-import { MOVE_SPEED, PLAYER_HEIGHT, PLAYER_RADIUS } from './constants.js';
-
 /**
  * Mutable game state accessible by all modules.
  *
- * Marine + enemies live in `state.actors` (marine pinned at index 0). Pickups,
- * barrels, and decorations stay in `state.things`. Use `getMarine()` for the
- * singleton marine reference.
+ * All actors (marine + enemies) live in `state.actors`; pickups, barrels, and
+ * decorations live in `state.things`. The marine is identified by
+ * `actor.type === MARINE_ACTOR_TYPE` (1) — no pinned slot, no pre-seeded
+ * singleton. Use `getMarineActor()` for a dynamic lookup.
+ *
+ * Ammo / maxAmmo are Proxy objects so the HUD can subscribe to changes via
+ * `subscribeAmmo()`. The marine actor spawned from a `type: 1` `mapData.things`
+ * entry (see `src/game/things/spawner.js`) references the same proxies, so
+ * the subscriptions persist across map resets.
  */
+
+/** Thing type that spawns the player-controlled marine actor. */
+export const MARINE_ACTOR_TYPE = 1;
 
 const ammoListeners = new Set();
 const _ammo = { bullets: 50, shells: 0, rockets: 0, cells: 0 };
@@ -18,7 +25,7 @@ function emitAmmoChange(type) {
     for (const cb of ammoListeners) cb(type, value, max);
 }
 
-const ammoProxy = new Proxy(_ammo, {
+export const ammoProxy = new Proxy(_ammo, {
     set(target, key, value) {
         const changed = target[key] !== value;
         target[key] = value;
@@ -27,7 +34,7 @@ const ammoProxy = new Proxy(_ammo, {
     },
 });
 
-const maxAmmoProxy = new Proxy(_maxAmmo, {
+export const maxAmmoProxy = new Proxy(_maxAmmo, {
     set(target, key, value) {
         const changed = target[key] !== value;
         target[key] = value;
@@ -43,47 +50,6 @@ export function subscribeAmmo(callback) {
 
 export const AMMO_TYPES = Object.freeze(['bullets', 'shells', 'rockets', 'cells']);
 
-export const MARINE_THING_TYPE = 1;
-
-export const MARINE_SLOT = 0;
-
-const marine = {
-    kind: 'marine',
-    type: MARINE_THING_TYPE,
-    thingIndex: null,
-    mapThingIndex: null,
-
-    x: 0,
-    y: 0,
-    z: 0,
-    viewAngle: 0,
-    facing: Math.PI / 2,
-    floorHeight: 0,
-    speed: MOVE_SPEED,
-    radius: PLAYER_RADIUS,
-    height: PLAYER_HEIGHT,
-    maxDropHeight: Infinity,
-
-    hp: 100,
-    maxHp: 100,
-    armor: 0,
-    armorType: 0,
-    ammo: ammoProxy,
-    maxAmmo: maxAmmoProxy,
-    hasBackpack: false,
-    deathMode: null,
-    deathTime: 0,
-
-    currentWeapon: 2,
-    ownedWeapons: new Set([1, 2]),
-    isFiring: false,
-    sectorDamageTimer: 0,
-    collectedKeys: new Set(),
-    powerups: {},
-
-    ai: null,
-};
-
 export const state = {
     skillLevel: 1,
 
@@ -91,16 +57,26 @@ export const state = {
     liftState: new Map(),
     crusherState: new Map(),
 
-    actors: [marine],
+    actors: [],
     things: [],
 
     projectiles: [],
     nextProjectileId: 0,
 };
 
-/** The marine actor — always `state.actors[MARINE_SLOT]`. */
-export function getMarine() {
-    return state.actors[MARINE_SLOT];
+/**
+ * The live marine actor (type === 1), or `null` if none is spawned.
+ *
+ * The spawner always registers the marine first, so when present it lives at
+ * `state.actors[0]`; the scan below protects against the brief windows where
+ * no marine exists (pre-map-load, mid-reset, after a zero-marine game-over).
+ */
+export function getMarineActor() {
+    for (let i = 0; i < state.actors.length; i++) {
+        const a = state.actors[i];
+        if (a && a.type === MARINE_ACTOR_TYPE) return a;
+    }
+    return null;
 }
 
 export const debug = {

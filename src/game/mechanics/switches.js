@@ -27,9 +27,7 @@ import {
     EXIT_SPECIAL, SECRET_EXIT_SPECIAL,
 } from '../constants.js';
 
-import { state, getMarine } from '../state.js';
-
-const marine = () => getMarine();
+import { state } from '../state.js';
 import { mapData } from '../../data/maps.js';
 import { toggleDoor } from './doors.js';
 import { activateLift } from './lifts.js';
@@ -49,12 +47,11 @@ import * as renderer from '../../renderer/index.js';
  *                                  within range
  */
 export async function tryUseSwitch(requestedBy) {
-    const controller = requestedBy || marine();
-    const originX = controller?.x ?? marine().x;
-    const originY = controller?.y ?? marine().y;
-    const originAngle = controller === marine()
-        ? marine().viewAngle
-        : (controller?.viewAngle ?? controller?.facing ?? marine().viewAngle);
+    const controller = requestedBy;
+    if (!controller) return null;
+    const originX = controller.x;
+    const originY = controller.y;
+    const originAngle = controller.viewAngle ?? controller.facing ?? 0;
 
     const forwardX = -Math.sin(originAngle);
     const forwardY = Math.cos(originAngle);
@@ -97,7 +94,7 @@ export async function tryUseSwitch(requestedBy) {
                 if (linedef.sectorTag > 0) {
                     for (const [sectorIndex] of state.doorState) {
                         if (mapData.sectors[sectorIndex].tag === linedef.sectorTag) {
-                            await toggleDoor(sectorIndex);
+                            await toggleDoor(sectorIndex, controller);
                         }
                     }
                     for (const [sectorIndex, liftEntry] of state.liftState) {

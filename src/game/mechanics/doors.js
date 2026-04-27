@@ -16,21 +16,25 @@
  *   are the static side jambs that frame the doorway opening.
  * - Auto-close: After opening, a timer schedules automatic closing. If the player
  *   activates an already-open door, the timer resets.
+ *
+ * Access gating (`getDoorControlMode()` from `services.js`, server-owned):
+ * - `standard`: keys only; open immediately.
+ * - `sgnl`: `evaluateAccess` (SGNL); deny when not allowed.
+ * - `player`: if a human possesses the door entity, operator approve/deny; else
+ *   same as standard.
  */
 
-import { USE_RANGE, DOOR_CLOSE_DELAY } from '../constants.js';
+import { USE_RANGE, DOOR_CLOSE_DELAY, DOOR_CONTROL_MODE, DOOR_CLOSE_TRAVEL_MS } from '../constants.js';
 
-import { state, getMarine } from '../state.js';
-
-const marine = () => getMarine();
+import { state } from '../state.js';
 import { mapData } from '../../data/maps.js';
 import { getSectorAt } from '../physics/queries.js';
 import { playSound } from '../../audio/audio.js';
 import * as renderer from '../../renderer/index.js';
-import { markEntityDirty, evaluateAccess } from '../services.js';
+import { markEntityDirty, evaluateAccess, getDoorControlMode } from '../services.js';
 
 /** Canonical runtime / SGNL asset id for a door (no map qualifier). */
-export function doorAssetId(sectorIndex) {
+function doorAssetId(sectorIndex) {
     return `door:${sectorIndex}`;
 }
 import {
@@ -43,8 +47,6 @@ import {
 
 const OPERATOR_REQUEST_TIMEOUT_MS = 15_000;
 let nextRequestId = 1;
-// Keep in sync with `src/renderer/scene/mechanics/doors.css` transition duration.
-const DOOR_CLOSE_TRAVEL_MS = 1000;
 
 // When a door loses its operator (release, disconnect, swap away), drain
 // any queued use-attempts so interactors don't hang waiting for a decision.
@@ -215,6 +217,23 @@ function computeDoorCamera(door) {
 }
 
 /**
+ * Walk every live hazard-susceptible actor and report whether any of them is
+ * standing in the door sector. Used by `closeDoor` to defer auto-close so the
+ * door doesn't crush an actor it would damage.
+ */
+function anyHazardActorInSector(sectorIndex) {
+    for (let i = 0, len = state.actors.length; i < len; i++) {
+        const actor = state.actors[i];
+        if (!actor) continue;
+        if (actor.collected || (actor.hp ?? 0) <= 0) continue;
+        if (!actor.movement?.hazardSusceptible) continue;
+        const sector = getSectorAt(actor.x, actor.y);
+        if (sector && sector.sectorIndex === sectorIndex) return true;
+    }
+    return false;
+}
+
+/**
  * Toggle a door open. If already open, reset the auto-close timer.
  * The renderer handles the open/close animation.
  */
@@ -223,11 +242,13 @@ export async function toggleDoor(sectorIndex, requestedBy) {
     if (!doorEntry) return;
 
     // Check key requirement — block if the requester doesn't have the required key.
-    // In multiplayer, the requester may be a possessed monster; we still gate on
-    // the marine's collected keys since the key inventory lives on `player`.
+    // Read from the requester's own inventory; possessed monsters carry no
+    // `collectedKeys` set today, so they will be denied unless they pick keys
+    // up themselves once Slice E gives monsters a key-bearing capability.
     // Based on: linuxdoom-1.10/p_doors.c:EV_VerticalDoor()
     if (doorEntry.keyRequired && !doorEntry.open) {
-        if (!marine().collectedKeys.has(doorEntry.keyRequired)) {
+        const keys = requestedBy?.collectedKeys;
+        if (!keys || !keys.has(doorEntry.keyRequired)) {
             playSound('DSOOF');
             return;
         }
@@ -244,40 +265,42 @@ export async function toggleDoor(sectorIndex, requestedBy) {
     if (doorEntry.evaluating) return;
 
     // Wrap the whole evaluation+commit in try/finally so `evaluating` is
-    // always cleared, even when the access check is short-circuited (as
-    // today while SGNL's `evaluateAccess` call is commented out) or when
-    // the operator-review path rejects the request. Without this, the
-    // flag stays true forever after the first open and the door never
-    // toggles again.
+    // always cleared when the access check short-circuits or the operator
+    // path rejects. Without this, the flag stays true forever after the first
+    // open and the door never toggles again.
     doorEntry.evaluating = true;
     try {
-        let evaluation;
         const controller = requestedBy || getControlled();
-        /*
-        evaluation = await evaluateAccess(
-            getRequestingController(controller),
-            doorAssetId(sectorIndex),
-            'open',
-        );
+        const mode = getDoorControlMode();
 
-        if (!evaluation.allowed) {
-            playSound('DSOOF');
-            const denyMessage = evaluation.reasons?.[0] || 'Access denied';
-            renderer.showHudMessage(denyMessage);
-            return;
-        }
-        */evaluation = { skipped: true };
-
-        // When SGNL is not wired (fail-open default), give any human operator
-        // possessing this door the chance to approve or ignore the request.
-        // If no operator is present, the door opens as before.
-        if (evaluation.skipped && isHumanControlled(doorEntry.doorEntity)) {
-            const decision = await enqueueOperatorRequest(doorEntry, controller);
-            if (decision !== 'open') {
-                playSound('DSOOF');
-                renderer.showHudMessage('Access denied');
-                return;
+        switch (mode) {
+            case DOOR_CONTROL_MODE.SGNL: {
+                const evaluation = await evaluateAccess(
+                    getRequestingController(controller),
+                    doorAssetId(sectorIndex),
+                    'open',
+                );
+                if (!evaluation.allowed) {
+                    playSound('DSOOF');
+                    const denyMessage = evaluation.reasons?.[0] || 'Access denied';
+                    renderer.showHudMessage(denyMessage);
+                    return;
+                }
+                break;
             }
+            case DOOR_CONTROL_MODE.PLAYER:
+                if (isHumanControlled(doorEntry.doorEntity)) {
+                    const decision = await enqueueOperatorRequest(doorEntry, controller);
+                    if (decision !== 'open') {
+                        playSound('DSOOF');
+                        renderer.showHudMessage('Access denied');
+                        return;
+                    }
+                }
+                break;
+            case DOOR_CONTROL_MODE.STANDARD:
+            default:
+                break;
         }
 
         doorEntry.open = true;
@@ -299,18 +322,17 @@ export async function toggleDoor(sectorIndex, requestedBy) {
 
 /**
  * Close a door by resetting its state and triggering the close animation.
- * If the player is inside the door sector, reverse the door (reopen) to avoid
- * crushing them — matching DOOM's T_VerticalDoor() blocked-check behavior.
+ * If any hazard-susceptible actor is inside the door sector, reverse the door
+ * (reopen) to avoid crushing them — matches DOOM's T_VerticalDoor() blocked-
+ * check behavior, generalised so monsters who can be crushed also block the
+ * close.
  * Based on: linuxdoom-1.10/p_doors.c:T_VerticalDoor()
  */
 function closeDoor(sectorIndex) {
     const doorEntry = state.doorState.get(sectorIndex);
     if (!doorEntry || !doorEntry.open) return;
 
-    // Check if the player is inside the door sector — if so, reverse
-    const playerSector = getSectorAt(marine().x, marine().y);
-    if (playerSector && playerSector.sectorIndex === sectorIndex) {
-        // Player is in the doorway — keep open and retry closing later
+    if (anyHazardActorInSector(sectorIndex)) {
         doorEntry.timer = setTimeout(() => closeDoor(sectorIndex), DOOR_CLOSE_DELAY);
         markEntityDirty('door', doorAssetId(sectorIndex));
         return;
@@ -338,11 +360,10 @@ export async function tryOpenDoor(requestedBy) {
     if (!state.doorState.size) return;
 
     const controller = requestedBy || getControlled();
-    const originX = controller?.x ?? marine().x;
-    const originY = controller?.y ?? marine().y;
-    const originAngle = controller === marine()
-        ? marine().viewAngle
-        : (controller?.viewAngle ?? controller?.facing ?? marine().viewAngle);
+    if (!controller) return;
+    const originX = controller.x;
+    const originY = controller.y;
+    const originAngle = controller.viewAngle ?? controller.facing ?? 0;
 
     // Calculate a check point in front of the controller (halfway to USE_RANGE)
     const forwardX = -Math.sin(originAngle);
@@ -390,8 +411,8 @@ export async function tryOpenDoor(requestedBy) {
  * the operator releases the door, or a safety timeout fires.
  *
  * The request summary is visible to the operator client via the snapshot
- * (see `server/world.js#fillDoorRecord`) and is also consumed directly by
- * the single-player modal (which runs in-process).
+ * (see `server/world.js#fillDoorRecord`) and is also consumed by the door
+ * operator UI on the client.
  */
 function enqueueOperatorRequest(doorEntry, controller) {
     const doorEntity = doorEntry.doorEntity;
@@ -445,7 +466,7 @@ export function resolveDoorRequest(sectorIndex, requestId, decision) {
  * Called when the operator releases a door — pending requests auto-deny so
  * the interactor doesn't hang forever.
  */
-export function drainDoorRequestsFor(doorEntity) {
+function drainDoorRequestsFor(doorEntity) {
     if (!doorEntity) return;
     const queue = doorEntity.pendingRequests;
     while (queue.length) {

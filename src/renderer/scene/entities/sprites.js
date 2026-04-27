@@ -8,7 +8,7 @@
  */
 
 import { dom, sceneState } from '../../dom.js';
-import { state as gameState } from '../../../game/state.js';
+import { getControlledEye } from '../../../game/possession.js';
 
 // ============================================================================
 // Sprite Sheet Layout
@@ -84,8 +84,8 @@ export function killEnemy(thingIndex, thingType) {
 
 /**
  * Computes the DOOM sprite rotation frame (1-8) based on the viewing angle
- * from the player to the enemy relative to the enemy's facing direction,
- * and updates the sprite sheet row and mirror accordingly.
+ * from the local session's camera eye to the enemy relative to the enemy's
+ * facing direction, and updates the sprite sheet row and mirror accordingly.
  *
  * DOOM sprites have 8 rotation angles. The sprite sheet has 5 rows (1-5).
  * Rotations 6-8 reuse rows 3-1 with horizontal mirroring.
@@ -96,12 +96,14 @@ export function updateEnemyRotation(thingIndex, enemy) {
     // Skip rotation updates for attack/death states (they use front-facing only)
     if (domData.sprite.dataset.state) return;
 
-    const angleToPlayer = Math.atan2(
-        gameState.playerY - enemy.y,
-        gameState.playerX - enemy.x
+    const eye = getControlledEye();
+    if (!eye) return;
+    const angleToViewer = Math.atan2(
+        eye.y - enemy.y,
+        eye.x - enemy.x
     );
 
-    let relativeAngle = angleToPlayer - enemy.facing;
+    let relativeAngle = angleToViewer - enemy.facing;
     relativeAngle = ((relativeAngle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
 
     const rotationIndex = (Math.floor((relativeAngle + Math.PI / 8) / (Math.PI / 4)) % 8) + 1;

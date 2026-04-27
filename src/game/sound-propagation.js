@@ -1,9 +1,11 @@
 /**
- * Sound propagation — sector-based BFS flood when the player fires.
+ * Sound propagation — sector-based BFS flood when an actor fires.
  *
  * Based on: linuxdoom-1.10/p_enemy.c:P_RecursiveSound()
- * When the player fires a weapon, sound floods outward through connected
- * sectors via two-sided linedefs. Enemies in reached sectors wake up.
+ * Sound originates at the instigator actor's position and floods outward
+ * through connected sectors via two-sided linedefs. Listeners (any AI in
+ * a reached sector) can then wake up. Origin is supplied explicitly so
+ * possessed monsters and (future) NPC weapons all wake the same listeners.
  *
  * Sound is blocked by linedefs with ML_SOUNDBLOCK (flag 0x40). Sound can
  * pass through ONE sound-blocking line, but stops at a second — matching
@@ -13,7 +15,7 @@
 
 import { mapData } from '../data/maps.js';
 import { getSectorAt } from './physics/queries.js';
-import { getMarine, state } from './state.js';
+import { state } from './state.js';
 
 const ML_SOUNDBLOCK = 0x40;
 
@@ -122,21 +124,27 @@ export function getSectorOpening(frontSectorIdx, backSectorIdx, options = {}) {
 }
 
 /**
- * Floods sound from the player's current position through connected sectors.
- * Marks all reachable sectors so enemies can check via `isSectorAlerted()`.
+ * Floods sound from `instigator`'s current position through connected sectors.
+ * Marks all reachable sectors so listeners can check via `isSectorAlerted()`.
  *
  * Based on: linuxdoom-1.10/p_enemy.c:P_RecursiveSound()
  * Uses BFS instead of recursion. The `soundtraversed` counter allows sound
  * to pass through at most one ML_SOUNDBLOCK line.
+ *
+ * The instigator actor is required — pass the marine for player gunfire,
+ * the exploding barrel/projectile owner for environmental noises, etc.
+ * Passing `null` is a no-op so callers don't need to defend on missing
+ * possessed bodies.
  */
-export function propagateSound() {
+export function propagateSoundFrom(instigator) {
     alertedSectors.clear();
     if (!adjacency) return;
+    if (!instigator) return;
 
-    const playerSector = getSectorAt(getMarine().x, getMarine().y);
-    if (!playerSector) return;
+    const originSector = getSectorAt(instigator.x, instigator.y);
+    if (!originSector) return;
 
-    const startIndex = playerSector.sectorIndex;
+    const startIndex = originSector.sectorIndex;
 
     // BFS queue: [sectorIndex, blocksEncountered]
     // blocksEncountered: 0 = direct, 1 = passed through one sound-block line
@@ -181,13 +189,4 @@ export function propagateSound() {
  */
 export function isSectorAlerted(sectorIndex) {
     return alertedSectors.has(sectorIndex);
-}
-
-/**
- * Clears the alerted sectors (called on map clear/reset).
- */
-export function clearSoundAlert() {
-    alertedSectors.clear();
-    adjacency = null;
-    doorDataMap = null;
 }

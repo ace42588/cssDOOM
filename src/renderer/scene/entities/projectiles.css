@@ -13,7 +13,7 @@
         calc(var(--z) * -1px)
         calc(var(--y) * -1px);
 
-    rotate: y calc(var(--player-angle) * 1rad);
+    rotate: y calc(var(--view-angle) * 1rad);
 
     animation: projectile-glow 150ms ease-in-out infinite alternate;
 }
@@ -39,7 +39,7 @@
             calc(var(--y) * -1px)
         )
         translate(-50%, -50%)
-        rotateY(calc(var(--player-angle) * 1rad));
+        rotateY(calc(var(--view-angle) * 1rad));
     animation: puff 200ms steps(3) forwards;
 }
 
@@ -61,7 +61,7 @@
             calc(var(--z) * -1px - 22px),
             calc(var(--y) * -1px)
         )
-        rotateY(calc(var(--player-angle) * 1rad));
+        rotateY(calc(var(--view-angle) * 1rad));
     animation: fireball-explode 300ms steps(1) forwards;
     image-rendering: pixelated;
 }
@@ -86,7 +86,7 @@
             calc(var(--y) * -1px)
         )
         translateX(-50%)
-        rotateY(calc(var(--player-angle) * 1rad));
+        rotateY(calc(var(--view-angle) * 1rad));
     animation: teleport-fog 1714ms steps(1) forwards;
     image-rendering: pixelated;
 }

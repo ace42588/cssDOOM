@@ -22,7 +22,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 import { getControlledFor } from '../../src/game/possession.js';
-import { snapshotWorld, listPlayers } from './snapshot.js';
+import { snapshotWorld, listPlayers } from '../views/world.js';
 import { rolePromptFor } from './role.js';
 import { getMapPayload } from '../world.js';
 
@@ -55,6 +55,11 @@ const DOC_SLUGS = [
         slug: 'tool-index',
         title: 'Tool index',
         description: 'One-line summary of every tool, plus a routing table for "which body does each tool drive".',
+    },
+    {
+        slug: 'join-challenge',
+        title: 'Join challenge',
+        description: 'When a human joins as spectator but an MCP agent holds a body: elicitation, displacement, session-resolve-join.',
     },
 ];
 
@@ -100,7 +105,7 @@ export function registerStaticResources(server, ctx) {
         {
             title: 'World state (live)',
             description:
-                'Authoritative world snapshot from this session\'s perspective: marine, enemies, doors, players. Same payload as the world-get-state tool.',
+                "Authoritative world snapshot from this session's perspective: `actors` (marine + monsters as unified records), `doors`, `players`, and `self`. Same payload as the world-get-state tool.",
             mimeType: 'application/json',
         },
         async () => jsonResource('cssdoom://world/state', snapshotWorld(ctx.getSessionId())),
@@ -148,5 +153,3 @@ export function registerStaticResources(server, ctx) {
         ),
     );
 }
-
-export const STATIC_DOC_URIS = DOC_SLUGS.map((d) => `cssdoom://docs/${d.slug}`);

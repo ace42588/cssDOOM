@@ -1,4 +1,4 @@
-/* Player */
+/* Viewer overlay — hurt/death filter for the session's controlled actor. */
 
 #renderer.dead {
     #viewport {
@@ -7,6 +7,6 @@
     }
 
     #scene {
-        --player-z: 10;
+        --view-z: 10;
     }
 }

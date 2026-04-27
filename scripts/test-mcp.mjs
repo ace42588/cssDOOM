@@ -47,7 +47,7 @@ globalThis.WebSocket = class { constructor() { this.readyState = 0; } send() {} 
 globalThis.location = { protocol: 'http:', host: 'localhost' };
 
 const { input } = await import('../src/input/index.js');
-const { getMarine } = await import('../src/game/state.js');
+const { getMarineActor, state, MARINE_ACTOR_TYPE } = await import('../src/game/state.js');
 const inputSource = await import('../src/mcp/input-source.js');
 const { registerActorTools } = await import('../src/mcp/tools/actor.js');
 const { registerEnemyTools } = await import('../src/mcp/tools/enemies.js');
@@ -63,7 +63,7 @@ const { collectInput } = await import('../src/input/index.js');
 function frame() { collectInput(); }
 
 const expectedTools = [
-    'actor.get-state', 'actor.set-move', 'actor.stop', 'actor.turn-by',
+    'actor.get-state', 'actor.list', 'actor.set-move', 'actor.stop', 'actor.turn-by',
     'actor.turn-to', 'actor.move-to', 'actor.fire', 'actor.stop-fire',
     'actor.switch-weapon', 'actor.use', 'actor.possess',
     'enemies.list', 'enemies.get-state',
@@ -126,7 +126,20 @@ await registry.call('actor.use', {});
 console.log('  actor.use did not throw.');
 
 console.log('── 9. actor.turn-to returns target angle reached ──');
-const m = getMarine();
+// The singleton marine is gone; this test doesn't load a real map, so
+// synthesise a minimal marine-type actor before exercising actor.turn-to.
+if (!getMarineActor()) {
+    state.actors.push({
+        type: MARINE_ACTOR_TYPE,
+        x: 0, y: 0, z: 0, floorHeight: 0,
+        viewAngle: 0, angle: 0,
+        radius: 16, height: 56,
+        hp: 100, maxHp: 100, velZ: 0,
+        fireHeld: false, weaponCooldownTicks: 0,
+        currentWeapon: 'pistol',
+    });
+}
+const m = getMarineActor();
 m.x = 0; m.y = 0; m.viewAngle = 0;
 const turnRes = await registry.call('actor.turn-to', { angle: 0.3, tolerance: 0.2, timeoutMs: 600 });
 frame();

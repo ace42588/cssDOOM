@@ -32,7 +32,7 @@
     transform-origin: 50% 100%;
     transform:
         translateX(-50%)
-        rotateY(calc(var(--player-angle) * 1rad))
+        rotateY(calc(var(--view-angle) * 1rad))
         scaleX(var(--mirror, 1));
 
     filter: brightness(var(--light, 1));

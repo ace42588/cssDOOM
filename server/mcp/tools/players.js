@@ -5,7 +5,7 @@
 
 import { z } from 'zod';
 
-import { listPlayers } from '../snapshot.js';
+import { listPlayers } from '../../views/world.js';
 import { textResult, err } from './_helpers.js';
 
 export function registerPlayerTools(server, ctx) {

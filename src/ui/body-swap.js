@@ -9,8 +9,7 @@
 
 import { listAvailableBodies, onPossessionChange } from '../game/possession.js';
 import { requestBodySwap } from '../net/client.js';
-import { getMarine } from '../game/state.js';
-import { getThingIndex } from '../game/things/registry.js';
+import { formatRuntimeId } from '../game/entity/id.js';
 
 const overlay = document.createElement('div');
 overlay.id = 'body-swap-overlay';
@@ -111,9 +110,12 @@ function renderBodies() {
 
 function targetIdForBody(body) {
     if (body.kind === 'door') return `door:${body.sectorIndex}`;
-    if (body.entity === getMarine()) return 'player';
-    const idx = getThingIndex(body.entity);
-    return idx >= 0 ? `thing:${idx}` : null;
+    // `formatRuntimeId` returns `actor:<slot>` for every actor (marine or
+    // enemy) and `thing:<index>` only for real `state.things` entries.
+    // Enemies carry a synthetic `thingIndex` in the DOM-key range
+    // (ACTOR_DOM_KEY_OFFSET+slot), so calling `getThingIndex` on them here
+    // would mint a `thing:<bignum>` that the server can't resolve.
+    return formatRuntimeId(body.entity);
 }
 
 // Re-render if the underlying set changes while the overlay is open

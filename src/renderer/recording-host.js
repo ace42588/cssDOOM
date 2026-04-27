@@ -5,8 +5,8 @@
  * weapon switches, sprite state transitions) alongside each snapshot.
  *
  * Clients receive the events inside a snapshot and replay them through the
- * real DOM host, preserving the visual feel of the single-player engine
- * without the server ever touching a DOM.
+ * real DOM host, matching what a live DOM renderer would have done without the
+ * server ever touching a DOM.
  *
  * Only a subset of the facade API produces visible transients — the rest
  * (e.g. `updateCamera`, `updateHud`, `updateCulling`, `startCullingLoop`,
@@ -112,8 +112,10 @@ export function createRecordingRendererHost() {
         host[fn] = record(fn);
     }
 
-    // First-person marine feedback — only the session driving `player` should
-    // replay these (see `src/net/client.js` snapshot replay filtering).
+    // First-person viewer feedback (hurt / death overlays, dead-camera
+    // filters) — only the session whose controlled actor took the hit
+    // should replay these, so the server tags each event with
+    // `forSessionId` and `src/net/client.js` filters the replay.
     host.triggerViewerFlash = (className, forSessionId, duration = 300) => {
         buffer.push({
             fn: 'triggerFlash',

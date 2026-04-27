@@ -15,11 +15,14 @@
 
 import { z } from 'zod';
 
-import { getMarine, state } from '../../../src/game/state.js';
+import { getMarineActor, state } from '../../../src/game/state.js';
 import { getControlledFor } from '../../../src/game/possession.js';
 import { getThingIndex } from '../../../src/game/things/registry.js';
-import { poseOf } from '../../../src/game/entity/caps.js';
-import { snapshotPlayer, isLiveEnemy } from '../snapshot.js';
+import {
+    snapshotActor,
+    listActors,
+    isLiveActor,
+} from '../../../src/game/snapshot.js';
 import { rolePromptFor } from '../role.js';
 import { textResult, ok, err, requireConn } from './_helpers.js';
 import { normalizePossessTargetId } from '../../../src/game/entity/id.js';
@@ -62,26 +65,87 @@ function zeroMoveIntent(input) {
     input.run = false;
 }
 
+/**
+ * Distance origin for the calling session: the actor it drives, or the
+ * marine if the session is a spectator / hasn't been assigned a body.
+ * Keeps `distanceToOrigin` meaningful for pure spectators.
+ */
+function originForSession(sessionId) {
+    const controlled = sessionId ? getControlledFor(sessionId) : null;
+    const anchor = controlled || getMarineActor();
+    if (!anchor) return {};
+    return { originX: anchor.x, originY: anchor.y };
+}
+
 export function registerActorTools(server, ctx) {
     server.registerTool(
         'actor-get-state',
         {
-            title: 'Get marine + controlled state',
+            title: 'Get actor state',
             description:
-                'Return the marine\'s stats (HP, ammo, weapons, keys) plus the pose of whichever body this session is currently piloting (marine / possessed monster / door camera).',
-            inputSchema: {},
+                "Return the unified snapshot for a single actor. With no `id`, returns whichever body this session currently controls (null if spectator). Pass `id: 'actor:<slot>'` or `id: 'thing:<idx>'` to inspect any actor on the map. Record shape: { id, type, kind, label, pose, vitals, loadout?, inventory?, ai?, controller, onDeath, attributes, distanceToOrigin }.",
+            inputSchema: {
+                id: z.string().optional().describe("Optional actor id: 'actor:<slot>' | 'thing:<idx>' | 'marine' | 'player'. Omit for the caller's controlled body."),
+            },
         },
-        async () => {
+        async (args) => {
             const { conn, error } = requireConn(ctx.getSessionId());
             if (error) return error;
-            const controlled = getControlledFor(conn.sessionId);
-            const pose = poseOf(controlled || getMarine());
+            const origin = originForSession(conn.sessionId);
+            const rawId = args?.id;
+            let target = null;
+            if (typeof rawId === 'string' && rawId.length > 0) {
+                const lower = rawId.toLowerCase();
+                if (lower === 'marine' || lower === 'player') {
+                    target = getMarineActor();
+                } else if (rawId.startsWith('actor:')) {
+                    target = state.actors[Number(rawId.slice('actor:'.length))] || null;
+                } else if (rawId.startsWith('thing:')) {
+                    target = state.things[Number(rawId.slice('thing:'.length))] || null;
+                } else {
+                    return err('invalid id (use actor:<slot>, thing:<idx>, marine, or player)', {}, conn.sessionId);
+                }
+                if (!target) return err('not found', {}, conn.sessionId);
+            } else {
+                target = getControlledFor(conn.sessionId);
+            }
+            const actor = target ? snapshotActor(target, origin) : null;
             return textResult({
-                marine: snapshotPlayer(),
-                controlled: pose,
+                actor,
                 role: conn.role,
                 controlledId: conn.controlledId,
             }, conn.sessionId);
+        },
+    );
+
+    server.registerTool(
+        'actor-list',
+        {
+            title: 'List actors',
+            description:
+                "List actors (marine + monsters, live or dead) matching a filter. Filter: { kind?: 'marine'|'enemy'|'any', alive?: boolean, hostile?: boolean, controlled?: boolean, maxDistance?: number, limit?: number }. Each entry is a full actor snapshot record. Sorted by distance from the caller's controlled body (marine if the caller is a spectator). Agents can treat `alive && hostile` entries as current threats; `controlled === true` entries are held by a player session.",
+            inputSchema: {
+                kind: z.enum(['marine', 'enemy', 'any']).optional(),
+                alive: z.boolean().optional(),
+                hostile: z.boolean().optional(),
+                controlled: z.boolean().optional(),
+                maxDistance: z.number().optional(),
+                limit: z.number().int().optional(),
+            },
+        },
+        async (args) => {
+            const sid = ctx.getSessionId();
+            const filter = {
+                ...originForSession(sid),
+                ...(args?.kind ? { kind: args.kind } : {}),
+                ...(args?.alive !== undefined ? { alive: args.alive } : {}),
+                ...(args?.hostile !== undefined ? { hostile: args.hostile } : {}),
+                ...(args?.controlled !== undefined ? { controlled: args.controlled } : {}),
+                ...(Number.isFinite(args?.maxDistance) ? { maxDistance: Number(args.maxDistance) } : {}),
+                ...(Number.isInteger(args?.limit) && args.limit > 0 ? { limit: args.limit } : {}),
+            };
+            const actors = listActors(filter);
+            return textResult({ count: actors.length, actors }, sid);
         },
     );
 
@@ -162,7 +226,7 @@ export function registerActorTools(server, ctx) {
         {
             title: 'Fire weapon',
             description:
-                'Press and hold the fire button. If durationMs > 0, fire auto-releases after that duration (max 10000 ms). Fire routes to the marine\'s weapon if controlling the marine, or to the possessed monster\'s attack otherwise.',
+                "Press and hold the fire button. If durationMs > 0, fire auto-releases after that duration (max 10000 ms). Fire routes to the controlled body's current weapon/attack — marine weapons when possessing the marine, the monster's intrinsic attack when possessing an enemy.",
             inputSchema: {
                 durationMs: z.number().optional().describe('Hold for this many ms (0 = until actor-stop-fire).'),
             },
@@ -222,7 +286,7 @@ export function registerActorTools(server, ctx) {
         {
             title: 'Switch weapon',
             description:
-                'Request the server switch the marine to the given weapon slot (1=Fist, 2=Pistol, 3=Shotgun, 4=Chaingun, 5=Rocket, 6=Plasma, 7=BFG). Server only honors slots the marine owns. Ignored when not controlling the marine.',
+                "Request the server switch the controlled body to the given weapon slot. Slots 1-7 are the marine arsenal (1=Fist, 2=Pistol, 3=Shotgun, 4=Chaingun, 5=Rocket, 6=Plasma, 7=BFG). Server only honors slots the actor owns; most monster bodies only own one intrinsic slot and ignore this.",
             inputSchema: {
                 slot: z.number().int().min(1).max(7).describe('Weapon slot.'),
             },
@@ -242,20 +306,20 @@ export function registerActorTools(server, ctx) {
         {
             title: 'Possess body',
             description:
-                'Queue a body-swap for the next tick. targetId: `thing:N` (enemy thingIndex from enemies-list), `door:N` (sectorIndex from doors-list), or `marine` / `player` to return to the marine. Server validates targets; rejected swaps are dropped silently on the tick. Subsequent actor-* tools drive the possessed body.',
+                "Queue a body-swap for the next tick. targetId: `actor:<slot>` (any actor — marine slot 0 or spawned monsters), `thing:<idx>` (legacy thing-only hostile), `door:<sectorIndex>`, or `marine`/`player` as a shorthand for the marine. Server validates targets; rejected swaps are dropped silently on the tick. Subsequent actor-* tools drive the possessed body.",
             inputSchema: {
-                targetId: z.string().describe('thing:N | door:N | marine | player'),
+                targetId: z.string().describe('actor:<slot> | thing:<idx> | door:<sectorIndex> | marine | player'),
             },
         },
         async (args) => {
             const { conn, error } = requireConn(ctx.getSessionId());
             if (error) return error;
             const parsed = normalizePossessTargetId(args?.targetId);
-            if (!parsed) return err('invalid targetId (use thing:N, door:N, marine, or player)', {}, conn.sessionId);
+            if (!parsed) return err('invalid targetId (use actor:<slot>, thing:<idx>, door:<sectorIndex>, marine, or player)', {}, conn.sessionId);
 
             if (parsed.bodySwap === 'actor:0' || parsed.bodySwap === 'player') {
                 conn.input.bodySwap = { targetId: 'actor:0' };
-                const role = rolePromptFor(getMarine());
+                const role = rolePromptFor(getMarineActor());
                 return ok({ requested: parsed.requested, role }, conn.sessionId);
             }
 
@@ -264,7 +328,7 @@ export function registerActorTools(server, ctx) {
                 if (!Number.isInteger(id) || id <= 0) return err('invalid actor index', {}, conn.sessionId);
                 const thing = state.actors[id];
                 if (!thing) return err('not found', {}, conn.sessionId);
-                if (!isLiveEnemy(thing)) return err('enemy not possessable (dead, collected, or non-AI)', {}, conn.sessionId);
+                if (!isLiveActor(thing)) return err('actor not possessable (dead, collected, or non-AI)', {}, conn.sessionId);
                 conn.input.bodySwap = { targetId: `actor:${id}` };
                 const role = rolePromptFor(thing);
                 return ok({ requested: `actor:${id}`, role }, conn.sessionId);
@@ -275,7 +339,7 @@ export function registerActorTools(server, ctx) {
                 if (!Number.isInteger(id) || id < 0) return err('invalid thing index', {}, conn.sessionId);
                 const thing = state.things[id];
                 if (!thing) return err('not found', {}, conn.sessionId);
-                if (!isLiveEnemy(thing)) return err('enemy not possessable (dead, collected, or non-AI)', {}, conn.sessionId);
+                if (!isLiveActor(thing)) return err('actor not possessable (dead, collected, or non-AI)', {}, conn.sessionId);
                 const idx = getThingIndex(thing);
                 if (idx < 0) return err('thing has no stable index', {}, conn.sessionId);
                 conn.input.bodySwap = { targetId: `thing:${idx}` };

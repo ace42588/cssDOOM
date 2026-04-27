@@ -1,4 +1,4 @@
-import { getMarine } from '../../src/game/state.js';
+import { getMarineActor } from '../../src/game/state.js';
 import { getControlledFor } from '../../src/game/possession.js';
 import {
     controlledBodyIsAlive,
@@ -69,7 +69,7 @@ export function buildRoleChangePayload(conn) {
 
 export function findMarineControllerSessionId() {
     for (const conn of listPlayerConnections()) {
-        if (getControlledFor(conn.sessionId) === getMarine()) {
+        if (getControlledFor(conn.sessionId) === getMarineActor()) {
             return conn.sessionId;
         }
     }

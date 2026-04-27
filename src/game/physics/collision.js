@@ -1,23 +1,25 @@
 /**
  * Collision detection, sliding movement resolution, and hitscan ray casting.
+ *
+ * Movement helpers (`canMoveToActor`, `resolveSlidingMoveActor`) take the moving
+ * actor entity directly; per-actor capability blocks (`actor.maxDropHeight`,
+ * `actor.height`, `actor.radius`, `actor.floorHeight`) supply the geometry.
+ * No callsite samples the marine singleton — every read is the actual mover.
  */
 
-import { PLAYER_HEIGHT, MAX_STEP_HEIGHT, EYE_HEIGHT } from '../constants.js';
-import { state, getMarine, debug } from '../state.js';
-
-const marine = () => getMarine();
+import { MAX_STEP_HEIGHT } from '../constants.js';
+import { state, debug } from '../state.js';
 import { isDoorClosed, getDoorEntry } from '../mechanics/doors.js';
 import { circleLineCollision } from '../geometry.js';
 import { forEachWallInAABB } from '../spatial-grid.js';
-import { getFloorHeightAt, getSectorAt } from './queries.js';
+import { getFloorHeightAt } from './queries.js';
 import { getThingCollisionRadius } from '../things/geometry.js';
-import { asMovementActor, assertMovementActor } from '../entity/interop.js';
 
-function crossesLinedef(newX, newY, _radius, wall) {
+function crossesLinedef(prevX, prevY, newX, newY, wall) {
     const dx = wall.end.x - wall.start.x;
     const dy = wall.end.y - wall.start.y;
 
-    const oldSide = (marine().x - wall.start.x) * dy - (marine().y - wall.start.y) * dx;
+    const oldSide = (prevX - wall.start.x) * dy - (prevY - wall.start.y) * dx;
     const newSide = (newX - wall.start.x) * dy - (newY - wall.start.y) * dx;
 
     if ((oldSide > 0) === (newSide > 0)) return false;
@@ -25,18 +27,18 @@ function crossesLinedef(newX, newY, _radius, wall) {
     return true;
 }
 
-function canMoveToRaw(newX, newY, radius, currentFloorHeight, maxDropHeight = Infinity, excludeThing = null) {
+function canMoveToRaw(prevX, prevY, newX, newY, radius, moverHeight, currentFloorHeight, maxDropHeight, excludeThing) {
     if (debug.noclip) return true;
 
-    const playerTop = currentFloorHeight + (marine().height ?? PLAYER_HEIGHT);
+    const moverTop = currentFloorHeight + moverHeight;
     let blocked = false;
     forEachWallInAABB(newX - radius, newY - radius, newX + radius, newY + radius, wall => {
         const doorEntry = getDoorEntry(wall);
         if (doorEntry) {
             if (doorEntry.passable) return;
         } else if (wall.isUpperWall && wall.bottomHeight !== undefined && wall.topHeight !== undefined) {
-            if (wall.topHeight <= currentFloorHeight || wall.bottomHeight >= playerTop) return;
-            if (!crossesLinedef(newX, newY, radius, wall)) return;
+            if (wall.topHeight <= currentFloorHeight || wall.bottomHeight >= moverTop) return;
+            if (!crossesLinedef(prevX, prevY, newX, newY, wall)) return;
         } else if (wall.isSolid) {
         } else {
             return;
@@ -49,7 +51,11 @@ function canMoveToRaw(newX, newY, radius, currentFloorHeight, maxDropHeight = In
     });
     if (blocked) return false;
 
-    for (let i = 1, ac = state.actors.length; i < ac; i++) {
+    // Iterate every actor (start at 0); the moving actor itself is excluded by
+    // identity via `excludeThing`. The marine actor has no thing-collision
+    // radius (`getThingCollisionRadius` returns null for it), so it never
+    // blocks movement here regardless of slot.
+    for (let i = 0, ac = state.actors.length; i < ac; i++) {
         const thing = state.actors[i];
         if (!thing || thing.collected || thing === excludeThing) continue;
         const thingRadius = getThingCollisionRadius(thing);
@@ -93,26 +99,40 @@ function canMoveToRaw(newX, newY, radius, currentFloorHeight, maxDropHeight = In
     return true;
 }
 
-export function canMoveTo(newX, newY, radius, currentFloorHeight, maxDropHeight = Infinity, excludeThing = null) {
-    return canMoveToRaw(newX, newY, radius, currentFloorHeight, maxDropHeight, excludeThing);
-}
-
+/**
+ * Test whether `actor` can move to `(newX, newY)`.
+ *
+ * Reads collision params from the actor's flat capability mirrors:
+ *   - `actor.radius`        — collision circle (marine: PLAYER_RADIUS, monsters: ai.radius)
+ *   - `actor.height`        — vertical extent for upper-wall passage
+ *   - `actor.maxDropHeight` — Infinity for marine, MAX_STEP_HEIGHT for monsters
+ *   - `actor.floorHeight`   — pre-step floor sample (kept current by the caller)
+ *
+ * `options.maxDropHeight` / `options.excludeThing` override per-call. By default
+ * the actor itself is the excluded body so it doesn't collide with its own slot.
+ */
 export function canMoveToActor(actor, newX, newY, options = {}) {
-    assertMovementActor(actor, 'canMoveToActor');
     const maxDropHeight = options.maxDropHeight ?? actor.maxDropHeight ?? Infinity;
-    const excludeThing = options.excludeThing ?? actor.excludeThing ?? null;
-    const currentFloorHeight =
-        actor.kind === 'player'
-            ? (actor.floorHeight ?? getFloorHeightAt(actor.x, actor.y))
-            : getFloorHeightAt(actor.entity.x, actor.entity.y);
-    return canMoveToRaw(newX, newY, actor.radius, currentFloorHeight, maxDropHeight, excludeThing);
+    const excludeThing = options.excludeThing ?? actor;
+    const prevX = actor.x;
+    const prevY = actor.y;
+    const moverHeight = actor.height;
+    if (typeof moverHeight !== 'number') {
+        throw new Error('[collision] Mover is missing .height');
+    }
+    const currentFloorHeight = actor.floorHeight ?? getFloorHeightAt(prevX, prevY);
+    return canMoveToRaw(prevX, prevY, newX, newY, actor.radius, moverHeight, currentFloorHeight, maxDropHeight, excludeThing);
 }
 
+/**
+ * Try to slide `actor` from its current position to `to` (axis-aligned fallback
+ * when the diagonal step is blocked). Returns the resolved position and whether
+ * any movement happened. Caller is responsible for assigning the result back
+ * onto the actor.
+ */
 export function resolveSlidingMoveActor(actor, to) {
-    assertMovementActor(actor, 'resolveSlidingMove');
-
-    const fromX = actor.entity.x;
-    const fromY = actor.entity.y;
+    const fromX = actor.x;
+    const fromY = actor.y;
     const toX = to.x;
     const toY = to.y;
 
@@ -133,16 +153,16 @@ export function resolveSlidingMoveActor(actor, to) {
     return { x: fromX, y: fromY, moved: false };
 }
 
-export function resolveSlidingMove(actorOrEntity, to) {
-    const actor = actorOrEntity?.entity ? actorOrEntity : asMovementActor(actorOrEntity);
-    return resolveSlidingMoveActor(actor, to);
-}
-
-export function rayHitPoint(originX, originY, directionX, directionY, maxDistance) {
+/**
+ * Cast a horizontal ray through the wall set, returning the nearest wall-hit
+ * point or null if the ray reaches `maxDistance` without intersecting a wall.
+ * `rayZ` is the height at which the ray travels; walls are only considered
+ * solid if they intersect that height (upper/lower/middle wall bounds).
+ */
+export function rayHitPoint(originX, originY, directionX, directionY, maxDistance, rayZ) {
     let closestHitDistance = maxDistance;
     const endX = originX + directionX * maxDistance;
     const endY = originY + directionY * maxDistance;
-    const eyeZ = marine().floorHeight + EYE_HEIGHT;
 
     forEachWallInAABB(
         Math.min(originX, endX), Math.min(originY, endY),
@@ -164,7 +184,7 @@ export function rayHitPoint(originX, originY, directionX, directionY, maxDistanc
                         wallTop = Math.max(neighborFloor, lift.currentHeight);
                     }
                 }
-                if (wallBottom === undefined || eyeZ < wallBottom || eyeZ > wallTop) return;
+                if (wallBottom === undefined || rayZ < wallBottom || rayZ > wallTop) return;
             } else if (!wall.isSolid && !isDoorClosed(wall)) {
                 return;
             }
@@ -184,9 +204,4 @@ export function rayHitPoint(originX, originY, directionX, directionY, maxDistanc
 
     if (closestHitDistance >= maxDistance) return null;
     return { x: originX + directionX * closestHitDistance, y: originY + directionY * closestHitDistance };
-}
-
-export function getSectorLightAt(x, y) {
-    const sector = getSectorAt(x, y);
-    return sector?.lightLevel ?? 255;
 }

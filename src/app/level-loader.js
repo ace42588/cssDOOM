@@ -4,8 +4,6 @@
  * Keeps sequencing concerns out of shared map data and renderer scene build.
  */
 
-import { EYE_HEIGHT } from "../game/constants.js";
-import { getMarine } from "../game/state.js";
 import { clearSpatialGrid, buildSpatialGrid } from "../game/spatial-grid.js";
 import { initDoors } from "../game/mechanics/doors.js";
 import { initLifts } from "../game/mechanics/lifts.js";
@@ -14,6 +12,7 @@ import { buildSectorAdjacency } from "../game/sound-propagation.js";
 import { buildPortalGraph } from "../renderer/scene/portals.js";
 import { resetPvs } from "../renderer/scene/pvs.js";
 import { teardownScene, buildScene } from "../renderer/scene/scene.js";
+import { beginLocalCameraDrop } from "../renderer/scene/camera.js";
 import { showLevelTransition, hideLevelTransition } from "../ui/overlay.js";
 
 export async function beginLevelTransition(isInitialLoad) {
@@ -47,15 +46,20 @@ export async function rebuildLevelScene(isInitialLoad) {
   buildSpatialGrid();
 }
 
-export function scheduleIntroCameraDrop() {
-  setTimeout(() => {
-    const m = getMarine();
-    m.z = m.floorHeight + EYE_HEIGHT;
-  }, 600);
-}
-
 export function endLevelTransition(isInitialLoad) {
   if (!isInitialLoad) {
     hideLevelTransition();
   }
+}
+
+/**
+ * Kick off the intro camera "fall" for the local viewer only. Previously
+ * the server parked the marine at `floorHeight + 80` so every client saw
+ * the drop — per the session-scoped renderer decision, the drop is now a
+ * purely local visual offset on `--view-z` that decays to zero over
+ * ~1.2s. Other sessions watching the same actor see it at its natural
+ * eye height from the first snapshot.
+ */
+export function scheduleIntroCameraDrop() {
+  beginLocalCameraDrop(80, 1200);
 }

@@ -4,7 +4,7 @@
   ],
   "id": "urn:cssdoom:params:scim:schemas:Player",
   "name": "Player",
-  "description": "CSS DOOM player persistence schema.",
+  "description": "CSS DOOM player-session SCIM User extension. The User resource identity (userName, sessionId, displayName, active) is stable per session. The `controlledActorRef` block plus the nested `position`, `vitals`, `ammo`, `maxAmmo`, `inventory`, and `powerups` describe whichever actor the session is currently driving — marine, possessed monster, or null when spectating. Marine-only fields (ammo, maxAmmo, inventory.ownedWeapons, inventory.collectedKeys, powerups) are omitted when the session controls a non-marine body; consumers should tolerate their absence and branch on `controlledActorRef.type === 1` (marine) / `controlledActorRef.kind === 'marine'`.",
   "attributes": [
     {
       "name": "sessionId",
@@ -51,11 +51,61 @@
       "uniqueness": "none"
     },
     {
+      "name": "controlledActorRef",
+      "type": "complex",
+      "multiValued": false,
+      "description": "Reference to the actor this session currently controls (marine, possessed monster, or null while spectating).",
+      "required": false,
+      "mutability": "readWrite",
+      "returned": "default",
+      "uniqueness": "none",
+      "subAttributes": [
+        {
+          "name": "id",
+          "type": "string",
+          "multiValued": false,
+          "description": "Canonical actor id: `actor:<slot>` or `thing:<index>`.",
+          "required": true,
+          "caseExact": true,
+          "mutability": "readWrite",
+          "returned": "default"
+        },
+        {
+          "name": "type",
+          "type": "integer",
+          "multiValued": false,
+          "description": "DOOM thing-type number (1 = marine, 3001 = Imp, etc.).",
+          "required": true,
+          "mutability": "readWrite",
+          "returned": "default"
+        },
+        {
+          "name": "kind",
+          "type": "string",
+          "multiValued": false,
+          "description": "Broad category: 'marine' | 'enemy' | 'thing'.",
+          "required": true,
+          "caseExact": false,
+          "mutability": "readWrite",
+          "returned": "default"
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "multiValued": false,
+          "description": "Human-readable label ('Marine', 'Imp', …).",
+          "required": false,
+          "mutability": "readWrite",
+          "returned": "default"
+        }
+      ]
+    },
+    {
       "name": "position",
       "type": "complex",
       "multiValued": false,
-      "description": "Player world-space position and orientation.",
-      "required": true,
+      "description": "Controlled actor world-space position and orientation. Null when the session has no body.",
+      "required": false,
       "mutability": "readWrite",
       "returned": "default",
       "uniqueness": "none",
@@ -98,7 +148,7 @@
       "name": "vitals",
       "type": "complex",
       "multiValued": false,
-      "description": "Player health/armor/death state.",
+      "description": "Controlled actor health/armor/death state. Populated for every session (spectators emit isDead=true with zero hp).",
       "required": true,
       "mutability": "readWrite",
       "returned": "default",
@@ -109,6 +159,14 @@
           "type": "integer",
           "multiValued": false,
           "required": true,
+          "mutability": "readWrite",
+          "returned": "default"
+        },
+        {
+          "name": "maxHealth",
+          "type": "integer",
+          "multiValued": false,
+          "required": false,
           "mutability": "readWrite",
           "returned": "default"
         },
@@ -142,122 +200,52 @@
       "name": "ammo",
       "type": "complex",
       "multiValued": false,
-      "description": "Current ammo counts.",
-      "required": true,
+      "description": "Current ammo counts. Marine-only — omitted when controlling a monster body.",
+      "required": false,
       "mutability": "readWrite",
       "returned": "default",
       "uniqueness": "none",
       "subAttributes": [
-        {
-          "name": "bullets",
-          "type": "integer",
-          "multiValued": false,
-          "required": true,
-          "mutability": "readWrite",
-          "returned": "default"
-        },
-        {
-          "name": "shells",
-          "type": "integer",
-          "multiValued": false,
-          "required": true,
-          "mutability": "readWrite",
-          "returned": "default"
-        },
-        {
-          "name": "rockets",
-          "type": "integer",
-          "multiValued": false,
-          "required": true,
-          "mutability": "readWrite",
-          "returned": "default"
-        },
-        {
-          "name": "cells",
-          "type": "integer",
-          "multiValued": false,
-          "required": true,
-          "mutability": "readWrite",
-          "returned": "default"
-        }
+        { "name": "bullets", "type": "integer", "multiValued": false, "required": true, "mutability": "readWrite", "returned": "default" },
+        { "name": "shells",  "type": "integer", "multiValued": false, "required": true, "mutability": "readWrite", "returned": "default" },
+        { "name": "rockets", "type": "integer", "multiValued": false, "required": true, "mutability": "readWrite", "returned": "default" },
+        { "name": "cells",   "type": "integer", "multiValued": false, "required": true, "mutability": "readWrite", "returned": "default" }
       ]
     },
     {
       "name": "maxAmmo",
       "type": "complex",
       "multiValued": false,
-      "description": "Maximum ammo capacities.",
-      "required": true,
+      "description": "Maximum ammo capacities. Marine-only — omitted when controlling a monster body.",
+      "required": false,
       "mutability": "readWrite",
       "returned": "default",
       "uniqueness": "none",
       "subAttributes": [
-        {
-          "name": "bullets",
-          "type": "integer",
-          "multiValued": false,
-          "required": true,
-          "mutability": "readWrite",
-          "returned": "default"
-        },
-        {
-          "name": "shells",
-          "type": "integer",
-          "multiValued": false,
-          "required": true,
-          "mutability": "readWrite",
-          "returned": "default"
-        },
-        {
-          "name": "rockets",
-          "type": "integer",
-          "multiValued": false,
-          "required": true,
-          "mutability": "readWrite",
-          "returned": "default"
-        },
-        {
-          "name": "cells",
-          "type": "integer",
-          "multiValued": false,
-          "required": true,
-          "mutability": "readWrite",
-          "returned": "default"
-        }
+        { "name": "bullets", "type": "integer", "multiValued": false, "required": true, "mutability": "readWrite", "returned": "default" },
+        { "name": "shells",  "type": "integer", "multiValued": false, "required": true, "mutability": "readWrite", "returned": "default" },
+        { "name": "rockets", "type": "integer", "multiValued": false, "required": true, "mutability": "readWrite", "returned": "default" },
+        { "name": "cells",   "type": "integer", "multiValued": false, "required": true, "mutability": "readWrite", "returned": "default" }
       ]
     },
     {
       "name": "inventory",
       "type": "complex",
       "multiValued": false,
-      "description": "Weapons, keys, and backpack state.",
-      "required": true,
+      "description": "Weapons, keys, and backpack state. Marine-only — omitted when controlling a monster body.",
+      "required": false,
       "mutability": "readWrite",
       "returned": "default",
       "uniqueness": "none",
       "subAttributes": [
-        {
-          "name": "hasBackpack",
-          "type": "boolean",
-          "multiValued": false,
-          "required": true,
-          "mutability": "readWrite",
-          "returned": "default"
-        },
-        {
-          "name": "currentWeapon",
-          "type": "integer",
-          "multiValued": false,
-          "required": true,
-          "mutability": "readWrite",
-          "returned": "default"
-        },
+        { "name": "hasBackpack",   "type": "boolean", "multiValued": false, "required": true, "mutability": "readWrite", "returned": "default" },
+        { "name": "currentWeapon", "type": "integer", "multiValued": false, "required": true, "mutability": "readWrite", "returned": "default" },
         {
           "name": "ownedWeapons",
           "type": "integer",
           "multiValued": true,
           "description": "Weapon slot numbers currently owned.",
-          "required": true,
+          "required": false,
           "mutability": "readWrite",
           "returned": "default"
         },
@@ -266,7 +254,7 @@
           "type": "string",
           "multiValued": true,
           "description": "Collected key colors.",
-          "required": true,
+          "required": false,
           "mutability": "readWrite",
           "returned": "default"
         }
@@ -276,29 +264,14 @@
       "name": "powerups",
       "type": "complex",
       "multiValued": true,
-      "description": "Active powerups and remaining duration in seconds.",
+      "description": "Active powerups and remaining duration in seconds. Marine-only — omitted when controlling a monster body.",
       "required": false,
       "mutability": "readWrite",
       "returned": "default",
       "uniqueness": "none",
       "subAttributes": [
-        {
-          "name": "name",
-          "type": "string",
-          "multiValued": false,
-          "required": true,
-          "caseExact": false,
-          "mutability": "readWrite",
-          "returned": "default"
-        },
-        {
-          "name": "remainingSeconds",
-          "type": "decimal",
-          "multiValued": false,
-          "required": true,
-          "mutability": "readWrite",
-          "returned": "default"
-        }
+        { "name": "name",             "type": "string",  "multiValued": false, "required": true, "caseExact": false, "mutability": "readWrite", "returned": "default" },
+        { "name": "remainingSeconds", "type": "decimal", "multiValued": false, "required": true, "mutability": "readWrite", "returned": "default" }
       ]
     },
     {

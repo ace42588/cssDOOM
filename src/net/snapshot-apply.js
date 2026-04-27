@@ -1,7 +1,7 @@
-import { state, getMarine } from '../game/state.js';
+import { state } from '../game/state.js';
 import * as rendererFacade from '../renderer/index.js';
 import * as audioFacade from '../audio/audio.js';
-import { WEAPONS, ACTOR_DOM_KEY_OFFSET } from '../game/constants.js';
+import { WEAPONS, ACTOR_DOM_KEY_OFFSET, DOOR_CLOSE_TRAVEL_MS } from '../game/constants.js';
 import {
     LOCAL_SESSION,
     possessFor,
@@ -12,14 +12,15 @@ import { getSectorAt } from '../game/physics/queries.js';
 import { isMapLoading } from './map-sync.js';
 import { session } from './session.js';
 import { resolveRuntimeId } from '../game/entity/id.js';
-import { isControllableBody } from '../game/entity/caps.js';
+import { isControllableBody, canSwitchWeapons } from '../game/entity/caps.js';
 import {
     currentInterpPos,
     currentProjectileInterpPos,
+    dropActorInterp,
     projectileInterp,
     renderInterpDt,
     thingInterp,
-    updatePlayerRenderFromSnapshot,
+    updateActorRenderFromSnapshot,
 } from './interpolation.js';
 
 let weaponNeedsRehydrate = true;
@@ -36,8 +37,6 @@ export function applySnapshot(snap) {
 
     if (snap.actors) {
         applyActors(snap.actors);
-    } else if (snap.player) {
-        applyPlayer(snap.player);
     }
     applyThings(snap.things);
     applyProjectiles(snap.projectiles);
@@ -88,10 +87,7 @@ function applyActors(block) {
     if (!block) return;
     const { spawn, update, despawn } = block;
     if (despawn && despawn.length) {
-        for (const id of despawn) {
-            if (id === 0) continue;
-            despawnActor(id);
-        }
+        for (const id of despawn) despawnActor(id);
     }
     if (spawn && spawn.length) {
         const spawnSorted = [...spawn].sort((a, b) => (a.id ?? 0) - (b.id ?? 0));
@@ -99,19 +95,12 @@ function applyActors(block) {
     }
     if (update && update.length) {
         const updateSorted = [...update].sort((a, b) => (a.id ?? 0) - (b.id ?? 0));
-        for (const rec of updateSorted) {
-            if (rec.id === 0) applyPlayer(rec);
-            else updateActorRecord(rec);
-        }
+        for (const rec of updateSorted) updateActorRecord(rec);
     }
 }
 
 function spawnActor(rec) {
     const id = rec.id;
-    if (id === 0) {
-        applyPlayer(rec);
-        return;
-    }
     while (state.actors.length <= id) state.actors.push(null);
     let dst = state.actors[id];
     if (!dst) {
@@ -129,20 +118,75 @@ function updateActorRecord(rec) {
 
     const prevX = dst.x;
     const prevY = dst.y;
+    const prevZ = dst.z;
     const prevFloorHeight = dst.floorHeight;
     const prevFacing = dst.facing;
+    const prevAngle = dst.viewAngle;
+    const prevWeapon = dst.currentWeapon;
 
     if (rec.type !== undefined) dst.type = rec.type;
     if (rec.x !== undefined) dst.x = rec.x;
     if (rec.y !== undefined) dst.y = rec.y;
     if (rec.z !== undefined && rec.z !== null) dst.z = rec.z;
     if (rec.floorHeight !== undefined) dst.floorHeight = rec.floorHeight;
-    if (rec.facing !== undefined) dst.facing = rec.facing;
-    if (rec.viewAngle !== undefined && rec.viewAngle !== null) dst.viewAngle = rec.viewAngle;
-    if (rec.hp !== undefined) dst.hp = rec.hp;
-    if (rec.maxHp !== undefined) dst.maxHp = rec.maxHp;
+    if (rec.facing !== undefined && rec.facing !== null) dst.facing = rec.facing;
+    if (rec.angle !== undefined && rec.angle !== null) {
+        dst.viewAngle = rec.angle;
+        if (rec.facing === undefined || rec.facing === null) {
+            dst.facing = rec.angle + Math.PI / 2;
+        }
+    }
+    if (rec.hp !== undefined && rec.hp !== null) dst.hp = rec.hp;
+    if (rec.maxHp !== undefined && rec.maxHp !== null) dst.maxHp = rec.maxHp;
     if (rec.collected !== undefined) dst.collected = Boolean(rec.collected);
-    if (rec.aiState !== undefined && dst.ai) dst.ai.state = rec.aiState;
+    if (rec.aiState !== undefined && rec.aiState !== null && dst.ai) {
+        dst.ai.state = rec.aiState;
+    }
+    if (rec.armor !== undefined && rec.armor !== null) dst.armor = rec.armor;
+    if (rec.armorType !== undefined && rec.armorType !== null) dst.armorType = rec.armorType;
+    if (rec.ammo) {
+        if (!dst.ammo) dst.ammo = {};
+        for (const key in rec.ammo) dst.ammo[key] = rec.ammo[key];
+    }
+    if (rec.maxAmmo) {
+        if (!dst.maxAmmo) dst.maxAmmo = {};
+        for (const key in rec.maxAmmo) dst.maxAmmo[key] = rec.maxAmmo[key];
+    }
+    if (rec.ownedWeapons !== undefined && rec.ownedWeapons !== null) {
+        dst.ownedWeapons = new Set(rec.ownedWeapons);
+    }
+    if (rec.currentWeapon !== undefined && rec.currentWeapon !== null) {
+        dst.currentWeapon = rec.currentWeapon;
+    }
+    if (rec.collectedKeys !== undefined && rec.collectedKeys !== null) {
+        dst.collectedKeys = new Set(rec.collectedKeys);
+    }
+    if (rec.powerups !== undefined && rec.powerups !== null) {
+        dst.powerups = { ...rec.powerups };
+    }
+    if (rec.hasBackpack !== undefined) dst.hasBackpack = Boolean(rec.hasBackpack);
+    if (rec.isDead !== undefined || rec.isAiDead !== undefined) {
+        if (rec.isDead) dst.deathMode = 'gameover';
+        else if (rec.isAiDead) dst.deathMode = 'ai';
+        else dst.deathMode = null;
+    }
+    if (rec.isFiring !== undefined) dst.isFiring = Boolean(rec.isFiring);
+
+    // First-person weapon display follows whichever actor the local viewer
+    // possesses. `canSwitchWeapons` is true only for actors that carry a
+    // real weapon loadout (marine-shaped), so possessing an intrinsic-weapon
+    // monster is a no-op here.
+    const locallyControlled = getControlledFor(LOCAL_SESSION);
+    const weaponChanged = prevWeapon !== dst.currentWeapon;
+    if ((weaponChanged || weaponNeedsRehydrate) &&
+        canSwitchWeapons(dst) &&
+        dst === locallyControlled) {
+        const weapon = WEAPONS[dst.currentWeapon];
+        if (weapon && dst.ownedWeapons?.has(dst.currentWeapon)) {
+            rendererFacade.switchWeapon(weapon.name, weapon.fireRate);
+            weaponNeedsRehydrate = false;
+        }
+    }
 
     if (rec.collected !== undefined && dst.collected) {
         const enemyLike = Boolean(dst.ai) || dst.type === 2035;
@@ -156,32 +200,31 @@ function updateActorRecord(rec) {
     const moved =
         prevX !== dst.x ||
         prevY !== dst.y ||
-        prevFloorHeight !== dst.floorHeight;
+        prevZ !== dst.z ||
+        prevFloorHeight !== dst.floorHeight ||
+        prevAngle !== dst.viewAngle;
 
     if (moved) {
-        const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
-        const dt = Math.max(16, 1000 / (session.tickRateHz || 35));
-        const existing = thingInterp.get(domId);
-        let fromX, fromY, fromFloor;
-        if (existing) {
-            const cur = currentInterpPos(existing, now);
-            fromX = cur.x; fromY = cur.y; fromFloor = cur.floor;
-        } else {
-            fromX = prevX ?? dst.x;
-            fromY = prevY ?? dst.y;
-            fromFloor = prevFloorHeight ?? dst.floorHeight ?? 0;
-        }
         const targetSector = getSectorAt(dst.x, dst.y);
         const pendingSectorIndex = targetSector ? targetSector.sectorIndex : undefined;
-        thingInterp.set(domId, {
-            fromX, fromY, fromFloor,
-            toX: dst.x,
-            toY: dst.y,
-            toFloor: dst.floorHeight ?? 0,
-            t0: now,
-            dt,
+        updateActorRenderFromSnapshot(
+            id,
+            {
+                x: dst.x,
+                y: dst.y,
+                z: dst.z ?? 0,
+                floor: dst.floorHeight ?? 0,
+                angle: dst.viewAngle ?? 0,
+            },
+            {
+                x: prevX ?? dst.x,
+                y: prevY ?? dst.y,
+                z: prevZ ?? dst.z ?? 0,
+                floor: prevFloorHeight ?? dst.floorHeight ?? 0,
+                angle: prevAngle ?? dst.viewAngle ?? 0,
+            },
             pendingSectorIndex,
-        });
+        );
     }
     if (prevFacing !== dst.facing) {
         rendererFacade.updateEnemyRotation(domId, dst);
@@ -189,60 +232,12 @@ function updateActorRecord(rec) {
 }
 
 function despawnActor(id) {
-    const domId = actorDomId(id);
+    const dst = state.actors[id];
+    const domId = dst?.thingIndex ?? actorDomId(id);
+    dropActorInterp(id);
     thingInterp.delete(domId);
     rendererFacade.removeThing(domId);
     state.actors[id] = null;
-}
-
-function applyPlayer(p) {
-    if (!p) return;
-    const prev = {
-        x: getMarine().x,
-        y: getMarine().y,
-        z: getMarine().z,
-        floorHeight: getMarine().floorHeight,
-        angle: getMarine().viewAngle,
-    };
-    if (p.x !== undefined) getMarine().x = p.x;
-    if (p.y !== undefined) getMarine().y = p.y;
-    if (p.z !== undefined) getMarine().z = p.z;
-    if (p.angle !== undefined) {
-        getMarine().viewAngle = p.angle;
-        getMarine().facing = p.angle + Math.PI / 2;
-    }
-    if (p.floorHeight !== undefined) getMarine().floorHeight = p.floorHeight;
-    updatePlayerRenderFromSnapshot(getMarine(), prev);
-    if (p.health !== undefined) getMarine().hp = p.health;
-    if (p.armor !== undefined) getMarine().armor = p.armor;
-    if (p.armorType !== undefined) getMarine().armorType = p.armorType;
-    if (p.ammo) {
-        for (const key in p.ammo) getMarine().ammo[key] = p.ammo[key];
-    }
-    if (p.maxAmmo) {
-        for (const key in p.maxAmmo) getMarine().maxAmmo[key] = p.maxAmmo[key];
-    }
-    if (p.ownedWeapons !== undefined) getMarine().ownedWeapons = new Set(p.ownedWeapons);
-    if (p.currentWeapon !== undefined) {
-        const weaponChanged = p.currentWeapon !== getMarine().currentWeapon;
-        getMarine().currentWeapon = p.currentWeapon;
-        if (weaponChanged || weaponNeedsRehydrate) {
-            const weapon = WEAPONS[getMarine().currentWeapon];
-            if (weapon && getMarine().ownedWeapons.has(getMarine().currentWeapon)) {
-                rendererFacade.switchWeapon(weapon.name, weapon.fireRate);
-                weaponNeedsRehydrate = false;
-            }
-        }
-    }
-    if (p.collectedKeys !== undefined) getMarine().collectedKeys = new Set(p.collectedKeys);
-    if (p.powerups !== undefined) getMarine().powerups = { ...p.powerups };
-    if (p.hasBackpack !== undefined) getMarine().hasBackpack = Boolean(p.hasBackpack);
-    if (p.isDead !== undefined || p.isAiDead !== undefined) {
-        if (p.isDead) getMarine().deathMode = 'gameover';
-        else if (p.isAiDead) getMarine().deathMode = 'ai';
-        else getMarine().deathMode = null;
-    }
-    if (p.isFiring !== undefined) getMarine().isFiring = Boolean(p.isFiring);
 }
 
 function applyThings(block) {
@@ -403,7 +398,17 @@ function applyDoors(doors) {
     for (const d of doors) {
         const entry = state.doorState.get(d.sectorIndex);
         if (!entry) continue;
-        if (d.open !== undefined) entry.open = d.open;
+        const wasOpen = entry.open;
+        if (d.open !== undefined) {
+            entry.open = d.open;
+            if (d.open) {
+                entry.closingUntil = 0;
+            } else if (wasOpen) {
+                // Keep renderer PVS portals open for the same visual close travel
+                // interval used by the local door animation.
+                entry.closingUntil = Date.now() + DOOR_CLOSE_TRAVEL_MS;
+            }
+        }
         if (d.passable !== undefined) entry.passable = d.passable;
 
         const doorEntity = entry.doorEntity;

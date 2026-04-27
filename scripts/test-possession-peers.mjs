@@ -1,13 +1,15 @@
 /**
- * Stage 3: marine lives in `state.actors[0]`; enemies in `state.actors[1..]`;
- * possession + id grammar stay consistent after load.
+ * Stage 3: after map load, the marine is a regular peer actor (spawned from
+ * `mapData.things[0]` via the normalised `playerStart` entry) and therefore
+ * lands at `state.actors[0]`. Enemies populate `state.actors[1..]`. This
+ * smoke test also verifies possession + id grammar stay consistent.
  */
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { getMarine, state } from '../src/game/state.js';
+import { getMarineActor, state } from '../src/game/state.js';
 import { loadMapHeadless } from '../src/game/lifecycle.js';
 import { formatRuntimeId } from '../src/game/entity/id.js';
 import { possessFor, releaseFor, getSessionIdControlling } from '../src/game/possession.js';
@@ -22,7 +24,7 @@ const readMapJson = async (name) => {
 
 await loadMapHeadless('E1M1', readMapJson, { fullReset: true });
 
-assert.strictEqual(state.actors[0], getMarine());
+assert.strictEqual(state.actors[0], getMarineActor());
 assert.ok(state.actors.length >= 2, 'expected at least one enemy actor');
 
 const imp = state.actors.find((a) => a && a.type === 3001 && a.ai);
