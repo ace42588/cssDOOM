@@ -179,7 +179,7 @@ export function updateActorRenderFromSnapshot(actorIndex, next, prev, pendingSec
     });
 }
 
-function getRenderedActorPose(actorIndex) {
+export function getRenderedActorPose(actorIndex) {
     return actorPoseCache.get(actorIndex) ?? null;
 }
 

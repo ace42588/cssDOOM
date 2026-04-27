@@ -16,6 +16,10 @@ export const MSG = {
     JOIN_CHALLENGE: 'joinChallenge',
     /** Client → server: resolve a pending join challenge. */
     JOIN_CHALLENGE_DECISION: 'joinChallengeDecision',
+    /** Client → server: rotate spectator follow target. */
+    SPECTATOR_FOLLOW: 'spectatorFollow',
+    /** Client → server: spectator possession request. */
+    SPECTATOR_POSSESS: 'spectatorPossess',
 };
 
 const ALLOWED_MAPS = new Set([
@@ -62,6 +66,16 @@ export const ClientInputMessageSchema = z.object({
 export const LoadMapRequestMessageSchema = z.object({
     type: z.literal(MSG.LOAD_MAP_REQUEST),
     mapName: z.string().refine((name) => ALLOWED_MAPS.has(name)),
+});
+
+export const SpectatorFollowMessageSchema = z.object({
+    type: z.literal(MSG.SPECTATOR_FOLLOW),
+    direction: z.enum(['next', 'prev']),
+});
+
+export const SpectatorPossessMessageSchema = z.object({
+    type: z.literal(MSG.SPECTATOR_POSSESS),
+    targetId: z.string().nullable().optional(),
 });
 
 export const WelcomeMessageSchema = z.object({

@@ -1,22 +1,8 @@
 /**
- * Strict auto-assignment policy.
+ * Session assignment and spectator follow helpers.
  *
- * Connection rules:
- *   - The first joining session gets the marine.
- *   - Subsequent sessions possess the lowest-index living, unpossessed enemy.
- *   - If nothing playable is available, the session becomes a spectator
- *     following a randomly-picked currently-controlled body.
- *
- * Death / disconnect rules:
- *   - A dying (or disconnected) body reverts to AI control.
- *   - The session that lost its body does NOT get a new one. It is
- *     demoted to spectator and starts following another player.
- *   - Spectators never get promoted back to active play; they watch
- *     until they reconnect (which is a fresh session anyway).
- *
- * All functions here are pure with respect to `state.things` / the marine (`getMarineActor()`)
- * and the possession module — the server's world loop calls them at
- * explicit lifecycle points (connect / disconnect / body death / tick).
+ * Every joining session starts as spectator. Possession is explicit and
+ * handled via spectator actions after the session is established.
  */
 
 import { getMarineActor, state } from '../src/game/state.js';
@@ -24,14 +10,10 @@ import {
     ENEMIES,
 } from '../src/game/constants.js';
 import {
-    possessFor,
     releaseFor,
-    isHumanControlled,
     getControlledFor,
-    listHumanControlledEntries,
 } from '../src/game/possession.js';
 import { getThingIndex, getActorIndex } from '../src/game/things/registry.js';
-import { getConnection } from './connections.js';
 import { ROLE } from './net.js';
 import { formatRuntimeId, resolveRuntimeId } from '../src/game/entity/id.js';
 import { isActorAlive } from '../src/game/entity/caps.js';
@@ -73,11 +55,6 @@ function isLivingEnemy(thing) {
     return (thing.hp ?? 0) > 0;
 }
 
-function pickRandom(list) {
-    if (list.length === 0) return null;
-    return list[Math.floor(Math.random() * list.length)];
-}
-
 /** Deterministic pick: lowest thing index among free enemies (stable across reconnects). */
 function slotIndex(entity) {
     const a = getActorIndex(entity);
@@ -85,63 +62,37 @@ function slotIndex(entity) {
     return getThingIndex(entity);
 }
 
-function pickLowestIndexEnemy(enemies) {
-    if (enemies.length === 0) return null;
-    let best = enemies[0];
-    let bestIdx = slotIndex(best);
-    for (let i = 1; i < enemies.length; i++) {
-        const t = enemies[i];
-        const idx = slotIndex(t);
-        if (idx >= 0 && (bestIdx < 0 || idx < bestIdx)) {
-            best = t;
-            bestIdx = idx;
-        }
-    }
-    return best;
+function compareSlotIndexAsc(a, b) {
+    return slotIndex(a) - slotIndex(b);
 }
 
-function pickFollowTarget(excludeSessionId) {
-    const entries = listHumanControlledEntries().filter(([sid]) => sid !== excludeSessionId);
-    if (entries.length === 0) return null;
-    const [, entity] = entries[Math.floor(Math.random() * entries.length)];
-    return entityId(entity);
-}
-
-/**
- * Pick an MCP-controlled body that a joining spectator could challenge for
- * displacement. Prefer the marine if held by an MCP session; else the
- * lowest-index living enemy held by MCP.
- *
- * @returns {{ sessionId: string, entity: import('../src/game/state.js').Player|import('../src/game/state.js').Thing, kind: 'marine'|'enemy' }|null}
- */
-function findDisplaceableTarget() {
-    const entries = listHumanControlledEntries();
-    const mcpEntries = entries.filter(([sid]) => {
-        const c = getConnection(sid);
-        return Boolean(c && c.kind === 'mcp');
-    });
-    if (mcpEntries.length === 0) return null;
-
+export function listPossessableActors() {
+    /** @type {Array<import('../src/game/state.js').Player|import('../src/game/state.js').Thing>} */
+    const out = [];
     const marine = getMarineActor();
-    if (marine) {
-        const marineEntry = mcpEntries.find(([, ent]) => ent === marine);
-        if (marineEntry && marine.hp > 0 && !marine.deathMode) {
-            return { sessionId: marineEntry[0], entity: marine, kind: 'marine' };
-        }
+    if (marine && marine.hp > 0 && !marine.deathMode) {
+        out.push(marine);
     }
+    const enemies = state.actors
+        .filter((entity) => entity && entity !== marine && isLivingEnemy(entity))
+        .sort(compareSlotIndexAsc);
+    for (const enemy of enemies) {
+        out.push(enemy);
+    }
+    return out;
+}
 
-    let best = null;
-    let bestIdx = Infinity;
-    for (const [sid, ent] of mcpEntries) {
-        if (ent === marine) continue;
-        if (!isLivingEnemy(ent)) continue;
-        const idx = slotIndex(ent);
-        if (idx >= 0 && idx < bestIdx) {
-            bestIdx = idx;
-            best = { sessionId: sid, entity: ent, kind: 'enemy' };
-        }
-    }
-    return best;
+export function isPossessableActorEntity(entity) {
+    if (!entity || entity.__isDoorEntity) return false;
+    const marine = getMarineActor();
+    if (entity === marine) return Boolean(marine && marine.hp > 0 && !marine.deathMode);
+    return isLivingEnemy(entity);
+}
+
+function pickFollowTarget() {
+    const actors = listPossessableActors();
+    if (actors.length === 0) return null;
+    return entityId(actors[0]);
 }
 
 /**
@@ -169,93 +120,17 @@ export function applyDisplacement(joinerConn, targetConn, entity) {
  * Called when a fresh session connects. Returns an assignment:
  *   { role, controlledId, followTargetId }
  *
- * Mutates the possession map via `possessFor` when a body is claimed.
- *
- * @param {object} [options]
- * @param {string|null} [options.preferredControlledId] — e.g. `'player'` or `'thing:12'`; honored first when still possessable (MCP sticky reconnect).
+ * Joining sessions always start as spectators.
  */
 export function assignOnJoin(conn, options = {}) {
-    // Killer-promotion takes priority over everything else: if this session
-    // killed the previous marine and we're now back at assignment time
-    // (post-restart), hand them the marine if it's live and free. Otherwise
-    // we drop the pending flag and fall through to the regular policy.
-    if (pendingMarinePromotionSessionId
-        && pendingMarinePromotionSessionId === conn.sessionId) {
+    void options;
+    if (pendingMarinePromotionSessionId === conn.sessionId) {
         pendingMarinePromotionSessionId = null;
-        const m = getMarineActor();
-        if (m && !isHumanControlled(m) && m.hp > 0 && !m.deathMode) {
-            if (possessFor(conn.sessionId, m)) {
-                return {
-                    role: ROLE.PLAYER,
-                    controlledId: entityId(m),
-                    followTargetId: null,
-                };
-            }
-        }
     }
-
-    const pref = options.preferredControlledId;
-    if (pref) {
-        const entity = resolveEntity(pref);
-        const m = getMarineActor();
-        if (entity && entity === m) {
-            if (!isHumanControlled(m) && m.hp > 0 && !m.deathMode) {
-                if (possessFor(conn.sessionId, m)) {
-                    return {
-                        role: ROLE.PLAYER,
-                        controlledId: entityId(m),
-                        followTargetId: null,
-                    };
-                }
-            }
-        } else if (entity && !entity.__isDoorEntity) {
-            if (isLivingEnemy(entity) && !isHumanControlled(entity)) {
-                if (possessFor(conn.sessionId, entity)) {
-                    return {
-                        role: ROLE.PLAYER,
-                        controlledId: entityId(entity),
-                        followTargetId: null,
-                    };
-                }
-            }
-        }
-    }
-
-    // Marine first (if one exists and isn't already held).
-    const marine = getMarineActor();
-    if (marine && !isHumanControlled(marine) && marine.hp > 0 && !marine.deathMode) {
-        if (possessFor(conn.sessionId, marine)) {
-            return {
-                role: ROLE.PLAYER,
-                controlledId: entityId(marine),
-                followTargetId: null,
-            };
-        }
-    }
-
-    // Then lowest-index free enemy (deterministic). Skip the marine explicitly
-    // rather than relying on a fixed slot: actors list is now a peer list.
-    const freeEnemies = state.actors.filter(
-        (t) => t && t !== marine && isLivingEnemy(t) && !isHumanControlled(t),
-    );
-    const enemy = pickLowestIndexEnemy(freeEnemies);
-    if (enemy) {
-        if (possessFor(conn.sessionId, enemy)) {
-            return {
-                role: ROLE.PLAYER,
-                controlledId: entityId(enemy),
-                followTargetId: null,
-            };
-        }
-    }
-
-    // No playable body available — spectator (may still challenge an MCP-held body).
-    const displaceCandidate = findDisplaceableTarget();
     return {
         role: ROLE.SPECTATOR,
         controlledId: null,
-        followTargetId: pickFollowTarget(conn.sessionId),
-        ...(displaceCandidate ? { displaceCandidate } : {}),
+        followTargetId: pickFollowTarget(),
     };
 }
 
@@ -269,7 +144,7 @@ export function demoteToSpectator(conn) {
     return {
         role: ROLE.SPECTATOR,
         controlledId: null,
-        followTargetId: pickFollowTarget(conn.sessionId),
+        followTargetId: pickFollowTarget(),
     };
 }
 
@@ -287,7 +162,8 @@ export function releaseOnDisconnect(conn) {
  * server is empty of controlled bodies).
  */
 export function pickNewFollowTargetId(sessionId) {
-    return pickFollowTarget(sessionId);
+    void sessionId;
+    return pickFollowTarget();
 }
 
 /**

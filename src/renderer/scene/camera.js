@@ -30,9 +30,10 @@
  * billboard) lives in --avatar-* on the actor's own DOM node.
  */
 
-import { getMarineActor } from '../../game/state.js';
+import { THING_NAMES } from '../../data/things.js';
+import { getMarineActor, MARINE_ACTOR_TYPE } from '../../game/state.js';
 import { LOCAL_SESSION, getControlled, getControlledEye } from '../../game/possession.js';
-import { getRenderedPlayerPose } from '../../net/client.js';
+import { getRenderedActorPose, getRenderedPlayerPose } from '../../net/client.js';
 import { dom } from '../dom.js';
 
 const lastCameraVar = {
@@ -41,6 +42,7 @@ const lastCameraVar = {
     sa: NaN, ca: NaN, cfx: NaN, cfy: NaN,
 };
 let lastAvatarVisible = null;
+let lastAvatarType = null;
 
 function setVarIfChanged(style, name, value, key) {
     if (lastCameraVar[key] !== value) {
@@ -105,17 +107,17 @@ export function updateCamera() {
     setVarIfChanged(viewportStyle, '--camera-forward-x', -sa, 'cfx');
     setVarIfChanged(viewportStyle, '--camera-forward-y', ca, 'cfy');
 
-    // The marine's world pose drives its third-person billboard (#avatar
-    // DOM node) — exposed as --avatar-* on the viewport so the #avatar
-    // transform picks them up. When no marine exists (e.g. headless
-    // tests), skip both the pose write and the visibility toggle.
+    // The followed/externally-viewed actor pose drives the #avatar billboard.
+    // This is usually the marine for remote viewers, but in spectator mode
+    // and non-marine possession it becomes the currently followed actor.
     const m = getMarineActor();
-    const marinePose = m ? getRenderedPlayerPose() : null;
-    if (marinePose) {
-        setVarIfChanged(viewportStyle, '--avatar-x', marinePose.x, 'ax');
-        setVarIfChanged(viewportStyle, '--avatar-y', marinePose.y, 'ay');
-        setVarIfChanged(viewportStyle, '--avatar-floor', marinePose.floor || 0, 'af');
-        setVarIfChanged(viewportStyle, '--avatar-angle', marinePose.angle, 'aa');
+    const avatarTarget = resolveAvatarTarget(m);
+    const avatarPose = avatarTarget ? getAvatarPose(avatarTarget, m) : null;
+    if (avatarPose) {
+        setVarIfChanged(viewportStyle, '--avatar-x', avatarPose.x, 'ax');
+        setVarIfChanged(viewportStyle, '--avatar-y', avatarPose.y, 'ay');
+        setVarIfChanged(viewportStyle, '--avatar-floor', avatarPose.floor || 0, 'af');
+        setVarIfChanged(viewportStyle, '--avatar-angle', avatarPose.angle, 'aa');
     }
 
     // Show the marine avatar whenever the local session isn't piloting
@@ -123,24 +125,30 @@ export function updateCamera() {
     // or we're spectating / possessing a monster. Visibility is a per-
     // actor concern, so we write directly on the #avatar DOM node rather
     // than via a body class.
-    const marineController = m?.controller?.sessionId;
-    const showAvatar = Boolean(m)
-        && marineController !== LOCAL_SESSION
-        && getControlled() !== m
-        && m.deathMode !== 'gameover';
+    const showAvatar = shouldShowAvatar(avatarTarget, m);
     if (showAvatar !== lastAvatarVisible) {
         lastAvatarVisible = showAvatar;
         const avatarEl = document.getElementById('avatar');
         if (avatarEl) avatarEl.classList.toggle('visible', showAvatar);
     }
 
-    const marker = document.querySelector('#avatar > .marker');
-    if (marker) {
-        marker.classList.toggle('firing', Boolean(m?.isFiring));
+    const sprite = document.querySelector('#avatar > .sprite');
+    if (sprite) {
+        const nextType = avatarSpriteType(avatarTarget, m);
+        if (nextType !== lastAvatarType) {
+            lastAvatarType = nextType;
+            if (nextType) sprite.dataset.type = nextType;
+            else delete sprite.dataset.type;
+        }
     }
 
-    if (showAvatar) {
-        updateAvatarSpriteHeading(eye);
+    const marker = document.querySelector('#avatar > .marker');
+    if (marker) {
+        marker.classList.toggle('firing', Boolean(avatarTarget?.isFiring));
+    }
+
+    if (showAvatar && avatarPose) {
+        updateAvatarSpriteHeading(eye, avatarPose.angle, avatarPose);
     }
 }
 
@@ -151,14 +159,13 @@ export function updateCamera() {
 let lastAvatarHeading = -1;
 let lastAvatarMirror = -1;
 
-function updateAvatarSpriteHeading(eye) {
+function updateAvatarSpriteHeading(eye, viewAngle, avatarPose) {
     const sprite = document.querySelector('#avatar > .sprite');
     if (!sprite) return;
 
-    const marine = getRenderedPlayerPose();
-    const angleToViewer = Math.atan2(eye.y - marine.y, eye.x - marine.x);
-    const marineFacing = marine.angle + Math.PI / 2;
-    let rel = angleToViewer - marineFacing;
+    const angleToViewer = Math.atan2(eye.y - avatarPose.y, eye.x - avatarPose.x);
+    const facing = viewAngle + Math.PI / 2;
+    let rel = angleToViewer - facing;
     rel = ((rel % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
     const rotationIndex = (Math.floor((rel + Math.PI / 8) / (Math.PI / 4)) % 8) + 1;
 
@@ -177,4 +184,46 @@ function updateAvatarSpriteHeading(eye) {
         sprite.style.setProperty('--heading', sheetRow);
         sprite.style.setProperty('--mirror', mirrorScale);
     }
+}
+
+function resolveAvatarTarget(marine) {
+    const controlled = getControlled();
+    if (!controlled || controlled.__isDoorEntity) return marine || null;
+    return controlled;
+}
+
+function shouldShowAvatar(target, marine) {
+    if (!target) return false;
+    if ((target.hp ?? 1) <= 0) return false;
+    if (target.deathMode === 'gameover' || target.collected) return false;
+    if (target === marine) {
+        const marineController = marine?.controller?.sessionId;
+        return marineController !== LOCAL_SESSION && getControlled() !== marine;
+    }
+    return true;
+}
+
+function avatarSpriteType(target, marine) {
+    if (!target) return null;
+    if (target === marine || target.type === MARINE_ACTOR_TYPE) return 'marine';
+    return THING_NAMES[target.type] || null;
+}
+
+function getAvatarPose(target, marine) {
+    if (target === marine) {
+        return getRenderedPlayerPose();
+    }
+    if (typeof target.actorIndex === 'number') {
+        const pose = getRenderedActorPose(target.actorIndex);
+        if (pose) return pose;
+    }
+    const angle = typeof target.viewAngle === 'number'
+        ? target.viewAngle
+        : (typeof target.facing === 'number' ? target.facing - Math.PI / 2 : 0);
+    return {
+        x: target.x ?? 0,
+        y: target.y ?? 0,
+        floor: target.floorHeight ?? 0,
+        angle,
+    };
 }

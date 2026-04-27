@@ -34,6 +34,8 @@ import {
     JoinChallengeDecisionMessageSchema,
     LoadMapRequestMessageSchema,
     MSG,
+    SpectatorFollowMessageSchema,
+    SpectatorPossessMessageSchema,
     sanitizeInput,
 } from './net.js';
 import {
@@ -47,6 +49,7 @@ import {
     openWebSocketGameSession,
 } from './session-lifecycle.js';
 import { resolveChallenge } from './join-challenge.js';
+import { possessAsSpectator, rotateSpectatorFollow } from './spectator-actions.js';
 import { getDoorControlMode } from './settings/door-control.js';
 
 const PORT = Number(process.env.PORT) || 8787;
@@ -171,6 +174,22 @@ function handleConnection(ws) {
             if (!parsed.success) return;
             bumpActivity(conn);
             resolveChallenge(parsed.data.challengeId, conn, parsed.data.decision, undefined);
+            return;
+        }
+
+        if (msg.type === MSG.SPECTATOR_FOLLOW) {
+            const parsed = SpectatorFollowMessageSchema.safeParse(msg);
+            if (!parsed.success) return;
+            bumpActivity(conn);
+            rotateSpectatorFollow(conn, parsed.data.direction);
+            return;
+        }
+
+        if (msg.type === MSG.SPECTATOR_POSSESS) {
+            const parsed = SpectatorPossessMessageSchema.safeParse(msg);
+            if (!parsed.success) return;
+            bumpActivity(conn);
+            possessAsSpectator(conn, parsed.data.targetId ?? null);
             return;
         }
     });

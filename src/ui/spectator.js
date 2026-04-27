@@ -17,12 +17,19 @@
 import { getMarineActor } from '../game/state.js';
 import { dom } from '../renderer/dom.js';
 import { getControlled, onPossessionChange } from '../game/possession.js';
-import { getSession } from '../net/client.js';
+import {
+    getSession,
+    requestSpectatorPossess,
+    sendSpectatorFollow,
+} from '../net/client.js';
 
 export let spectatorActive = false;
 let spectatorLoopRunning = false;
 const spectator = { offsetX: 0, offsetY: 0, height: 3000, angle: 0, keys: {}, mode: 'top' };
 const spectatorControls = document.getElementById('spectator-controls');
+const followPrevButton = document.getElementById('spectator-follow-prev');
+const followNextButton = document.getElementById('spectator-follow-next');
+const possessButton = document.getElementById('spectator-possess');
 
 /**
  * Sets spectator custom properties on the viewport element for CSS to consume.
@@ -69,6 +76,22 @@ function spectatorLoop() {
 const spectatorButton = document.getElementById('spectator-button');
 if (spectatorButton) {
     spectatorButton.addEventListener('click', () => window.spectate());
+}
+
+if (followPrevButton) {
+    followPrevButton.addEventListener('click', () => {
+        sendSpectatorFollow('prev');
+    });
+}
+if (followNextButton) {
+    followNextButton.addEventListener('click', () => {
+        sendSpectatorFollow('next');
+    });
+}
+if (possessButton) {
+    possessButton.addEventListener('click', () => {
+        requestSpectatorPossess();
+    });
 }
 
 // Player sprite rotation — same system as enemies (--heading/--mirror on sprite sheet)

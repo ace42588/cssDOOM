@@ -206,10 +206,13 @@ body.spectator #avatar > .marker {
         rotateY(calc(var(--spectator-angle, 0) * -1rad))
         scaleX(var(--mirror, 1));
 
-    background-image: url('/assets/sprites/sheets/PLAY.png');
-    --w: 45; --h: 56; --frames: 4; --rows: 5;
     animation-play-state: paused;
     animation-duration: calc(var(--frames) * 150ms);
+}
+
+#avatar > .sprite[data-type="marine"] {
+    background-image: url('/assets/sprites/sheets/PLAY.png');
+    --w: 45; --h: 56; --frames: 4; --rows: 5;
 }
 
 #renderer.moving #avatar > .sprite {
@@ -395,6 +398,18 @@ body.follow-mode #spectator-arrows {
 
 #spectator-tabs {
     gap: 0;
+}
+
+#spectator-follow-actions {
+    gap: 8px;
+}
+
+.spectator-action-button {
+    width: auto !important;
+    padding: 0 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    font-size: 11px !important;
 }
 
 .spectator-tab {

@@ -9,6 +9,8 @@ import {
     MapLoadMessageSchema,
     NoticeMessageSchema,
     RoleChangeMessageSchema,
+    SpectatorFollowMessageSchema,
+    SpectatorPossessMessageSchema,
     SnapshotMessageSchema,
     WelcomeMessageSchema,
     sanitizeInput,
@@ -104,6 +106,16 @@ assert.equal(JoinChallengeDecisionMessageSchema.safeParse({
     type: MSG.JOIN_CHALLENGE_DECISION,
     challengeId: 'c1',
     decision: 'displace',
+}).success, true);
+
+assert.equal(SpectatorFollowMessageSchema.safeParse({
+    type: MSG.SPECTATOR_FOLLOW,
+    direction: 'next',
+}).success, true);
+
+assert.equal(SpectatorPossessMessageSchema.safeParse({
+    type: MSG.SPECTATOR_POSSESS,
+    targetId: 'actor:12',
 }).success, true);
 
 console.log('protocol schemas: ok');

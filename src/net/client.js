@@ -30,6 +30,7 @@ import {
     markWeaponNeedsRehydrate,
 } from './snapshot-apply.js';
 import {
+    getRenderedActorPose,
     getRenderedPlayerPose,
     getRenderedThingPose,
 } from './interpolation.js';
@@ -49,6 +50,7 @@ export {
     requestBodySwap,
     requestDoorDecision,
     requestWeaponSwitch,
+    getRenderedActorPose,
     getRenderedPlayerPose,
     getRenderedThingPose,
 };
@@ -102,6 +104,28 @@ export function sendJoinChallengeDecision(challengeId, decision) {
             type: MSG.JOIN_CHALLENGE_DECISION,
             challengeId,
             decision,
+        }));
+    } catch {}
+}
+
+export function sendSpectatorFollow(direction) {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    if (direction !== 'next' && direction !== 'prev') return;
+    try {
+        ws.send(JSON.stringify({
+            type: MSG.SPECTATOR_FOLLOW,
+            direction,
+        }));
+    } catch {}
+}
+
+export function requestSpectatorPossess(targetId = null) {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    if (targetId !== null && (typeof targetId !== 'string' || !targetId)) return;
+    try {
+        ws.send(JSON.stringify({
+            type: MSG.SPECTATOR_POSSESS,
+            targetId,
         }));
     } catch {}
 }

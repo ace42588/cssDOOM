@@ -1,8 +1,8 @@
 /**
- * When a new session would be a spectator but an MCP agent holds a body,
- * elicit a short defense from that agent; the joiner then chooses to
+ * When a spectator attempts to possess a body held by an MCP agent,
+ * elicit a short defense from that agent; the challenger then chooses to
  * displace or spectate. Unsupported clients / timeouts / declines → silent
- * displacement (joiner gets the body).
+ * displacement (challenger gets the body).
  */
 
 import { randomUUID } from 'node:crypto';
@@ -120,8 +120,8 @@ function sendJoinChallengeToJoiner(joinerConn, fields) {
  * @param {{ sessionId: string, entity: object, kind?: string }} candidate
  */
 export function startChallenge(joinerConn, candidate) {
-    if (!joinerConn || !candidate?.sessionId || !candidate.entity) return;
-    if (activeChallengesByTarget.has(candidate.sessionId)) return;
+    if (!joinerConn || !candidate?.sessionId || !candidate.entity) return false;
+    if (activeChallengesByTarget.has(candidate.sessionId)) return false;
 
     const challengeId = randomUUID();
     const expiresAt = Date.now() + JOIN_CHALLENGE_TTL_MS;
@@ -140,6 +140,7 @@ export function startChallenge(joinerConn, candidate) {
     activeChallengesByTarget.set(candidate.sessionId, challengeId);
 
     void runDefensePhase(joinerConn, entry, candidate);
+    return true;
 }
 
 /**

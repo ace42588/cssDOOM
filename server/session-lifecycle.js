@@ -1,7 +1,7 @@
 import { addConnection, getConnection, send, removeConnection } from './connections.js';
 import { closeMcpHttpSessionForGameSession } from './mcp/http-transport-by-game.js';
 import { assignOnJoin, releaseOnDisconnect } from './assignment.js';
-import { cancelChallengesInvolvingSession, startChallenge } from './join-challenge.js';
+import { cancelChallengesInvolvingSession } from './join-challenge.js';
 import {
     emitSessionEstablished,
     registerSession,
@@ -40,10 +40,6 @@ export function initializeGameSession(conn, {
         serverTime: Date.now(),
     });
     send(conn, { type: MSG.MAP_LOAD, mapName, mapData });
-
-    if (assignment.displaceCandidate) {
-        startChallenge(conn, assignment.displaceCandidate);
-    }
 
     return conn;
 }

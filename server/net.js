@@ -26,6 +26,13 @@
  *   { type: 'joinChallengeDecision', challengeId, decision: 'displace' | 'spectate' }
  *      Sent by a WebSocket client after receiving `joinChallenge` with autoResolved false.
  *
+ *   { type: 'spectatorFollow', direction: 'next' | 'prev' }
+ *      Spectator-only follow-target rotation across possessable actors.
+ *
+ *   { type: 'spectatorPossess', targetId?: string | null }
+ *      Spectator-only possession attempt. Uses `targetId` when provided,
+ *      otherwise uses the spectator's current `followTargetId`.
+ *
  *   { type: 'loadMapRequest', mapName }
  *      Ask the server to switch the world to a specific map. Used by the
  *      menu/level picker. Inventory carries over so the player keeps the
@@ -131,6 +138,8 @@ export {
     ClientInputMessageSchema,
     JoinChallengeDecisionMessageSchema,
     LoadMapRequestMessageSchema,
+    SpectatorFollowMessageSchema,
+    SpectatorPossessMessageSchema,
     MSG,
     ROLE,
     emptyInput,

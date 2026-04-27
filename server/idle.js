@@ -1,11 +1,10 @@
 import {
     getConnection,
     listPlayerConnections,
-    listSpectatorConnections,
     removeConnection,
     send,
 } from './connections.js';
-import { assignOnJoin, releaseOnDisconnect } from './assignment.js';
+import { releaseOnDisconnect } from './assignment.js';
 import { MSG } from './net.js';
 import { unregisterSession } from './sgnl/index.js';
 import { closeMcpSession } from './mcp/sessions.js';
@@ -15,10 +14,11 @@ function readTimeoutMs(envName, fallbackMs) {
     return Number.isFinite(raw) && raw > 0 ? raw : fallbackMs;
 }
 
-const IDLE_WARNING_MS = readTimeoutMs('IDLE_WARNING_MS', 30000);
-const IDLE_DROP_MS = readTimeoutMs('IDLE_DROP_MS', 60000);
+const IDLE_WARNING_MS = readTimeoutMs('IDLE_WARNING_MS', 270000);
+const IDLE_DROP_MS = readTimeoutMs('IDLE_DROP_MS', 300000);
 
 export function tickIdleChecks(now, onRoleChange = () => {}) {
+    void onRoleChange;
     for (const conn of listPlayerConnections()) {
         if (conn.kind === 'mcp') continue;
         const idleMs = now - (conn.lastActiveAt || conn.joinedAt || now);
@@ -34,18 +34,17 @@ export function tickIdleChecks(now, onRoleChange = () => {}) {
             conn.idleWarnedAt = now;
             continue;
         }
-        dropIdleController(conn, onRoleChange);
+        dropIdleController(conn);
     }
 }
 
-function dropIdleController(conn, onRoleChange = () => {}) {
+function dropIdleController(conn) {
     send(conn, {
         type: MSG.NOTICE,
         code: 'idle-drop',
         message: 'Disconnected for idleness',
     });
     closeConnection(conn);
-    promoteSpectator(onRoleChange);
 }
 
 function closeConnection(conn) {
@@ -65,15 +64,3 @@ function closeConnection(conn) {
     }
 }
 
-function promoteSpectator(onRoleChange = () => {}) {
-    const candidates = listSpectatorConnections()
-        .slice()
-        .sort((a, b) => a.joinedAt - b.joinedAt);
-    const spectator = candidates[0];
-    if (!spectator) return;
-    const next = assignOnJoin(spectator);
-    spectator.role = next.role;
-    spectator.controlledId = next.controlledId;
-    spectator.followTargetId = next.followTargetId;
-    onRoleChange(spectator.sessionId);
-}
